@@ -1824,12 +1824,11 @@
         <div id="pr-step2" style="display:none">
           <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:12px">
             <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Tax Withholding</div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Enter withholding rates to apply to this period's gross pay. These are flat percentages applied to each employee's gross pay — for exact bracket-based withholding, consult a payroll provider or accountant.</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Defaults below (FICA 7.65%, State 3.07%) match American Safety Options' standard estimate methodology — Federal is left at 0% since it isn't withheld at this stage. Adjust any rate as needed; all are flat percentages of gross pay.</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px">
-              <div class="form-field"><label>Federal Tax (%)</label><input type="number" id="pr-tax-federal" step="0.01" min="0" value="10"></div>
-              <div class="form-field"><label>State Tax (%)</label><input type="number" id="pr-tax-state" step="0.01" min="0" value="0"></div>
-              <div class="form-field"><label>Social Security (%)</label><input type="number" id="pr-tax-ss" step="0.01" min="0" value="6.2"></div>
-              <div class="form-field"><label>Medicare (%)</label><input type="number" id="pr-tax-medicare" step="0.01" min="0" value="1.45"></div>
+              <div class="form-field"><label>Federal Tax (%)</label><input type="number" id="pr-tax-federal" step="0.01" min="0" value="0"></div>
+              <div class="form-field"><label>FICA (%)</label><input type="number" id="pr-tax-fica" step="0.01" min="0" value="7.65"></div>
+              <div class="form-field"><label>State Tax (%)</label><input type="number" id="pr-tax-state" step="0.01" min="0" value="3.07"></div>
               <div class="form-field"><label>Other (%)</label><input type="number" id="pr-tax-other" step="0.01" min="0" value="0"></div>
             </div>
             <button class="btn btn-primary" style="font-size:14px;padding:12px 22px" onclick="calculatePayroll()">🧮 Calculate Payroll</button>
@@ -2975,9 +2974,28 @@ function dbImportBackup(input) {
   reader.readAsText(file); input.value = '';
 }
 
-(async function _asoDBInit() {
+(async function _asoAppInit() {
   const loginScreen = document.getElementById('login-screen');
-  if (loginScreen) loginScreen.style.display = 'none';
+
+  // If a valid session cookie already exists (e.g. page refresh), skip straight to loading data.
+  try {
+    const meRes = await fetch('/api/auth/me');
+    if (meRes.ok) {
+      const me = await meRes.json();
+      _currentUser = me.user;
+      if (loginScreen) loginScreen.style.display = 'none';
+      const ok = await loadAppData();
+      if (ok) enterApp();
+      return;
+    }
+  } catch (e) { /* server not reachable yet — fall through to normal login screen */ }
+
+  if (loginScreen) loginScreen.style.display = 'flex';
+})();
+
+// Fetches all application data from the server. Must only be called AFTER a
+// successful login (or confirmed existing session) — the API requires auth.
+async function loadAppData() {
   const overlay = document.createElement('div');
   overlay.id = 'aso-connecting';
   overlay.style.cssText = 'position:fixed;inset:0;background:#050c18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
@@ -2999,6 +3017,7 @@ function dbImportBackup(input) {
     try {
       const r = await fetch('/api/db/load');
       if (r.ok) { data = await r.json(); break; }
+      if (r.status === 401) { overlay.remove(); doLogout(); return false; }
     } catch(e) {}
     if (msgEl) msgEl.textContent = 'Connecting\u2026 (' + i + '/20)';
     await new Promise(res => setTimeout(res, 600));
@@ -3014,7 +3033,7 @@ function dbImportBackup(input) {
       '<code style="background:#0a1525;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#4aaff5">node server.js</code><br><br>' +
       'Then refresh this page.</div>' +
       '<button onclick="location.reload()" style="margin-top:24px;background:#1a7bd8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
-    return;
+    return false;
   }
 
   PAY_CONFIG            = data.PAY_CONFIG            || DB_DEFAULTS.PAY_CONFIG;
@@ -3034,25 +3053,9 @@ function dbImportBackup(input) {
       l.rateHistory = [{ rate: l.rate, mult: l.mult, effectiveFrom: '2000-01-01' }];
   });
 
-  await migratePasswords();
   overlay.remove();
-  if (loginScreen) loginScreen.style.display = 'flex';
   console.log('[ASO DB] Ready \u2014', STAFF.length, 'staff,', SHIFTS.length, 'shifts');
-})();
-
-const _PW_SALT = 'ASO_OT_SECURE_SALT_v7';
-async function hashPw(password) {
-  const encoded = new TextEncoder().encode(password + _PW_SALT);
-  const buf = await crypto.subtle.digest('SHA-256', encoded);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-function isHashed(pw) { return /^[0-9a-f]{64}$/.test(pw); }
-async function migratePasswords() {
-  let changed = false;
-  for (const u of USERS) {
-    if (!isHashed(u.password)) { u.password = await hashPw(u.password); changed = true; }
-  }
-  if (changed) dbSave();
+  return true;
 }
 
 function genId() { return 'SH' + Date.now() + Math.random().toString(36).slice(2,6); }
@@ -3299,29 +3302,49 @@ function checkDailyHoursViolation(staffId, date, newHours, excludeId) {
 async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
-  const hashed = await hashPw(p);
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
 
-  // Try hashed comparison first (normal case)
-  let user = USERS.find(x => x.username === u && x.password === hashed);
-
-  // Fallback: if migration hasn't finished yet, password may still be plain text
-  if (!user) {
-    const plainUser = USERS.find(x => x.username === u && !isHashed(x.password) && x.password === p);
-    if (plainUser) {
-      // Migrate this user's password right now before proceeding
-      plainUser.password = hashed;
-      dbSave();
-      user = plainUser;
-    }
+  let res, body;
+  try {
+    res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    });
+    body = await res.json();
+  } catch (e) {
+    errEl.textContent = 'Cannot reach the server — check your connection and try again.';
+    errEl.style.display = 'block';
+    return;
   }
 
-  if (!user) { document.getElementById('login-error').style.display='block'; return; }
-  _currentUser = user;
+  if (!res.ok) {
+    errEl.textContent = body.error || 'Invalid username or password';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  _currentUser = body.user;
   document.getElementById('login-screen').style.display = 'none';
+  const ok = await loadAppData();
+  if (!ok) { document.getElementById('login-screen').style.display = 'flex'; return; }
+  enterApp();
+
+  if (u.toLowerCase() === 'admin' && p === 'admin123') {
+    setTimeout(() => showToast('⚠️ Security: Change the default admin password in Passwords before going live!', 'warn'), 800);
+  }
+}
+document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('login-user').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// Shows the main app UI for the now-authenticated, now-loaded _currentUser.
+// Called after either a fresh login or an auto-resumed session on page load.
+function enterApp() {
+  const user = _currentUser;
   document.getElementById('app').style.display = 'block';
   document.getElementById('user-name-label').textContent = user.name;
   document.getElementById('user-avatar').textContent = user.name[0];
-  // Show role badge in topbar
   const roleEl = document.getElementById('topbar-role-badge');
   if (roleEl) {
     const roleColors = { admin: 'var(--accent2)', supervisor: 'var(--warn)', viewer: 'var(--text3)' };
@@ -3332,24 +3355,11 @@ async function doLogin() {
   }
   updateNavForRole();
   initApp();
-  // Warn admin if still using default password (hashed admin123)
-  if (user.username === 'admin') {
-    hashPw('admin123').then(defaultHash => {
-      if (user.password === defaultHash) {
-        setTimeout(() => showToast('⚠️ Security: Change the default admin password in Passwords before going live!', 'warn'), 800);
-      }
-    });
-  }
 }
-document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-document.getElementById('login-user').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
-function doLogout() {
-  _currentUser = null;
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pass').value = '';
+async function doLogout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+  location.reload();
 }
 
 // ──────────────────────────────────────────────────────────
@@ -4782,6 +4792,11 @@ function addShift() {
   if (!date || !staff) { showToast('Date and staff are required', 'danger'); return; }
   if (!location) { showToast('Location is required', 'danger'); return; }
   if (!start || !end) { showToast('Start and end times are required', 'danger'); return; }
+  const lockRec = isPeriodLockedForDate(date);
+  if (lockRec) {
+    showToast(`🔒 ${lockRec.periodLabel} has been confirmed for payroll and is locked. Unlock it from the Payroll & Taxes page to make changes.`, 'danger');
+    return;
+  }
   const hours = calcHours(start, end);
 
   // Validate date is within selected pay period
@@ -4921,6 +4936,13 @@ function confirmDeleteShift() {
   if (!_deleteShiftId) return;
   const s = SHIFTS.find(x => x.id === _deleteShiftId);
   if (s) {
+    const lockRec = isPeriodLockedForDate(s.date);
+    if (lockRec) {
+      showToast(`🔒 ${lockRec.periodLabel} has been confirmed for payroll and is locked. Unlock it from the Payroll & Taxes page to make changes.`, 'danger');
+      document.getElementById('modal-delete').classList.add('hidden');
+      _deleteShiftId = null;
+      return;
+    }
     DELETION_LOG.push({
       id: genId(),
       shiftId: s.id,
@@ -5075,6 +5097,12 @@ function saveEditShift() {
   const idx = SHIFTS.findIndex(s => s.id === _editShiftId);
   if (idx < 0) { showToast('Shift not found', 'danger'); return; }
 
+  const lockRec = isPeriodLockedForDate(SHIFTS[idx].date) || isPeriodLockedForDate(date);
+  if (lockRec) {
+    showToast(`🔒 ${lockRec.periodLabel} has been confirmed for payroll and is locked. Unlock it from the Payroll & Taxes page to make changes.`, 'danger');
+    return;
+  }
+
   // Remove old approved exception since the shift is being corrected
   APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(a => a.shiftId !== _editShiftId);
 
@@ -5219,6 +5247,15 @@ function findPayrollRecord(periodStart) {
   return PAYROLL_RECORDS.find(r => r.periodStart === periodStart) || null;
 }
 
+// Returns the payroll record if the given shift date falls inside a period that
+// has been confirmed for payroll (and is therefore locked against edits), else null.
+function isPeriodLockedForDate(date) {
+  if (!date) return null;
+  const { start } = getPeriodForDate(date);
+  const rec = findPayrollRecord(start.toISOString().split('T')[0]);
+  return (rec && rec.confirmed) ? rec : null;
+}
+
 function getPrSelectedStart() {
   const sel = document.getElementById('pr-select');
   if (!sel || sel.selectedIndex < 0) return null;
@@ -5290,6 +5327,45 @@ function buildPayrollByStaff(label) {
   return byStaff;
 }
 
+// Groups shifts by staff + location ("House"), and splits regular/OT hours into
+// Week 1 / Week 2 of the pay period — matching ASO's payroll report format.
+function buildPayrollDetailRows(label) {
+  const shifts = computeShiftsWithOT().filter(s => s.period === label);
+  if (shifts.length === 0) return [];
+  const { start } = getPeriodForDate(shifts[0].date);
+  const startMs = start.getTime();
+
+  const groups = {};
+  shifts.forEach(s => {
+    const staffMember = STAFF.find(x => x.id === s.staff);
+    const key = s.staff + '|' + s.location;
+    if (!groups[key]) {
+      groups[key] = {
+        staffId: s.staff,
+        name: staffMember ? `${staffMember.last}, ${staffMember.first}` : s.staff,
+        location: s.location || '\u2014',
+        rate: s.locRate,
+        wk1Reg:0, wk2Reg:0, wk1OT:0, wk2OT:0,
+        regPay:0, otPay:0, shifts:0
+      };
+    }
+    const g = groups[key];
+    const dayOffset = Math.floor((new Date(s.date + 'T00:00:00').getTime() - startMs) / 86400000);
+    const wk = dayOffset < 7 ? 1 : 2;
+    if (wk === 1) { g.wk1Reg += s.regHrs; g.wk1OT += s.otHrs; }
+    else         { g.wk2Reg += s.regHrs; g.wk2OT += s.otHrs; }
+    g.regPay += s.regPay;
+    g.otPay  += s.otPay;
+    g.shifts++;
+  });
+
+  return Object.values(groups).map(g => ({
+    ...g,
+    totalHrs: g.wk1Reg + g.wk2Reg + g.wk1OT + g.wk2OT,
+    gross: g.regPay + g.otPay
+  })).sort((a,b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
+}
+
 function renderPayrollPage() {
   const label = getPrSelectedLabel();
   const periodStart = getPrSelectedStart();
@@ -5320,18 +5396,19 @@ function renderPayrollPage() {
     <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totRegP+totOTP)}</div></div>
   `;
 
-  let html = '<table><thead><tr><th>ID</th><th>Staff Name</th><th>Shifts</th><th>Reg Hrs</th><th>OT Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
-  STAFF.forEach(st => {
-    const d = byStaff[st.id] || {regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0};
-    if (d.shifts === 0) return;
-    const gross = d.regPay + d.otPay;
+  let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
+  const detailRows = buildPayrollDetailRows(label);
+  detailRows.forEach(d => {
+    const hasOT = (d.wk1OT + d.wk2OT) > 0;
     html += `<tr>
-      <td class="mono" style="color:var(--text3)">${st.id}</td>
-      <td style="color:var(--text);font-weight:500">${st.last}, ${st.first}</td>
-      <td class="mono">${d.shifts}</td>
-      <td class="mono">${numFmt(d.regHrs)}</td>
-      <td class="mono" style="color:${d.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(d.otHrs)}</td>
-      <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(gross)}</td>
+      <td style="color:var(--text3)">${esc(d.location)}</td>
+      <td style="color:var(--text);font-weight:500">${esc(d.name)}</td>
+      <td class="mono">${d.wk1Reg > 0 ? numFmt(d.wk1Reg) : '\u2014'}</td>
+      <td class="mono">${d.wk2Reg > 0 ? numFmt(d.wk2Reg) : '\u2014'}</td>
+      <td class="mono" style="color:${d.wk1OT>0?'var(--warn)':'var(--text3)'}">${d.wk1OT > 0 ? numFmt(d.wk1OT) : '\u2014'}</td>
+      <td class="mono" style="color:${d.wk2OT>0?'var(--warn)':'var(--text3)'}">${d.wk2OT > 0 ? numFmt(d.wk2OT) : '\u2014'}</td>
+      <td class="mono">${numFmt(d.totalHrs)}</td>
+      <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(d.gross)}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -5391,42 +5468,31 @@ function calculatePayroll() {
   const rec = findPayrollRecord(periodStart);
   if (!rec || !rec.confirmed) { showToast('Confirm timesheets first', 'warn'); return; }
 
-  const fed   = parseFloat(document.getElementById('pr-tax-federal').value)  || 0;
-  const state = parseFloat(document.getElementById('pr-tax-state').value)   || 0;
-  const ss    = parseFloat(document.getElementById('pr-tax-ss').value)      || 0;
-  const med   = parseFloat(document.getElementById('pr-tax-medicare').value)|| 0;
+  const fed   = parseFloat(document.getElementById('pr-tax-federal').value) || 0;
+  const fica  = parseFloat(document.getElementById('pr-tax-fica').value)    || 0;
+  const state = parseFloat(document.getElementById('pr-tax-state').value)  || 0;
   const other = parseFloat(document.getElementById('pr-tax-other').value)  || 0;
 
-  if ([fed, state, ss, med, other].some(v => v < 0)) { showToast('Tax rates cannot be negative', 'danger'); return; }
-  if (fed + state + ss + med + other >= 100) { showToast('Combined tax rates are 100% or more — check your entries', 'warn'); return; }
+  if ([fed, fica, state, other].some(v => v < 0)) { showToast('Tax rates cannot be negative', 'danger'); return; }
+  if (fed + fica + state + other >= 100) { showToast('Combined tax rates are 100% or more — check your entries', 'warn'); return; }
 
-  const byStaff = buildPayrollByStaff(label);
-  const finalRows = [];
-  STAFF.forEach(st => {
-    const d = byStaff[st.id];
-    if (!d || d.shifts === 0) return;
-    const gross = d.regPay + d.otPay;
-    const federalTax  = gross * fed   / 100;
-    const stateTax    = gross * state / 100;
-    const ssTax       = gross * ss    / 100;
-    const medicareTax = gross * med   / 100;
-    const otherTax    = gross * other / 100;
-    const totalTax = federalTax + stateTax + ssTax + medicareTax + otherTax;
-    finalRows.push({
-      staffId: st.id, name: `${st.last}, ${st.first}`, shifts: d.shifts,
-      regHrs: d.regHrs, otHrs: d.otHrs, regPay: d.regPay, otPay: d.otPay,
-      gross, federalTax, stateTax, ssTax, medicareTax, otherTax, totalTax,
-      net: gross - totalTax
-    });
+  const detailRows = buildPayrollDetailRows(label);
+  const finalRows = detailRows.map(d => {
+    const federalTax = d.gross * fed   / 100;
+    const ficaTax    = d.gross * fica  / 100;
+    const stateTax   = d.gross * state / 100;
+    const otherTax   = d.gross * other / 100;
+    const totalTax = federalTax + ficaTax + stateTax + otherTax;
+    return { ...d, federalTax, ficaTax, stateTax, otherTax, totalTax, net: d.gross - totalTax };
   });
 
-  rec.taxRates = { federal: fed, state, ss, medicare: med, other };
+  rec.taxRates = { federal: fed, fica, state, other };
   rec.finalized = true;
   rec.finalizedBy = _currentUser ? _currentUser.name : 'System';
   rec.finalizedAt = new Date().toLocaleString();
   rec.rows = finalRows;
 
-  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (Fed ${fed}%, State ${state}%, SS ${ss}%, Medicare ${med}%, Other ${other}%)`, { periodStart });
+  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (Federal ${fed}%, FICA ${fica}%, State ${state}%, Other ${other}%)`, { periodStart });
   dbSave();
   showToast('✅ Payroll calculated and finalized');
   renderPayrollPage();
@@ -5434,41 +5500,45 @@ function calculatePayroll() {
 
 function renderFinalPayrollTable(rec) {
   const rows = rec.rows || [];
-  let totGross=0, totFed=0, totState=0, totSS=0, totMed=0, totOther=0, totTax=0, totNet=0;
+  let totGross=0, totFed=0, totFica=0, totState=0, totOther=0, totTax=0, totNet=0;
   rows.forEach(r => {
-    totGross+=r.gross; totFed+=r.federalTax; totState+=r.stateTax; totSS+=r.ssTax;
-    totMed+=r.medicareTax; totOther+=r.otherTax; totTax+=r.totalTax; totNet+=r.net;
+    totGross+=r.gross; totFed+=r.federalTax; totFica+=r.ficaTax; totState+=r.stateTax;
+    totOther+=r.otherTax; totTax+=r.totalTax; totNet+=r.net;
   });
 
   document.getElementById('pr-final-summary').innerHTML = `
     <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--accent2)">${$fmt(totGross)}</div></div>
     <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val" style="color:var(--danger)">${$fmt(totTax)}</div></div>
     <div class="rs-card"><div class="rs-label">Net Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totNet)}</div></div>
-    <div class="rs-card"><div class="rs-label">Rates Used</div><div class="rs-val" style="font-size:12px">F ${rec.taxRates.federal}% · S ${rec.taxRates.state}% · SS ${rec.taxRates.ss}% · M ${rec.taxRates.medicare}%${rec.taxRates.other>0?` · O ${rec.taxRates.other}%`:''}</div></div>
+    <div class="rs-card"><div class="rs-label">Rates Used</div><div class="rs-val" style="font-size:12px">Fed ${rec.taxRates.federal}% · FICA ${rec.taxRates.fica}% · State ${rec.taxRates.state}%${rec.taxRates.other>0?` · Other ${rec.taxRates.other}%`:''}</div></div>
   `;
 
-  let html = '<table><thead><tr><th>ID</th><th>Staff Name</th><th>Gross Pay</th><th>Federal</th><th>State</th><th>Soc. Sec.</th><th>Medicare</th><th>Other</th><th>Total Tax</th><th>Net Pay</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Rate</th><th>Gross</th><th>Federal</th><th>FICA</th><th>State</th><th>Other</th><th>Total Tax</th><th>Net Pay</th></tr></thead><tbody>';
   rows.forEach(r => {
     html += `<tr>
-      <td class="mono" style="color:var(--text3)">${r.staffId}</td>
+      <td style="color:var(--text3)">${esc(r.location)}</td>
       <td style="color:var(--text);font-weight:500">${esc(r.name)}</td>
+      <td class="mono">${r.wk1Reg > 0 ? numFmt(r.wk1Reg) : '\u2014'}</td>
+      <td class="mono">${r.wk2Reg > 0 ? numFmt(r.wk2Reg) : '\u2014'}</td>
+      <td class="mono" style="color:${r.wk1OT>0?'var(--warn)':'var(--text3)'}">${r.wk1OT > 0 ? numFmt(r.wk1OT) : '\u2014'}</td>
+      <td class="mono" style="color:${r.wk2OT>0?'var(--warn)':'var(--text3)'}">${r.wk2OT > 0 ? numFmt(r.wk2OT) : '\u2014'}</td>
+      <td class="mono">${numFmt(r.totalHrs)}</td>
+      <td class="mono">$${numFmt(r.rate)}</td>
       <td class="mono">${$fmt(r.gross)}</td>
       <td class="mono" style="color:var(--danger)">${$fmt(r.federalTax)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.ficaTax)}</td>
       <td class="mono" style="color:var(--danger)">${$fmt(r.stateTax)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.ssTax)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.medicareTax)}</td>
       <td class="mono" style="color:var(--danger)">${$fmt(r.otherTax)}</td>
       <td class="mono" style="color:var(--danger);font-weight:600">${$fmt(r.totalTax)}</td>
       <td class="mono" style="color:var(--success);font-weight:700">${$fmt(r.net)}</td>
     </tr>`;
   });
   html += `<tr style="background:var(--surface2);font-weight:700">
-    <td colspan="2" style="color:var(--text)">TOTALS</td>
+    <td colspan="8" style="color:var(--text)">TOTALS</td>
     <td class="mono">${$fmt(totGross)}</td>
     <td class="mono" style="color:var(--danger)">${$fmt(totFed)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totFica)}</td>
     <td class="mono" style="color:var(--danger)">${$fmt(totState)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totSS)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totMed)}</td>
     <td class="mono" style="color:var(--danger)">${$fmt(totOther)}</td>
     <td class="mono" style="color:var(--danger)">${$fmt(totTax)}</td>
     <td class="mono" style="color:var(--success)">${$fmt(totNet)}</td>
@@ -5503,10 +5573,12 @@ function exportPayrollCSV() {
   let csv = `American Safety Options — Payroll — ${rec.periodLabel}\n`;
   csv += `Confirmed by: ${rec.confirmedBy} on ${rec.confirmedAt}\n`;
   csv += `Finalized by: ${rec.finalizedBy} on ${rec.finalizedAt}\n`;
-  csv += `Tax Rates — Federal ${rec.taxRates.federal}%, State ${rec.taxRates.state}%, Social Security ${rec.taxRates.ss}%, Medicare ${rec.taxRates.medicare}%, Other ${rec.taxRates.other}%\n\n`;
-  csv += '"ID","Staff Name","Gross Pay","Federal","State","Social Security","Medicare","Other","Total Tax","Net Pay"\n';
+  csv += `Tax Rates — Federal ${rec.taxRates.federal}%, FICA ${rec.taxRates.fica}%, State ${rec.taxRates.state}%, Other ${rec.taxRates.other}%\n\n`;
+  csv += '"House","Staff Name","Reg Wk1","Reg Wk2","OT Wk1","OT Wk2","Total Hrs","Rate","Gross","Federal","FICA","State","Other","Total Tax","Net Pay"\n';
   rec.rows.forEach(r => {
-    csv += [r.staffId, r.name, r.gross.toFixed(2), r.federalTax.toFixed(2), r.stateTax.toFixed(2), r.ssTax.toFixed(2), r.medicareTax.toFixed(2), r.otherTax.toFixed(2), r.totalTax.toFixed(2), r.net.toFixed(2)]
+    csv += [r.location, r.name, r.wk1Reg.toFixed(2), r.wk2Reg.toFixed(2), r.wk1OT.toFixed(2), r.wk2OT.toFixed(2),
+            r.totalHrs.toFixed(2), r.rate.toFixed(2), r.gross.toFixed(2), r.federalTax.toFixed(2), r.ficaTax.toFixed(2),
+            r.stateTax.toFixed(2), r.otherTax.toFixed(2), r.totalTax.toFixed(2), r.net.toFixed(2)]
       .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
   });
   const blob = new Blob([csv], {type:'text/csv'});
@@ -6150,15 +6222,13 @@ function addUser() {
   if (USERS.find(u=>u.username===username)) { showToast('Username already exists', 'danger'); return; }
   const maxUNum = USERS.reduce((max, u) => { const n = parseInt(u.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   const id = 'U' + String(maxUNum + 1).padStart(3,'0');
-  hashPw(pass).then(hashed => {
-    USERS.push({ id, username, password: hashed, name, role });
-    ['pw-name','pw-user','pw-pass','pw-pass2'].forEach(id=>document.getElementById(id).value='');
-    auditLog('ADD_USER', `User created: ${name} (@${username})`, `Role: ${role}`);
-    dbSave();
-    showToast(`User ${esc(name)} (@${esc(username)}) created ✅`);
-    renderUserList();
-    renderChangePasswordDropdown();
-  });
+  USERS.push({ id, username, password: pass, name, role });
+  ['pw-name','pw-user','pw-pass','pw-pass2'].forEach(id=>document.getElementById(id).value='');
+  auditLog('ADD_USER', `User created: ${name} (@${username})`, `Role: ${role}`);
+  dbSave();
+  showToast(`User ${esc(name)} (@${esc(username)}) created ✅`);
+  renderUserList();
+  renderChangePasswordDropdown();
 }
 
 function deleteUser(id) {
@@ -6174,7 +6244,7 @@ function deleteUser(id) {
   renderChangePasswordDropdown();
 }
 
-function changePassword() {
+async function changePassword() {
   const userId = document.getElementById('chpw-user').value;
   const newPass = document.getElementById('chpw-new').value;
   const newPass2 = document.getElementById('chpw-new2').value;
@@ -6182,14 +6252,24 @@ function changePassword() {
   if (newPass !== newPass2) { showToast('Passwords do not match', 'danger'); return; }
   const user = USERS.find(u=>u.id===userId);
   if (!user) { showToast('User not found', 'danger'); return; }
-  hashPw(newPass).then(hashed => {
-    user.password = hashed;
-    document.getElementById('chpw-new').value = '';
-    document.getElementById('chpw-new2').value = '';
-    auditLog('CHANGE_PASSWORD', `Password changed for: ${user.name} (@${user.username})`);
-    dbSave();
-    showToast(`Password updated for ${esc(user.name)} ✅`);
-  });
+
+  try {
+    const res = await fetch(`/api/users/${encodeURIComponent(userId)}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPass })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Password change failed', 'danger'); return; }
+  } catch (e) {
+    showToast('Password change failed — check your connection', 'danger');
+    return;
+  }
+
+  document.getElementById('chpw-new').value = '';
+  document.getElementById('chpw-new2').value = '';
+  auditLog('CHANGE_PASSWORD', `Password changed for: ${user.name} (@${user.username})`);
+  showToast(`Password updated for ${esc(user.name)} ✅`);
 }
 
 // ──────────────────────────────────────────────────────────

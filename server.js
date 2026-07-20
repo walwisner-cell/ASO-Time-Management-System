@@ -5,19 +5,27 @@
  * Serves the app at http://localhost:8420
  */
 
-const express = require('express');
-const path    = require('path');
-const fs      = require('fs');
-const os      = require('os');
+const express      = require('express');
+const path         = require('path');
+const fs           = require('fs');
+const os           = require('os');
+const crypto       = require('crypto');
+const bcrypt       = require('bcryptjs');
+const cookieParser = require('cookie-parser');
+const helmet       = require('helmet');
+const rateLimit    = require('express-rate-limit');
 
 // ── Configuration ──────────────────────────────────────────
 const PORT      = process.env.PORT || 8420;
 const HOST      = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+const IS_PROD   = !!process.env.PORT; // Render (and most hosts) set PORT for us
 // On Render, set DB_DIR to a mounted persistent disk path (e.g. /var/data)
 // via an environment variable, otherwise falls back to local behavior.
 const DB_DIR    = process.env.DB_DIR || path.join(os.homedir(), 'ASO_OT_Data');
 const DB_PATH   = path.join(DB_DIR, 'aso_ot.db');
 const HTML_FILE = path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html');
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_COOKIE = 'aso_session';
 
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
@@ -25,6 +33,20 @@ if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 const initSqlJs = require('sql.js');
 
 let db; // will be set after async init
+
+// ── Password hashing (bcrypt, with transparent migration from the old
+//    client-side SHA-256+static-salt scheme used before this update) ──
+const LEGACY_SALT = 'ASO_OT_SECURE_SALT_v7';
+function legacySha256(pw) {
+  return crypto.createHash('sha256').update(pw + LEGACY_SALT).digest('hex');
+}
+function isBcryptHash(s)   { return typeof s === 'string' && /^\$2[aby]\$\d{2}\$/.test(s); }
+function isLegacySha256(s) { return typeof s === 'string' && /^[0-9a-f]{64}$/i.test(s); }
+async function verifyPassword(storedHash, plaintext) {
+  if (isBcryptHash(storedHash))   return bcrypt.compare(plaintext, storedHash);
+  if (isLegacySha256(storedHash)) return legacySha256(plaintext) === storedHash;
+  return plaintext === storedHash; // fresh/never-migrated plaintext seed value
+}
 
 // ── Default seed data ──────────────────────────────────────
 const DEFAULT_SEED = {
@@ -69,7 +91,7 @@ const DEFAULT_SEED = {
     {id:'S025',first:'Vamuyah',   last:'Sherif',   title:'DSP',     type:'Full-Time',loc:'Gabriella House', rate:14,    start:'2025-03-06',status:'Active'},
   ],
   SHIFTS: [], PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: []
 };
 
 // ── DB helpers ─────────────────────────────────────────────
@@ -108,6 +130,9 @@ function createSchema() {
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer'
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE,
     rate REAL NOT NULL DEFAULT 0, mult REAL NOT NULL DEFAULT 1.5,
@@ -130,6 +155,7 @@ function createSchema() {
   db.run(`CREATE TABLE IF NOT EXISTS approved_exceptions (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS date_correction_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS deletion_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+  db.run(`CREATE TABLE IF NOT EXISTS payroll_records (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL
@@ -142,7 +168,8 @@ function loadDB() {
     ? { anchorDate: pcRow.anchor_date, periodDays: pcRow.period_days, otThreshold: pcRow.ot_threshold }
     : DEFAULT_SEED.PAY_CONFIG;
 
-  const USERS     = all('SELECT id,username,password,name,role FROM users');
+  // Password hashes never leave the server — the client has no legitimate use for them.
+  const USERS     = all('SELECT id,username,name,role FROM users');
   const LOCATIONS = all('SELECT * FROM locations').map(r => ({
     id: r.id, name: r.name, rate: r.rate, mult: r.mult, notes: r.notes,
     rateHistory: JSON.parse(r.rate_history || '[]')
@@ -161,18 +188,19 @@ function loadDB() {
   const APPROVED_EXCEPTIONS = all('SELECT data FROM approved_exceptions').map(r => JSON.parse(r.data));
   const DATE_CORRECTION_LOG = all('SELECT data FROM date_correction_log').map(r => JSON.parse(r.data));
   const DELETION_LOG        = all('SELECT data FROM deletion_log').map(r => JSON.parse(r.data));
+  const PAYROLL_RECORDS     = all('SELECT data FROM payroll_records').map(r => JSON.parse(r.data));
   const AUDIT_LOG = all('SELECT id,action,detail,user_id,created_at FROM audit_log')
     .map(r => ({ id: r.id, action: r.action, detail: r.detail, userId: r.user_id, ts: r.created_at }));
 
   return { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
            PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG };
+           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
 }
 
 function saveDB(data) {
   const { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
           PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-          DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG } = data;
+          DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS } = data;
 
   // PAY_CONFIG
   run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold) VALUES (1,?,?,?)
@@ -180,11 +208,23 @@ function saveDB(data) {
        period_days=excluded.period_days, ot_threshold=excluded.ot_threshold`,
     [PAY_CONFIG.anchorDate, PAY_CONFIG.periodDays, PAY_CONFIG.otThreshold]);
 
-  // USERS
+  // USERS — passwords are managed exclusively through /api/auth/login (self-migration)
+  // and /api/users/:id/password. Bulk saves NEVER overwrite an existing user's password
+  // hash, no matter what the client sends — this is what keeps password changes safe
+  // even though the whole app state round-trips through this one endpoint on every save.
+  const existingPasswords = {};
+  all('SELECT id, password FROM users').forEach(r => { existingPasswords[r.id] = r.password; });
   run('DELETE FROM users');
-  for (const u of (USERS || []))
-    run('INSERT OR REPLACE INTO users (id,username,password,name,role) VALUES (?,?,?,?,?)',
-        [u.id, u.username, u.password, u.name, u.role]);
+  for (const u of (USERS || [])) {
+    let pw = existingPasswords[u.id];
+    if (pw === undefined) {
+      // Genuinely new user row — hash whatever was supplied (falls back to a random
+      // password if none was given, so a malformed row can never create a blank-password account)
+      pw = u.password ? bcrypt.hashSync(String(u.password), 10) : bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
+    }
+    run('INSERT INTO users (id,username,password,name,role) VALUES (?,?,?,?,?)',
+        [u.id, u.username, pw, u.name, u.role]);
+  }
 
   // LOCATIONS
   run('DELETE FROM locations');
@@ -227,12 +267,104 @@ function saveDB(data) {
   for (const r of (DELETION_LOG||[]))
     run('INSERT INTO deletion_log (id,data) VALUES (?,?)', [r.id||('DL'+Date.now()+Math.random()), JSON.stringify(r)]);
 
+  run('DELETE FROM payroll_records');
+  for (const r of (PAYROLL_RECORDS||[]))
+    run('INSERT INTO payroll_records (id,data) VALUES (?,?)', [r.periodStart||('PR'+Date.now()+Math.random()), JSON.stringify(r)]);
+
   run('DELETE FROM audit_log');
   for (const r of (AUDIT_LOG||[]))
     run('INSERT INTO audit_log (id,action,detail,user_id,created_at) VALUES (?,?,?,?,?)',
         [r.id||('AL'+Date.now()+Math.random()), r.action||'', r.detail||'', r.userId||r.user_id||'', r.ts||r.created_at||new Date().toISOString()]);
 
   persistDB();
+}
+
+// ── Auth middleware ────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const sessionId = req.cookies && req.cookies[SESSION_COOKIE];
+  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+  const session = get('SELECT * FROM sessions WHERE id = ?', [sessionId]);
+  if (!session || session.expires_at < Date.now()) {
+    if (session) { run('DELETE FROM sessions WHERE id = ?', [sessionId]); persistDB(); }
+    return res.status(401).json({ error: 'Session expired — please log in again' });
+  }
+  const user = get('SELECT id,username,name,role FROM users WHERE id = ?', [session.user_id]);
+  if (!user) return res.status(401).json({ error: 'Account no longer exists' });
+  req.user = user;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'This action requires an admin account' });
+  }
+  next();
+}
+
+// ── Write authorization for the generic /api/db/save endpoint ──────
+// Session auth alone only proves *who* is asking — it says nothing about
+// *what* they're allowed to change. This checks the incoming payload against
+// what's currently stored and rejects role-restricted changes, mirroring the
+// client's own userCan() permission map so the UI's rules are actually enforced.
+function deepChanged(a, b) { return JSON.stringify(a) !== JSON.stringify(b); }
+function sortedById(arr) { return [...(arr||[])].sort((a,b) => String(a.id).localeCompare(String(b.id))); }
+function stripPasswords(arr) { return sortedById((arr||[]).map(({ password, ...rest }) => rest)); }
+
+function authorizeSave(existing, incoming, user) {
+  const isAdmin = user.role === 'admin';
+  const canShift = user.role === 'admin' || user.role === 'supervisor';
+
+  if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !isAdmin)
+    return 'Pay period settings can only be changed by an admin account';
+
+  if (deepChanged(sortedById(incoming.LOCATIONS), sortedById(existing.LOCATIONS)) && !isAdmin)
+    return 'Locations can only be managed by an admin account';
+
+  if (deepChanged(sortedById(incoming.STAFF), sortedById(existing.STAFF)) && !isAdmin)
+    return 'Staff records can only be managed by an admin account';
+
+  if (deepChanged(stripPasswords(incoming.USERS), stripPasswords(existing.USERS)) && !isAdmin)
+    return 'User accounts can only be managed by an admin account';
+
+  if (deepChanged(sortedById((incoming.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart}))),
+                   sortedById((existing.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart})))) && !isAdmin)
+    return 'Payroll can only be managed by an admin account';
+
+  const existingShiftsById = {}; (existing.SHIFTS||[]).forEach(s => { existingShiftsById[s.id] = s; });
+  const incomingShiftsById = {}; (incoming.SHIFTS||[]).forEach(s => { incomingShiftsById[s.id] = s; });
+  for (const id in incomingShiftsById) {
+    const ex = existingShiftsById[id];
+    if (!ex) { if (!canShift) return 'Adding shifts requires an admin or supervisor account'; }
+    else if (deepChanged(incomingShiftsById[id], ex) && !canShift) return 'Editing shifts requires an admin or supervisor account';
+  }
+  for (const id in existingShiftsById) {
+    if (!incomingShiftsById[id] && user.role !== 'admin') return 'Deleting shifts requires an admin account';
+  }
+
+  return null; // authorized
+}
+
+// ── Append-only protection for history/log tables ──────────────────
+// A generic full-replace save should never be able to shrink these — that
+// would mean an authenticated user (of any role) could erase the audit trail,
+// deletion log, or date-correction log simply by sending a shorter array.
+function mergeAppendOnly(existingArr, incomingArr, tsField) {
+  const existing = existingArr || [];
+  const incoming = incomingArr || [];
+  const hasIds = existing.every(e => e && e.id) && incoming.every(e => e && e.id);
+  if (hasIds) {
+    const byId = {};
+    existing.forEach(e => { byId[e.id] = e; });
+    incoming.forEach(e => { byId[e.id] = e; });
+    const merged = Object.values(byId);
+    if (tsField) merged.sort((a,b) => (b[tsField]||0) > (a[tsField]||0) ? 1 : -1);
+    return merged;
+  }
+  // No reliable id on this log (e.g. DATE_CORRECTION_LOG) — dedupe by content instead
+  const seen = new Set(existing.map(e => JSON.stringify(e)));
+  const merged = existing.slice();
+  incoming.forEach(e => { const k = JSON.stringify(e); if (!seen.has(k)) { merged.push(e); seen.add(k); } });
+  return merged;
 }
 
 // ── Start everything ───────────────────────────────────────
@@ -266,9 +398,28 @@ async function main() {
     console.log(`[ASO DB] Ready — ${counts.staff} staff, ${counts.shifts} shifts`);
   }
 
+  // Periodic cleanup of expired sessions (every hour)
+  setInterval(() => {
+    try {
+      run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
+      persistDB();
+    } catch (e) { /* ignore */ }
+  }, 60 * 60 * 1000);
+
   // ── Express App ──────────────────────────────────────────
   const app = express();
-  app.use(express.json({ limit: '50mb' }));
+  app.set('trust proxy', 1); // Render sits behind a proxy — needed for correct secure-cookie/IP detection
+  app.use(helmet({ contentSecurityPolicy: false })); // CSP off: this app is one big self-contained HTML file with inline scripts
+  app.use(express.json({ limit: '10mb' }));
+  app.use(cookieParser());
+
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts — please wait a few minutes and try again' }
+  });
 
   app.get('/', (req, res) => {
     if (fs.existsSync(HTML_FILE)) {
@@ -282,36 +433,114 @@ async function main() {
     }
   });
 
-  app.get('/api/db/load', (req, res) => {
+  // ── Auth routes ────────────────────────────────────────
+  app.post('/api/auth/login', loginLimiter, async (req, res) => {
+    try {
+      const { username, password } = req.body || {};
+      if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+
+      const user = get('SELECT * FROM users WHERE username = ?', [String(username).trim().toLowerCase()]);
+      if (!user) return res.status(401).json({ error: 'Invalid username or password' });
+
+      const ok = await verifyPassword(user.password, password);
+      if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
+
+      // Transparently upgrade legacy password hashes to bcrypt on successful login
+      if (!isBcryptHash(user.password)) {
+        run('UPDATE users SET password = ? WHERE id = ?', [bcrypt.hashSync(password, 10), user.id]);
+      }
+
+      const sessionId = crypto.randomBytes(32).toString('hex');
+      const expiresAt = Date.now() + SESSION_TTL_MS;
+      run('INSERT INTO sessions (id, user_id, expires_at) VALUES (?,?,?)', [sessionId, user.id, expiresAt]);
+      persistDB();
+
+      res.cookie(SESSION_COOKIE, sessionId, {
+        httpOnly: true, sameSite: 'lax', secure: IS_PROD, maxAge: SESSION_TTL_MS, path: '/'
+      });
+      res.json({ ok: true, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+    } catch (e) {
+      console.error('Login error:', e);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    const sessionId = req.cookies && req.cookies[SESSION_COOKIE];
+    if (sessionId) { run('DELETE FROM sessions WHERE id = ?', [sessionId]); persistDB(); }
+    res.clearCookie(SESSION_COOKIE, { path: '/' });
+    res.json({ ok: true });
+  });
+
+  app.get('/api/auth/me', requireAuth, (req, res) => {
+    res.json({ user: req.user });
+  });
+
+  // Self-service (or admin-on-behalf-of) password change — the only way a
+  // password is ever set for an EXISTING account. See saveDB() for why.
+  app.post('/api/users/:id/password', requireAuth, (req, res) => {
+    try {
+      const targetId = req.params.id;
+      const { password } = req.body || {};
+      if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      if (req.user.id !== targetId && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Not authorized to change this password' });
+      }
+      const target = get('SELECT id FROM users WHERE id = ?', [targetId]);
+      if (!target) return res.status(404).json({ error: 'User not found' });
+      run('UPDATE users SET password = ? WHERE id = ?', [bcrypt.hashSync(password, 10), targetId]);
+      persistDB();
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('Password change error:', e);
+      res.status(500).json({ error: 'Password change failed' });
+    }
+  });
+
+  // ── Data routes (all require a valid session) ───────────
+  app.get('/api/db/load', requireAuth, (req, res) => {
     try { res.json(loadDB()); }
     catch(e) { console.error('Load error:', e); res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/db/save', (req, res) => {
-    try { saveDB(req.body); res.json({ ok: true, ts: new Date().toISOString() }); }
+  app.post('/api/db/save', requireAuth, (req, res) => {
+    try {
+      const existing = loadDB();
+      const denyReason = authorizeSave(existing, req.body, req.user);
+      if (denyReason) return res.status(403).json({ error: denyReason });
+
+      const payload = { ...req.body };
+      payload.AUDIT_LOG          = mergeAppendOnly(existing.AUDIT_LOG, payload.AUDIT_LOG, 'ts');
+      payload.DELETION_LOG       = mergeAppendOnly(existing.DELETION_LOG, payload.DELETION_LOG);
+      payload.DATE_CORRECTION_LOG = mergeAppendOnly(existing.DATE_CORRECTION_LOG, payload.DATE_CORRECTION_LOG);
+
+      saveDB(payload);
+      res.json({ ok: true, ts: new Date().toISOString() });
+    }
     catch(e) { console.error('Save error:', e); res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/db/reset', (req, res) => {
+  app.post('/api/db/reset', requireAuth, requireAdmin, (req, res) => {
     try {
       const tables = ['pay_config','users','locations','staff','shifts',
                       'pending_approvals','approved_exceptions',
-                      'date_correction_log','deletion_log','audit_log'];
+                      'date_correction_log','deletion_log','payroll_records','audit_log','sessions'];
       for (const t of tables) run(`DELETE FROM ${t}`);
       saveDB(DEFAULT_SEED);
+      res.clearCookie(SESSION_COOKIE, { path: '/' });
       res.json({ ok: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.get('/api/db/export', (req, res) => {
+  app.get('/api/db/export', requireAuth, requireAdmin, (req, res) => {
     try {
-      const data = { ...loadDB(), exportedAt: new Date().toISOString(), version: 9 };
+      const data = { ...loadDB(), exportedAt: new Date().toISOString(), version: 10 };
       res.setHeader('Content-Disposition', `attachment; filename="ASO_backup_${new Date().toISOString().split('T')[0]}.json"`);
       res.json(data);
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/db/import', (req, res) => {
+  app.post('/api/db/import', requireAuth, requireAdmin, (req, res) => {
     try {
       const data = req.body;
       if (!data.SHIFTS || !data.STAFF) return res.status(400).json({ error: 'Invalid backup' });
@@ -320,7 +549,7 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.get('/api/health', (req, res) => res.json({ ok: true, db: DB_PATH }));
+  app.get('/api/health', (req, res) => res.json({ ok: true }));
 
   app.listen(PORT, HOST, () => {
     console.log('');
