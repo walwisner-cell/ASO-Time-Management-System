@@ -1,13 +1,30 @@
 #!/usr/bin/env python3
 """
-patch_html.py — patches ASO_OT_SYSTEM_v9_2.html to use the SQLite backend API
-Usage:  python patch_html.py ASO_OT_SYSTEM_v9_2.html
+patch_html.py — patches ASO_OT_SYSTEM_vX_Y.html to use the SQLite backend API
+Usage:  python patch_html.py ASO_OT_SYSTEM_vX_Y.html
 Output: ASO_OT_SYSTEM_SQL.html
+
+IMPORTANT — SCOPE OF THIS SCRIPT
+This script only replaces the small "DATABASE LAYER" script block (data
+loading/saving glue: dbSave, dbReset, dbImportBackup, the startup data-fetch
+routine, and the DB_DEFAULTS shape). It does NOT touch, and will NOT remove:
+  - Server-side session authentication (doLogin/doLogout/enterApp, defined
+    elsewhere in the file) — those are untouched by this script.
+  - The Payroll & Taxes feature, Pay Stubs, the Dashboard chart, or any other
+    page/feature code — all of that lives outside the block this script edits.
+
+That said, the embedded NEW_DB_LAYER template below must stay in sync with
+whatever the real app currently does, or running this script would silently
+replace the DB layer with a stale/incorrect version. If you significantly
+change how login, session handling, or data loading works in
+ASO_OT_SYSTEM_SQL.html, update NEW_DB_LAYER below to match before relying on
+this script again. When in doubt, diff the script's <script>...DATABASE
+LAYER...</script> block (before "// XSS SANITIZER") against NEW_DB_LAYER.
 """
 import sys, re, os
 
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else "ASO_OT_SYSTEM_v9_2.html"
+    src = sys.argv[1] if len(sys.argv) > 1 else "ASO_OT_SYSTEM_vX_Y.html"
     if not os.path.exists(src):
         print(f"Error: {src} not found"); sys.exit(1)
 
@@ -26,24 +43,35 @@ def main():
     # 3. Replace the entire DB layer script block
     #    It starts with: // DATABASE LAYER
     #    It ends just before: // XSS SANITIZER
-    html = re.sub(
+    #    NOTE: uses a callable replacement (not a plain string) because the
+    #    JS template contains literal backslash sequences like \u2705 — if
+    #    passed as a plain string, Python's re module misreads those as
+    #    regex backreference escapes and raises "bad escape \u".
+    replacement = new_db + '\n// ──────────────────────────────────────────────────────────\n// XSS SANITIZER'
+    html, n = re.subn(
         r'<script>\s*// ══+\s*// DATABASE LAYER[\s\S]*?// ──+\s*// XSS SANITIZER',
-        new_db + '\n// ──────────────────────────────────────────────────────────\n// XSS SANITIZER',
+        lambda m: replacement,
         html, count=1
     )
+    if n == 0:
+        print("⚠️  Warning: could not find the DATABASE LAYER block to replace.")
+        print("   The source file's structure may have changed — check it manually")
+        print("   before trusting the output.")
 
     out = "ASO_OT_SYSTEM_SQL.html"
     open(out, "w", encoding="utf-8").write(html)
     print(f"✅  Written: {out}  ({os.path.getsize(out)//1024} KB)")
+    print("   Reminder: this only patches the DB layer. Server-side auth (server.js)")
+    print("   and this repo's Payroll/Pay Stubs/Dashboard features are untouched —")
+    print("   verify they still work after patching a genuinely new source HTML file.")
 
 NEW_DB_LAYER = r"""<script>
 // ══════════════════════════════════════════════════════════
-// DATABASE LAYER — SQLite backend via localhost:3000 API
+// DATABASE LAYER — SQLite backend, authenticated via server-side sessions
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
-
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -51,14 +79,13 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: []
 };
 
-// Fire-and-forget save to SQLite
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG };
+                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
   fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -70,7 +97,7 @@ function dbSave() {
 
 function dbSaveToFile() {
   window.open('/api/db/export', '_blank');
-  showToast('\u2705 Backup downloaded \u2014 keep it safe!', 'success');
+  showToast('\u2705 Backup downloaded \u2014 keep this file safe!', 'success');
 }
 
 function dbReset() {
@@ -102,13 +129,28 @@ function dbImportBackup(input) {
   reader.readAsText(file); input.value = '';
 }
 
-// Async startup — load data from SQLite before showing login
-(async function _asoDBInit() {
-  // Hide login until we have data
+(async function _asoAppInit() {
   const loginScreen = document.getElementById('login-screen');
-  if (loginScreen) loginScreen.style.display = 'none';
 
-  // Show connecting overlay
+  // If a valid session cookie already exists (e.g. page refresh), skip straight to loading data.
+  try {
+    const meRes = await fetch('/api/auth/me');
+    if (meRes.ok) {
+      const me = await meRes.json();
+      _currentUser = me.user;
+      if (loginScreen) loginScreen.style.display = 'none';
+      const ok = await loadAppData();
+      if (ok) enterApp();
+      return;
+    }
+  } catch (e) { /* server not reachable yet — fall through to normal login screen */ }
+
+  if (loginScreen) loginScreen.style.display = 'flex';
+})();
+
+// Fetches all application data from the server. Must only be called AFTER a
+// successful login (or confirmed existing session) — the API requires auth.
+async function loadAppData() {
   const overlay = document.createElement('div');
   overlay.id = 'aso-connecting';
   overlay.style.cssText = 'position:fixed;inset:0;background:#050c18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
@@ -125,12 +167,12 @@ function dbImportBackup(input) {
   document.body.appendChild(overlay);
   const msgEl = document.getElementById('aso-conn-msg');
 
-  // Retry loop — server may still be starting
   let data = null;
   for (let i = 1; i <= 20; i++) {
     try {
       const r = await fetch('/api/db/load');
       if (r.ok) { data = await r.json(); break; }
+      if (r.status === 401) { overlay.remove(); doLogout(); return false; }
     } catch(e) {}
     if (msgEl) msgEl.textContent = 'Connecting\u2026 (' + i + '/20)';
     await new Promise(res => setTimeout(res, 600));
@@ -146,10 +188,9 @@ function dbImportBackup(input) {
       '<code style="background:#0a1525;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#4aaff5">node server.js</code><br><br>' +
       'Then refresh this page.</div>' +
       '<button onclick="location.reload()" style="margin-top:24px;background:#1a7bd8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
-    return;
+    return false;
   }
 
-  // Populate globals
   PAY_CONFIG            = data.PAY_CONFIG            || DB_DEFAULTS.PAY_CONFIG;
   USERS                 = data.USERS                 || DB_DEFAULTS.USERS;
   LOCATIONS             = data.LOCATIONS             || [];
@@ -160,37 +201,16 @@ function dbImportBackup(input) {
   DATE_CORRECTION_LOG   = data.DATE_CORRECTION_LOG   || [];
   DELETION_LOG          = data.DELETION_LOG          || [];
   AUDIT_LOG             = data.AUDIT_LOG             || [];
+  PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
 
-  // Migrate location rateHistory
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
       l.rateHistory = [{ rate: l.rate, mult: l.mult, effectiveFrom: '2000-01-01' }];
   });
 
-  // Migrate plaintext passwords to hashes
-  await migratePasswords();
-
-  // Remove overlay and show login
   overlay.remove();
-  if (loginScreen) loginScreen.style.display = 'flex';
-
   console.log('[ASO DB] Ready \u2014', STAFF.length, 'staff,', SHIFTS.length, 'shifts');
-})();
-
-// ── SHA-256 password hashing ──
-const _PW_SALT = 'ASO_OT_SECURE_SALT_v7';
-async function hashPw(password) {
-  const encoded = new TextEncoder().encode(password + _PW_SALT);
-  const buf = await crypto.subtle.digest('SHA-256', encoded);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-function isHashed(pw) { return /^[0-9a-f]{64}$/.test(pw); }
-async function migratePasswords() {
-  let changed = false;
-  for (const u of USERS) {
-    if (!isHashed(u.password)) { u.password = await hashPw(u.password); changed = true; }
-  }
-  if (changed) dbSave();
+  return true;
 }
 
 function genId() { return 'SH' + Date.now() + Math.random().toString(36).slice(2,6); }

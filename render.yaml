@@ -3,7 +3,7 @@ services:
     name: aso-ot-system
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install --omit=dev
     startCommand: node server.js
     envVars:
       - key: DB_DIR

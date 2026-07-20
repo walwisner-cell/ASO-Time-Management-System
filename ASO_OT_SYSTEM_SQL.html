@@ -3043,7 +3043,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════
-// DATABASE LAYER — SQLite backend via localhost:3000 API
+// DATABASE LAYER — SQLite backend, authenticated via server-side sessions
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
@@ -3190,7 +3190,6 @@ async function loadAppData() {
 }
 
 function genId() { return 'SH' + Date.now() + Math.random().toString(36).slice(2,6); }
-
 
 // ──────────────────────────────────────────────────────────
 // XSS SANITIZER — use esc() whenever inserting user data into innerHTML
