@@ -1387,6 +1387,7 @@
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-page="reportbuilder" onclick="nav('reportbuilder',this)"><span class="nav-icon">🗂️</span>Report Builder</div>
       <div class="nav-item" data-page="payperiod" onclick="nav('payperiod',this)"><span class="nav-icon">💵</span>Pay Period Report</div>
+      <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes</div>
       <div class="nav-item" data-page="monthly" onclick="nav('monthly',this)"><span class="nav-icon">📅</span>Monthly Report</div>
       <div class="nav-item" data-page="leaderboard" onclick="nav('leaderboard',this)"><span class="nav-icon">🏆</span>OT Leaderboard</div>
       <div class="nav-section">Setup</div>
@@ -1791,6 +1792,60 @@
         </div>
         <div class="report-summary" id="pp-summary"></div>
         <div class="table-wrap" id="pp-table"></div>
+      </div>
+
+      <!-- PAYROLL & TAXES -->
+      <div class="page" id="page-payroll">
+        <div class="print-header">American Safety Options — Payroll &amp; Tax Withholding &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">Payroll &amp; Taxes</div>
+            <div class="page-sub">Confirm timesheets, then apply tax withholding to finalize payroll</div>
+          </div>
+          <button class="print-btn" onclick="printCurrentPage()">🖨️ Print</button>
+        </div>
+        <div class="controls-row">
+          <label style="font-size:12px;color:var(--text3);font-family:var(--mono)">Pay Period:</label>
+          <select id="pr-select" onchange="renderPayrollPage()"></select>
+        </div>
+
+        <div id="pr-status-banner"></div>
+
+        <!-- STEP 1: Review timesheets + confirm -->
+        <div id="pr-step1">
+          <div class="report-summary" id="pr-summary"></div>
+          <div class="table-wrap" id="pr-table"></div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end">
+            <button class="btn btn-success" style="font-size:14px;padding:12px 22px" onclick="confirmTimesheetsForPeriod()">✅ Confirm Timesheets for This Period</button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Tax withholding input (unlocked after confirm) -->
+        <div id="pr-step2" style="display:none">
+          <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:12px">
+            <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Tax Withholding</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Enter withholding rates to apply to this period's gross pay. These are flat percentages applied to each employee's gross pay — for exact bracket-based withholding, consult a payroll provider or accountant.</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px">
+              <div class="form-field"><label>Federal Tax (%)</label><input type="number" id="pr-tax-federal" step="0.01" min="0" value="10"></div>
+              <div class="form-field"><label>State Tax (%)</label><input type="number" id="pr-tax-state" step="0.01" min="0" value="0"></div>
+              <div class="form-field"><label>Social Security (%)</label><input type="number" id="pr-tax-ss" step="0.01" min="0" value="6.2"></div>
+              <div class="form-field"><label>Medicare (%)</label><input type="number" id="pr-tax-medicare" step="0.01" min="0" value="1.45"></div>
+              <div class="form-field"><label>Other (%)</label><input type="number" id="pr-tax-other" step="0.01" min="0" value="0"></div>
+            </div>
+            <button class="btn btn-primary" style="font-size:14px;padding:12px 22px" onclick="calculatePayroll()">🧮 Calculate Payroll</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;margin-left:8px" onclick="unlockPayrollPeriod()">🔓 Unlock Timesheets (Undo Confirm)</button>
+          </div>
+        </div>
+
+        <!-- STEP 3: Finalized payroll -->
+        <div id="pr-step3" style="display:none">
+          <div class="report-summary" id="pr-final-summary"></div>
+          <div class="table-wrap" id="pr-final-table"></div>
+          <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-success" onclick="exportPayrollCSV()">⬇️ Export CSV</button>
+            <button class="btn btn-ghost" onclick="unlockPayrollPeriod()">🔓 Unlock &amp; Recalculate</button>
+          </div>
+        </div>
       </div>
 
       <!-- MONTHLY REPORT -->
@@ -2862,7 +2917,7 @@
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -2870,13 +2925,13 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: []
 };
 
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG };
+                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
   fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2972,6 +3027,7 @@ function dbImportBackup(input) {
   DATE_CORRECTION_LOG   = data.DATE_CORRECTION_LOG   || [];
   DELETION_LOG          = data.DELETION_LOG          || [];
   AUDIT_LOG             = data.AUDIT_LOG             || [];
+  PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
@@ -3034,6 +3090,7 @@ const PAGE_ROLES = {
   approvals:     ['admin','supervisor'],
   reportbuilder: ['admin','supervisor','viewer'],
   payperiod:     ['admin','supervisor','viewer'],
+  payroll:       ['admin'],
   monthly:       ['admin','supervisor','viewer'],
   leaderboard:   ['admin','supervisor','viewer'],
   payconfig:     ['admin'],
@@ -3314,6 +3371,7 @@ function nav(page, el) {
     timesheet: renderTimesheet,
     approvals: renderApprovalsPage,
     payperiod: renderPayPeriodSetup,
+    payroll: renderPayrollSetup,
     monthly: renderMonthlySetup,
     leaderboard: renderLeaderboardSetup,
     payconfig: renderPayConfig,
@@ -5154,6 +5212,314 @@ function renderPayPeriodReport() {
 }
 
 // ──────────────────────────────────────────────────────────
+// PAYROLL & TAXES
+// ──────────────────────────────────────────────────────────
+function findPayrollRecord(periodStart) {
+  if (!PAYROLL_RECORDS || !periodStart) return null;
+  return PAYROLL_RECORDS.find(r => r.periodStart === periodStart) || null;
+}
+
+function getPrSelectedStart() {
+  const sel = document.getElementById('pr-select');
+  if (!sel || sel.selectedIndex < 0) return null;
+  const opt = sel.options[sel.selectedIndex];
+  return opt ? opt.getAttribute('data-start') : null;
+}
+
+function getPrSelectedLabel() {
+  const sel = document.getElementById('pr-select');
+  return sel ? sel.value : null;
+}
+
+function renderPayrollSetup() {
+  const all = computeShiftsWithOT();
+  const cp = currentPeriodLabel();
+  const sel = document.getElementById('pr-select');
+
+  const around = getPeriodsAroundToday(24, 1);
+  const dateMap = {};
+  around.forEach(p => { dateMap[p.label] = p.startStr; });
+
+  const periodsWithData = [...new Set(all.map(s => s.period))];
+  periodsWithData.forEach(label => {
+    if (!dateMap[label]) {
+      const sample = all.find(s => s.period === label);
+      if (sample) {
+        const { start } = getPeriodForDate(sample.date);
+        dateMap[label] = start.toISOString().split('T')[0];
+      }
+    }
+  });
+
+  const allLabels = [...new Set([cp, ...periodsWithData])];
+  allLabels.sort((a, b) => {
+    const da = dateMap[a] || '0000-00-00';
+    const db = dateMap[b] || '0000-00-00';
+    return db.localeCompare(da);
+  });
+
+  const prevVal = sel.value;
+  const targetVal = prevVal && allLabels.includes(prevVal) ? prevVal : cp;
+
+  sel.innerHTML = allLabels.map(p => {
+    const count = all.filter(s => s.period === p).length;
+    const startStr = dateMap[p] || '';
+    const rec = startStr ? findPayrollRecord(startStr) : null;
+    const tag = p === cp ? ' \u2190 CURRENT' : '';
+    const countTag = count > 0 ? ` (${count} shift${count!==1?'s':''})` : ' (no data)';
+    const statusTag = rec && rec.finalized ? ' \u2713 Finalized' : rec && rec.confirmed ? ' \u2713 Confirmed' : '';
+    return `<option value="${p}" data-start="${startStr}" ${p === targetVal ? 'selected' : ''}>${p}${tag}${countTag}${statusTag}</option>`;
+  }).join('');
+
+  if (!sel.value) sel.value = allLabels[0];
+  renderPayrollPage();
+}
+
+function buildPayrollByStaff(label) {
+  const rows = computeShiftsWithOT().filter(s => s.period === label);
+  const byStaff = {};
+  STAFF.forEach(s => byStaff[s.id] = {staff:s, regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0});
+  rows.forEach(s => {
+    if (!byStaff[s.staff]) byStaff[s.staff] = {staff:null, regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0};
+    byStaff[s.staff].regHrs += s.regHrs;
+    byStaff[s.staff].otHrs += s.otHrs;
+    byStaff[s.staff].regPay += s.regPay;
+    byStaff[s.staff].otPay += s.otPay;
+    byStaff[s.staff].shifts++;
+  });
+  return byStaff;
+}
+
+function renderPayrollPage() {
+  const label = getPrSelectedLabel();
+  const periodStart = getPrSelectedStart();
+  if (!label) return;
+
+  const byStaff = buildPayrollByStaff(label);
+  const rec = periodStart ? findPayrollRecord(periodStart) : null;
+
+  const banner = document.getElementById('pr-status-banner');
+  if (rec && rec.finalized) {
+    banner.innerHTML = `<div style="background:rgba(34,197,94,.12);border:1px solid var(--success);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">✅ <b>Payroll finalized</b> for this period by ${esc(rec.finalizedBy)} on ${esc(rec.finalizedAt)}. Timesheets are locked.</div>`;
+  } else if (rec && rec.confirmed) {
+    banner.innerHTML = `<div style="background:rgba(59,130,246,.12);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">🔒 <b>Timesheets confirmed</b> by ${esc(rec.confirmedBy)} on ${esc(rec.confirmedAt)}. Enter tax rates below to finalize payroll.</div>`;
+  } else {
+    banner.innerHTML = '';
+  }
+
+  let totShifts=0, totReg=0, totOT=0, totRegP=0, totOTP=0;
+  STAFF.forEach(st => {
+    const d = byStaff[st.id];
+    if (!d) return;
+    totShifts += d.shifts; totReg += d.regHrs; totOT += d.otHrs; totRegP += d.regPay; totOTP += d.otPay;
+  });
+  document.getElementById('pr-summary').innerHTML = `
+    <div class="rs-card"><div class="rs-label">Shifts</div><div class="rs-val">${totShifts}</div></div>
+    <div class="rs-card"><div class="rs-label">Regular Hrs</div><div class="rs-val" style="color:var(--accent2)">${numFmt(totReg)}</div></div>
+    <div class="rs-card"><div class="rs-label">OT Hours</div><div class="rs-val" style="color:var(--warn)">${numFmt(totOT)}</div></div>
+    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totRegP+totOTP)}</div></div>
+  `;
+
+  let html = '<table><thead><tr><th>ID</th><th>Staff Name</th><th>Shifts</th><th>Reg Hrs</th><th>OT Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
+  STAFF.forEach(st => {
+    const d = byStaff[st.id] || {regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0};
+    if (d.shifts === 0) return;
+    const gross = d.regPay + d.otPay;
+    html += `<tr>
+      <td class="mono" style="color:var(--text3)">${st.id}</td>
+      <td style="color:var(--text);font-weight:500">${st.last}, ${st.first}</td>
+      <td class="mono">${d.shifts}</td>
+      <td class="mono">${numFmt(d.regHrs)}</td>
+      <td class="mono" style="color:${d.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(d.otHrs)}</td>
+      <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(gross)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('pr-table').innerHTML = html;
+
+  const step1 = document.getElementById('pr-step1');
+  const step2 = document.getElementById('pr-step2');
+  const step3 = document.getElementById('pr-step3');
+
+  if (rec && rec.finalized) {
+    step1.style.display = 'none';
+    step2.style.display = 'none';
+    step3.style.display = '';
+    renderFinalPayrollTable(rec);
+  } else if (rec && rec.confirmed) {
+    step1.style.display = 'none';
+    step2.style.display = '';
+    step3.style.display = 'none';
+  } else {
+    step1.style.display = '';
+    step2.style.display = 'none';
+    step3.style.display = 'none';
+  }
+}
+
+function confirmTimesheetsForPeriod() {
+  const label = getPrSelectedLabel();
+  const periodStart = getPrSelectedStart();
+  if (!periodStart) { showToast('Cannot determine this period\'s date range', 'danger'); return; }
+
+  const byStaff = buildPayrollByStaff(label);
+  const hasShifts = Object.values(byStaff).some(d => d.shifts > 0);
+  if (!hasShifts) { showToast('No shifts recorded for this period yet', 'warn'); return; }
+
+  if (!confirm(`Confirm timesheets for ${label}?\n\nThis locks the period so payroll can be calculated. You can unlock it later if corrections are needed.`)) return;
+
+  if (!PAYROLL_RECORDS) PAYROLL_RECORDS = [];
+  let rec = findPayrollRecord(periodStart);
+  if (!rec) {
+    rec = { periodStart, periodLabel: label, confirmed:false, confirmedBy:null, confirmedAt:null, taxRates:null, finalized:false, finalizedBy:null, finalizedAt:null, rows:null };
+    PAYROLL_RECORDS.push(rec);
+  }
+  rec.periodLabel = label;
+  rec.confirmed = true;
+  rec.confirmedBy = _currentUser ? _currentUser.name : 'System';
+  rec.confirmedAt = new Date().toLocaleString();
+
+  auditLog('PAYROLL_CONFIRM', `Confirmed timesheets for pay period: ${label}`, { periodStart });
+  dbSave();
+  showToast('✅ Timesheets confirmed — enter tax rates to finalize payroll');
+  renderPayrollPage();
+}
+
+function calculatePayroll() {
+  const label = getPrSelectedLabel();
+  const periodStart = getPrSelectedStart();
+  const rec = findPayrollRecord(periodStart);
+  if (!rec || !rec.confirmed) { showToast('Confirm timesheets first', 'warn'); return; }
+
+  const fed   = parseFloat(document.getElementById('pr-tax-federal').value)  || 0;
+  const state = parseFloat(document.getElementById('pr-tax-state').value)   || 0;
+  const ss    = parseFloat(document.getElementById('pr-tax-ss').value)      || 0;
+  const med   = parseFloat(document.getElementById('pr-tax-medicare').value)|| 0;
+  const other = parseFloat(document.getElementById('pr-tax-other').value)  || 0;
+
+  if ([fed, state, ss, med, other].some(v => v < 0)) { showToast('Tax rates cannot be negative', 'danger'); return; }
+  if (fed + state + ss + med + other >= 100) { showToast('Combined tax rates are 100% or more — check your entries', 'warn'); return; }
+
+  const byStaff = buildPayrollByStaff(label);
+  const finalRows = [];
+  STAFF.forEach(st => {
+    const d = byStaff[st.id];
+    if (!d || d.shifts === 0) return;
+    const gross = d.regPay + d.otPay;
+    const federalTax  = gross * fed   / 100;
+    const stateTax    = gross * state / 100;
+    const ssTax       = gross * ss    / 100;
+    const medicareTax = gross * med   / 100;
+    const otherTax    = gross * other / 100;
+    const totalTax = federalTax + stateTax + ssTax + medicareTax + otherTax;
+    finalRows.push({
+      staffId: st.id, name: `${st.last}, ${st.first}`, shifts: d.shifts,
+      regHrs: d.regHrs, otHrs: d.otHrs, regPay: d.regPay, otPay: d.otPay,
+      gross, federalTax, stateTax, ssTax, medicareTax, otherTax, totalTax,
+      net: gross - totalTax
+    });
+  });
+
+  rec.taxRates = { federal: fed, state, ss, medicare: med, other };
+  rec.finalized = true;
+  rec.finalizedBy = _currentUser ? _currentUser.name : 'System';
+  rec.finalizedAt = new Date().toLocaleString();
+  rec.rows = finalRows;
+
+  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (Fed ${fed}%, State ${state}%, SS ${ss}%, Medicare ${med}%, Other ${other}%)`, { periodStart });
+  dbSave();
+  showToast('✅ Payroll calculated and finalized');
+  renderPayrollPage();
+}
+
+function renderFinalPayrollTable(rec) {
+  const rows = rec.rows || [];
+  let totGross=0, totFed=0, totState=0, totSS=0, totMed=0, totOther=0, totTax=0, totNet=0;
+  rows.forEach(r => {
+    totGross+=r.gross; totFed+=r.federalTax; totState+=r.stateTax; totSS+=r.ssTax;
+    totMed+=r.medicareTax; totOther+=r.otherTax; totTax+=r.totalTax; totNet+=r.net;
+  });
+
+  document.getElementById('pr-final-summary').innerHTML = `
+    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--accent2)">${$fmt(totGross)}</div></div>
+    <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val" style="color:var(--danger)">${$fmt(totTax)}</div></div>
+    <div class="rs-card"><div class="rs-label">Net Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totNet)}</div></div>
+    <div class="rs-card"><div class="rs-label">Rates Used</div><div class="rs-val" style="font-size:12px">F ${rec.taxRates.federal}% · S ${rec.taxRates.state}% · SS ${rec.taxRates.ss}% · M ${rec.taxRates.medicare}%${rec.taxRates.other>0?` · O ${rec.taxRates.other}%`:''}</div></div>
+  `;
+
+  let html = '<table><thead><tr><th>ID</th><th>Staff Name</th><th>Gross Pay</th><th>Federal</th><th>State</th><th>Soc. Sec.</th><th>Medicare</th><th>Other</th><th>Total Tax</th><th>Net Pay</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    html += `<tr>
+      <td class="mono" style="color:var(--text3)">${r.staffId}</td>
+      <td style="color:var(--text);font-weight:500">${esc(r.name)}</td>
+      <td class="mono">${$fmt(r.gross)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.federalTax)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.stateTax)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.ssTax)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.medicareTax)}</td>
+      <td class="mono" style="color:var(--danger)">${$fmt(r.otherTax)}</td>
+      <td class="mono" style="color:var(--danger);font-weight:600">${$fmt(r.totalTax)}</td>
+      <td class="mono" style="color:var(--success);font-weight:700">${$fmt(r.net)}</td>
+    </tr>`;
+  });
+  html += `<tr style="background:var(--surface2);font-weight:700">
+    <td colspan="2" style="color:var(--text)">TOTALS</td>
+    <td class="mono">${$fmt(totGross)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totFed)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totState)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totSS)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totMed)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totOther)}</td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totTax)}</td>
+    <td class="mono" style="color:var(--success)">${$fmt(totNet)}</td>
+  </tr>`;
+  html += '</tbody></table>';
+  document.getElementById('pr-final-table').innerHTML = html;
+}
+
+function unlockPayrollPeriod() {
+  const periodStart = getPrSelectedStart();
+  const rec = findPayrollRecord(periodStart);
+  if (!rec) return;
+  if (!confirm('Unlock this pay period?\n\nThis clears the confirmation and any calculated payroll for this period so it can be redone. This cannot be undone.')) return;
+
+  const label = rec.periodLabel;
+  rec.confirmed = false; rec.confirmedBy = null; rec.confirmedAt = null;
+  rec.taxRates = null;
+  rec.finalized = false; rec.finalizedBy = null; rec.finalizedAt = null;
+  rec.rows = null;
+
+  auditLog('PAYROLL_UNLOCK', `Unlocked payroll for pay period: ${label}`, { periodStart });
+  dbSave();
+  showToast('🔓 Period unlocked — timesheets can be edited again');
+  renderPayrollPage();
+}
+
+function exportPayrollCSV() {
+  const periodStart = getPrSelectedStart();
+  const rec = findPayrollRecord(periodStart);
+  if (!rec || !rec.finalized) { showToast('No finalized payroll to export', 'warn'); return; }
+
+  let csv = `American Safety Options — Payroll — ${rec.periodLabel}\n`;
+  csv += `Confirmed by: ${rec.confirmedBy} on ${rec.confirmedAt}\n`;
+  csv += `Finalized by: ${rec.finalizedBy} on ${rec.finalizedAt}\n`;
+  csv += `Tax Rates — Federal ${rec.taxRates.federal}%, State ${rec.taxRates.state}%, Social Security ${rec.taxRates.ss}%, Medicare ${rec.taxRates.medicare}%, Other ${rec.taxRates.other}%\n\n`;
+  csv += '"ID","Staff Name","Gross Pay","Federal","State","Social Security","Medicare","Other","Total Tax","Net Pay"\n';
+  rec.rows.forEach(r => {
+    csv += [r.staffId, r.name, r.gross.toFixed(2), r.federalTax.toFixed(2), r.stateTax.toFixed(2), r.ssTax.toFixed(2), r.medicareTax.toFixed(2), r.otherTax.toFixed(2), r.totalTax.toFixed(2), r.net.toFixed(2)]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ASO_payroll_${rec.periodStart}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported ✅');
+}
+
+// ──────────────────────────────────────────────────────────
 // MONTHLY REPORT
 // ──────────────────────────────────────────────────────────
 function renderMonthlySetup() {
@@ -6481,6 +6847,9 @@ const AT_ICONS = {
   CHANGE_PASSWORD:  '🔑',
   PAY_CONFIG:       '⚙️',
   DATA_IMPORT:      '📥',
+  PAYROLL_CONFIRM:  '🔒',
+  PAYROLL_FINALIZE: '🧾',
+  PAYROLL_UNLOCK:   '🔓',
 };
 const AT_COLORS = {
   ADD_SHIFT:'var(--success)',    EDIT_SHIFT:'var(--accent2)',  DELETE_SHIFT:'var(--danger)',
@@ -6490,6 +6859,7 @@ const AT_COLORS = {
   ADD_LOCATION:'var(--success)', EDIT_LOCATION:'var(--accent2)', DELETE_LOCATION:'var(--danger)',
   ADD_USER:'var(--success)',     DELETE_USER:'var(--danger)',  CHANGE_PASSWORD:'var(--gold)',
   PAY_CONFIG:'var(--gold)',      DATA_IMPORT:'var(--accent2)',
+  PAYROLL_CONFIRM:'var(--accent)', PAYROLL_FINALIZE:'var(--success)', PAYROLL_UNLOCK:'var(--warn)',
 };
 
 function auditLog(type, detail, meta) {
