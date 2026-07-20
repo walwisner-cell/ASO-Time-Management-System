@@ -11,7 +11,7 @@
 <script>
 // Force favicon injection via JS — ensures it works when opened as a local file (file://)
 (function() {
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><radialGradient id="g" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a3a6e"/><stop offset="100%" stop-color="#0b0f1a"/></radialGradient></defs><path d="M32 2 L58 14 L58 36 C58 50 46 60 32 62 C18 60 6 50 6 36 L6 14 Z" fill="url(#g)" stroke="#3b82f6" stroke-width="2.5"/><path d="M32 9 L52 19 L52 36 C52 47 43 55 32 57 C21 55 12 47 12 36 L12 19 Z" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.5"/><text x="32" y="37" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#3b82f6" text-anchor="middle">ASO</text><text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#60a5fa" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>';
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><radialGradient id="g" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a3a6e"/><stop offset="100%" stop-color="#0b0f1a"/></radialGradient></defs><path d="M32 2 L58 14 L58 36 C58 50 46 60 32 62 C18 60 6 50 6 36 L6 14 Z" fill="url(#g)" stroke="#3b82f6" stroke-width="2.5"/><path d="M32 9 L52 19 L52 36 C52 47 43 55 32 57 C21 55 12 47 12 36 L12 19 Z" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.5"/><text x="32" y="37" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#3b82f6" text-anchor="middle">ASO</text><text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#4A9FE0" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>';
   // Use Canvas to render SVG → PNG (PNG favicons have stronger local-file support in Edge/Chrome)
   var img = new Image();
   var svgBlob = new Blob([svg], {type: 'image/svg+xml;charset=utf-8'});
@@ -44,38 +44,38 @@
 
   /* ── DESIGN TOKENS ── */
   :root {
-    --bg:          #050c18;
-    --surface:     #0a1525;
-    --surface2:    #10203a;
-    --surface3:    #182d52;
-    --border:      #1b3055;
-    --border2:     #234070;
-    --accent:      #1a7bd8;
-    --accent2:     #4aaff5;
-    --accent3:     #85d4ff;
-    --gold:        #c8a84b;
-    --gold2:       #e8c96e;
-    --success:     #0d9e74;
-    --success2:    #22d3a5;
-    --warn:        #d4920c;
-    --warn2:       #fbbf24;
-    --danger:      #c42e2e;
-    --danger2:     #f87171;
-    --muted:       #3a5878;
-    --text:        #cdd9ec;
-    --text2:       #7290b0;
-    --text3:       #445d7a;
+    --bg:          #F4F6FA;
+    --surface:     #FFFFFF;
+    --surface2:    #EEF2F8;
+    --surface3:    #E2E9F3;
+    --border:      #DCE4EF;
+    --border2:     #C2CEDE;
+    --accent:      #0B5FA8;
+    --accent2:     #1976C9;
+    --accent3:     #4A9FE0;
+    --gold:        #8A620E;
+    --gold2:       #C79A3D;
+    --success:     #0A7049;
+    --success2:    #16A374;
+    --warn:        #946008;
+    --warn2:       #C98A1E;
+    --danger:      #B3312F;
+    --danger2:     #C74B48;
+    --muted:       #7C90A6;
+    --text:        #16283C;
+    --text2:       #4C607A;
+    --text3:       #5D7288;
     --mono:        'JetBrains Mono', monospace;
     --sans:        'Source Sans 3', sans-serif;
     --display:     'Montserrat', sans-serif;
     --radius:      10px;
     --radius-sm:   6px;
     --radius-lg:   16px;
-    --shadow-sm:   0 2px 8px rgba(0,0,0,0.3);
-    --shadow-md:   0 8px 32px rgba(0,0,0,0.4);
-    --shadow-lg:   0 24px 60px rgba(0,0,0,0.55);
-    --glow:        0 0 24px rgba(26,123,216,0.15);
-    --glow-gold:   0 0 20px rgba(200,168,75,0.2);
+    --shadow-sm:   0 1px 3px rgba(22,40,60,0.08), 0 1px 2px rgba(22,40,60,0.05);
+    --shadow-md:   0 8px 24px rgba(22,40,60,0.10), 0 2px 6px rgba(22,40,60,0.06);
+    --shadow-lg:   0 20px 48px rgba(22,40,60,0.16), 0 4px 12px rgba(22,40,60,0.08);
+    --glow:        0 0 0 4px rgba(11,95,168,0.08);
+    --glow-gold:   0 0 0 4px rgba(169,121,31,0.10);
   }
 
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -98,9 +98,9 @@
     justify-content:center;
     min-height:100vh;
     background:
-      radial-gradient(ellipse at 20% 10%, rgba(26,123,216,0.15) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 90%, rgba(10,90,160,0.12) 0%, transparent 50%),
-      radial-gradient(ellipse at 60% 40%, rgba(200,168,75,0.04) 0%, transparent 45%),
+      radial-gradient(ellipse at 20% 10%, rgba(11,95,168,0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(11,95,168,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 40%, rgba(169,121,31,0.04) 0%, transparent 45%),
       var(--bg);
   }
   .login-card {
@@ -110,7 +110,7 @@
     border-radius:var(--radius-lg);
     padding:56px 48px;
     box-shadow:
-      0 0 0 1px rgba(26,123,216,0.08),
+      0 0 0 1px rgba(11,95,168,0.08),
       var(--shadow-lg),
       var(--glow);
     animation:fadeUp .55s cubic-bezier(.16,1,.3,1);
@@ -127,7 +127,7 @@
     content:'';
     position:absolute;
     bottom:0; left:0; right:0; top:0;
-    background:radial-gradient(ellipse at 50% 0%, rgba(26,123,216,0.06) 0%, transparent 60%);
+    background:radial-gradient(ellipse at 50% 0%, rgba(11,95,168,0.06) 0%, transparent 60%);
     pointer-events:none;
   }
   @keyframes fadeUp {
@@ -175,11 +175,11 @@
   }
   .form-group input:focus {
     border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(26,123,216,0.18);
+    box-shadow:0 0 0 3px rgba(11,95,168,0.18);
   }
   .login-btn {
     width:100%;
-    background:linear-gradient(135deg, var(--accent) 0%, #1264b8 100%);
+    background:linear-gradient(135deg, var(--accent) 0%, #0A4C86 100%);
     border:none;
     border-radius:var(--radius);
     padding:14px;
@@ -201,9 +201,9 @@
     background:linear-gradient(to bottom, rgba(255,255,255,0.08), transparent);
   }
   .login-btn:hover {
-    background:linear-gradient(135deg, #1e8ae8 0%, #1a70c8 100%);
+    background:linear-gradient(135deg, #1670BE 0%, #0F5FA6 100%);
     transform:translateY(-1px);
-    box-shadow:0 8px 28px rgba(26,123,216,0.45);
+    box-shadow:0 8px 28px rgba(11,95,168,0.45);
   }
   .login-hint {
     font-size:11px;
@@ -220,7 +220,7 @@
     border-radius:var(--radius);
     padding:11px 16px;
     font-size:13px;
-    color:#fca5a5;
+    color:#D97F7C;
     margin-bottom:18px;
     display:none;
     font-family:var(--sans);
@@ -230,10 +230,10 @@
   .aso-login-logo-wrap { display:flex; flex-direction:column; align-items:center; margin-bottom:36px; }
   .aso-seal {
     width:100px; height:100px; margin-bottom:14px;
-    filter:drop-shadow(0 0 22px rgba(26,123,216,0.4)) drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+    filter:drop-shadow(0 0 18px rgba(11,95,168,0.25)) drop-shadow(0 6px 16px rgba(22,40,60,0.18));
     transition:filter .3s;
   }
-  .aso-seal:hover { filter:drop-shadow(0 0 30px rgba(26,123,216,0.6)) drop-shadow(0 4px 12px rgba(0,0,0,0.5)); }
+  .aso-seal:hover { filter:drop-shadow(0 0 24px rgba(11,95,168,0.35)) drop-shadow(0 6px 16px rgba(22,40,60,0.18)); }
   .aso-login-name {
     font-family:var(--display);
     font-size:17px;
@@ -271,7 +271,7 @@
     position:sticky;
     top:0;
     z-index:100;
-    box-shadow:0 1px 0 rgba(26,123,216,0.12), 0 2px 16px rgba(0,0,0,0.3);
+    box-shadow:0 1px 0 rgba(11,95,168,0.06), 0 1px 3px rgba(22,40,60,0.06);
   }
   .topbar::before {
     content:'';
@@ -293,15 +293,15 @@
   .topbar-user { display:flex; align-items:center; gap:12px; font-size:13px; color:var(--text2); }
   .aso-topbar-seal {
     width:30px; height:30px; flex-shrink:0;
-    filter:drop-shadow(0 0 8px rgba(26,123,216,0.5));
+    filter:drop-shadow(0 0 8px rgba(11,95,168,0.5));
   }
   .avatar {
     width:32px; height:32px; border-radius:50%;
-    background:linear-gradient(135deg, var(--accent), #5b4fcf);
+    background:linear-gradient(135deg, var(--accent), #5648A8);
     display:flex; align-items:center; justify-content:center;
     font-family:var(--display); font-weight:700; font-size:12px; color:#fff;
-    border:1.5px solid rgba(26,123,216,0.4);
-    box-shadow:0 0 0 2px rgba(26,123,216,0.15);
+    border:1.5px solid rgba(11,95,168,0.4);
+    box-shadow:0 0 0 2px rgba(11,95,168,0.15);
   }
   .logout-btn {
     background:none;
@@ -374,8 +374,8 @@
   }
   .nav-item:hover {
     color:var(--text);
-    background:rgba(26,123,216,0.07);
-    border-left-color:rgba(26,123,216,0.4);
+    background:rgba(11,95,168,0.07);
+    border-left-color:rgba(11,95,168,0.4);
     padding-left:26px;
   }
   .nav-pulse-badge {
@@ -390,7 +390,7 @@
   }
   .nav-item.active {
     color:var(--accent2);
-    background:linear-gradient(90deg, rgba(26,123,216,0.14), rgba(26,123,216,0.04));
+    background:linear-gradient(90deg, rgba(11,95,168,0.14), rgba(11,95,168,0.04));
     border-left-color:var(--accent);
     font-weight:600;
   }
@@ -453,7 +453,7 @@
     transition:all .2s;
     white-space:nowrap;
   }
-  .print-btn:hover { border-color:var(--accent2); color:var(--accent2); background:rgba(26,123,216,0.06); }
+  .print-btn:hover { border-color:var(--accent2); color:var(--accent2); background:rgba(11,95,168,0.06); }
 
   /* CARDS */
   .card {
@@ -558,7 +558,7 @@
     font-size:13px;
   }
   tbody tr:last-child td { border-bottom:none; }
-  tbody tr:hover { background:rgba(26,123,216,0.05); }
+  tbody tr:hover { background:rgba(11,95,168,0.05); }
   tbody tr:hover td { color:var(--text); }
   .mono { font-family:var(--mono); font-size:12.5px; }
 
@@ -573,11 +573,11 @@
     font-weight:600;
     letter-spacing:0.3px;
   }
-  .badge-danger  { background:rgba(196,46,46,0.14); color:#f87171; border:1px solid rgba(196,46,46,0.25); }
-  .badge-success { background:rgba(13,158,116,0.12); color:#34d399; border:1px solid rgba(13,158,116,0.25); }
-  .badge-warn    { background:rgba(212,146,12,0.12); color:#fbbf24; border:1px solid rgba(212,146,12,0.25); }
+  .badge-danger  { background:rgba(196,46,46,0.14); color:#C74B48; border:1px solid rgba(196,46,46,0.25); }
+  .badge-success { background:rgba(14,143,94,0.12); color:#34d399; border:1px solid rgba(14,143,94,0.25); }
+  .badge-warn    { background:rgba(180,116,10,0.12); color:#C98A1E; border:1px solid rgba(180,116,10,0.25); }
   .badge-muted   { background:rgba(58,88,120,0.2); color:var(--text3); border:1px solid var(--border); }
-  .badge-info    { background:rgba(26,123,216,0.14); color:var(--accent2); border:1px solid rgba(26,123,216,0.3); }
+  .badge-info    { background:rgba(11,95,168,0.14); color:var(--accent2); border:1px solid rgba(11,95,168,0.3); }
 
   /* ─────────────────────────────────────────────────────
      FORM CONTROLS
@@ -602,7 +602,7 @@
   }
   select:focus, input:focus {
     border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(26,123,216,0.15);
+    box-shadow:0 0 0 3px rgba(11,95,168,0.15);
   }
   select option { background:var(--surface2); }
 
@@ -618,12 +618,12 @@
     transition:all .2s;
     letter-spacing:0.3px;
   }
-  .btn-primary { background:linear-gradient(135deg, var(--accent), #1264b8); color:#fff; }
-  .btn-primary:hover { background:linear-gradient(135deg, #1e8ae8, var(--accent)); transform:translateY(-1px); box-shadow:0 6px 20px rgba(26,123,216,0.4); }
-  .btn-success { background:linear-gradient(135deg, var(--success), #077a58); color:#fff; }
-  .btn-success:hover { background:linear-gradient(135deg, #10c48e, var(--success)); transform:translateY(-1px); }
-  .btn-warn { background:linear-gradient(135deg, var(--warn), #b07a0a); color:#fff; }
-  .btn-warn:hover { background:linear-gradient(135deg, #e8a020, var(--warn)); transform:translateY(-1px); }
+  .btn-primary { background:linear-gradient(135deg, var(--accent), #0A4C86); color:#fff; }
+  .btn-primary:hover { background:linear-gradient(135deg, #1670BE, var(--accent)); transform:translateY(-1px); box-shadow:0 6px 20px rgba(11,95,168,0.4); }
+  .btn-success { background:linear-gradient(135deg, var(--success), #075E42); color:#fff; }
+  .btn-success:hover { background:linear-gradient(135deg, #14B87E, var(--success)); transform:translateY(-1px); }
+  .btn-warn { background:linear-gradient(135deg, var(--warn), #8C5B08); color:#fff; }
+  .btn-warn:hover { background:linear-gradient(135deg, #D4931C, var(--warn)); transform:translateY(-1px); }
   .btn-danger { background:rgba(196,46,46,0.14); color:var(--danger2); border:1px solid rgba(196,46,46,0.28); }
   .btn-danger:hover { background:rgba(196,46,46,0.24); }
   .btn-ghost { background:transparent; color:var(--text2); border:1px solid var(--border2); }
@@ -676,8 +676,8 @@
     pointer-events:none;
     z-index:9999;
     max-width:360px;
-    box-shadow:0 8px 32px rgba(0,0,0,0.4);
-    border:1px solid rgba(255,255,255,0.12);
+    box-shadow:0 8px 24px rgba(22,40,60,0.22);
+    border:1px solid rgba(255,255,255,0.18);
   }
   #toast.show { opacity:1; transform:translateY(0); }
 
@@ -696,7 +696,7 @@
     border-left:3px solid var(--danger);
   }
   .ot-alert-icon { font-size:18px; }
-  .ot-alert-text { font-size:13px; color:#fca5a5; }
+  .ot-alert-text { font-size:13px; color:#D97F7C; }
   .ot-alert-text b { font-weight:700; color:var(--danger2); }
 
   /* SCROLLBAR */
@@ -722,7 +722,7 @@
     transition:background .15s;
   }
   .lb-row:last-child { border-bottom:none; }
-  .lb-row:hover { background:rgba(26,123,216,0.05); border-radius:var(--radius-sm); padding-left:6px; margin-left:-6px; }
+  .lb-row:hover { background:rgba(11,95,168,0.05); border-radius:var(--radius-sm); padding-left:6px; margin-left:-6px; }
   .lb-rank { font-family:var(--display); font-weight:800; font-size:18px; color:var(--text3); width:36px; text-align:center; flex-shrink:0; }
   .lb-rank.gold   { color:var(--gold2); text-shadow:0 0 12px rgba(232,201,110,0.4); }
   .lb-rank.silver { color:#94a3b8; }
@@ -743,7 +743,7 @@
     border-radius:var(--radius-lg);
     padding:22px 26px;
     margin-bottom:26px;
-    box-shadow:0 0 0 1px rgba(26,123,216,0.1), var(--glow);
+    box-shadow:0 0 0 1px rgba(11,95,168,0.1), var(--glow);
   }
   .period-config-title {
     font-family:var(--display);
@@ -771,14 +771,14 @@
     font-weight:500;
   }
   .period-pill:hover { border-color:var(--accent); color:var(--accent2); }
-  .period-pill.active { background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 4px 12px rgba(26,123,216,0.35); }
+  .period-pill.active { background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 4px 12px rgba(11,95,168,0.35); }
 
   /* ─────────────────────────────────────────────────────
      NEW PAY PERIOD BANNER
   ───────────────────────────────────────────────────── */
   .new-period-banner {
-    background:linear-gradient(135deg, rgba(13,158,116,0.1) 0%, rgba(26,123,216,0.08) 100%);
-    border:1px solid rgba(13,158,116,0.3);
+    background:linear-gradient(135deg, rgba(14,143,94,0.1) 0%, rgba(11,95,168,0.08) 100%);
+    border:1px solid rgba(14,143,94,0.3);
     border-radius:var(--radius-lg);
     padding:22px 26px;
     margin-bottom:26px;
@@ -805,7 +805,7 @@
   .new-period-sub { font-size:13px; color:var(--text2); font-family:var(--mono); }
   .new-period-actions { display:flex; gap:10px; flex-shrink:0; flex-wrap:wrap; }
   .btn-new-period {
-    background:linear-gradient(135deg, var(--success), #077a58);
+    background:linear-gradient(135deg, var(--success), #075E42);
     color:#fff;
     border:none;
     border-radius:var(--radius);
@@ -817,10 +817,10 @@
     transition:all .2s;
     white-space:nowrap;
   }
-  .btn-new-period:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(13,158,116,0.35); }
+  .btn-new-period:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(14,143,94,0.35); }
 
   @keyframes newRow {
-    from { background:rgba(26,123,216,0.18); }
+    from { background:rgba(11,95,168,0.18); }
     to   { background:transparent; }
   }
   .new-row { animation:newRow 2s ease-out; }
@@ -829,8 +829,8 @@
      PERIOD CONTEXT BAR (Timesheet)
   ───────────────────────────────────────────────────── */
   .period-context-bar {
-    background:rgba(26,123,216,0.07);
-    border:1px solid rgba(26,123,216,0.18);
+    background:rgba(11,95,168,0.07);
+    border:1px solid rgba(11,95,168,0.18);
     border-radius:var(--radius);
     padding:12px 18px;
     margin-bottom:18px;
@@ -844,9 +844,9 @@
   .period-context-label { color:var(--text3); text-transform:uppercase; letter-spacing:1px; font-size:10px; font-weight:600; }
   .period-context-value { color:var(--accent2); font-weight:700; font-size:13px; }
   .period-context-badge {
-    background:rgba(13,158,116,0.14);
+    background:rgba(14,143,94,0.14);
     color:var(--success2);
-    border:1px solid rgba(13,158,116,0.28);
+    border:1px solid rgba(14,143,94,0.28);
     border-radius:20px;
     padding:3px 12px;
     font-size:11px;
@@ -868,7 +868,7 @@
     gap:16px;
     transition:all .2s;
   }
-  .np-period-card.current { border-color:var(--success2); background:rgba(13,158,116,0.07); }
+  .np-period-card.current { border-color:var(--success2); background:rgba(14,143,94,0.07); }
   .np-period-dot { width:10px; height:10px; border-radius:50%; background:var(--text3); flex-shrink:0; }
   .np-period-dot.current { background:var(--success2); box-shadow:0 0 8px rgba(34,211,165,0.5); }
   .np-period-info { flex:1; }
@@ -896,7 +896,7 @@
   .modal-overlay {
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,0.75);
+    background:rgba(16,28,42,0.55);
     z-index:1000;
     display:flex;
     align-items:center;
@@ -946,7 +946,7 @@
     border-left:3px solid var(--danger);
   }
   .warn-box-title { font-family:var(--display); font-size:14px; font-weight:700; color:var(--danger2); margin-bottom:6px; display:flex; align-items:center; gap:8px; }
-  .warn-box p { font-size:13px; color:#fca5a5; line-height:1.65; }
+  .warn-box p { font-size:13px; color:#D97F7C; line-height:1.65; }
   .info-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:13px; }
   .info-row:last-child { border-bottom:none; }
   .info-label { color:var(--text3); font-family:var(--mono); font-size:12px; font-weight:500; }
@@ -966,21 +966,21 @@
     margin-top:14px;
     transition:border-color .2s;
   }
-  .reason-field:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(26,123,216,0.15); }
+  .reason-field:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(11,95,168,0.15); }
 
   /* ─────────────────────────────────────────────────────
      APPROVALS
   ───────────────────────────────────────────────────── */
   .approval-item {
-    background:rgba(212,146,12,0.06);
-    border:1px solid rgba(212,146,12,0.2);
+    background:rgba(180,116,10,0.06);
+    border:1px solid rgba(180,116,10,0.2);
     border-radius:var(--radius);
     padding:16px 18px;
     margin-bottom:12px;
     border-left:3px solid var(--warn);
     transition:all .2s;
   }
-  .approval-item:hover { background:rgba(212,146,12,0.1); }
+  .approval-item:hover { background:rgba(180,116,10,0.1); }
   .approval-item-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .approval-item-name { font-size:13px; color:var(--text); font-weight:700; font-family:var(--display); }
   .approval-item-meta { font-size:11px; color:var(--text3); font-family:var(--mono); }
@@ -1002,11 +1002,11 @@
   .user-avatar-sm {
     width:36px; height:36px;
     border-radius:50%;
-    background:linear-gradient(135deg, var(--accent), #5b4fcf);
+    background:linear-gradient(135deg, var(--accent), #5648A8);
     display:flex; align-items:center; justify-content:center;
     font-family:var(--display); font-weight:700; font-size:13px; color:#fff;
     flex-shrink:0;
-    border:1.5px solid rgba(26,123,216,0.3);
+    border:1.5px solid rgba(11,95,168,0.3);
   }
   .user-info { flex:1; }
   .user-name { font-size:13px; color:var(--text); font-weight:600; }
@@ -1037,7 +1037,7 @@
   /* ─────────────────────────────────────────────────────
      ASO TOPBAR SEAL
   ───────────────────────────────────────────────────── */
-  .aso-topbar-seal { width:30px; height:30px; flex-shrink:0; filter:drop-shadow(0 0 8px rgba(26,123,216,0.5)); }
+  .aso-topbar-seal { width:30px; height:30px; flex-shrink:0; filter:drop-shadow(0 0 8px rgba(11,95,168,0.5)); }
 
   /* PRINT LOGO WATERMARK */
   @media print {
@@ -1091,11 +1091,11 @@
     transition:all .18s;
     background:transparent;
   }
-  .rb-type-card:hover { border-color:var(--accent); background:rgba(26,123,216,0.06); }
+  .rb-type-card:hover { border-color:var(--accent); background:rgba(11,95,168,0.06); }
   .rb-type-card.selected {
     border-color:var(--accent);
-    background:rgba(26,123,216,0.12);
-    box-shadow:0 0 0 1px var(--accent), inset 0 0 0 1px rgba(26,123,216,0.15);
+    background:rgba(11,95,168,0.12);
+    box-shadow:0 0 0 1px var(--accent), inset 0 0 0 1px rgba(11,95,168,0.15);
   }
   .rb-type-card-icon { font-size:20px; margin-bottom:7px; }
   .rb-type-card-label { font-family:var(--display); font-size:12px; font-weight:700; color:var(--text); }
@@ -1136,7 +1136,7 @@
     font-weight:500;
   }
   .rb-chip:hover { border-color:var(--accent); color:var(--accent2); }
-  .rb-chip.selected { background:rgba(26,123,216,0.16); border-color:var(--accent); color:var(--accent2); }
+  .rb-chip.selected { background:rgba(11,95,168,0.16); border-color:var(--accent); color:var(--accent2); }
   .rb-chip-dot { width:6px; height:6px; border-radius:50%; background:var(--text3); }
   .rb-chip.selected .rb-chip-dot { background:var(--accent2); }
   .rb-loc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
@@ -1144,7 +1144,7 @@
   /* Generate button */
   .rb-generate-btn {
     width:100%;
-    background:linear-gradient(135deg, var(--accent) 0%, #1264b8 100%);
+    background:linear-gradient(135deg, var(--accent) 0%, #0A4C86 100%);
     border:none;
     border-radius:var(--radius);
     padding:13px;
@@ -1160,12 +1160,12 @@
     justify-content:center;
     gap:8px;
     margin-top:6px;
-    box-shadow:0 4px 16px rgba(26,123,216,0.3);
+    box-shadow:0 4px 16px rgba(11,95,168,0.3);
   }
   .rb-generate-btn:hover {
-    background:linear-gradient(135deg, #1e8ae8 0%, var(--accent) 100%);
+    background:linear-gradient(135deg, #1670BE 0%, var(--accent) 100%);
     transform:translateY(-1px);
-    box-shadow:0 8px 28px rgba(26,123,216,0.45);
+    box-shadow:0 8px 28px rgba(11,95,168,0.45);
   }
   .rb-generate-btn:active { transform:translateY(0); }
 
@@ -1202,7 +1202,7 @@
     transition:all .2s;
     white-space:nowrap;
   }
-  .rb-print-btn:hover { background:#1e8ae8; transform:translateY(-1px); }
+  .rb-print-btn:hover { background:#1670BE; transform:translateY(-1px); }
   .rb-export-btn {
     display:flex;
     align-items:center;
@@ -1238,12 +1238,12 @@
   .rb-staff-avatar {
     width:64px; height:64px;
     border-radius:50%;
-    background:linear-gradient(135deg, var(--accent), #5b4fcf);
+    background:linear-gradient(135deg, var(--accent), #5648A8);
     display:flex; align-items:center; justify-content:center;
     font-family:var(--display); font-weight:800; font-size:22px; color:#fff;
     flex-shrink:0;
-    border:2px solid rgba(26,123,216,0.3);
-    box-shadow:0 0 0 4px rgba(26,123,216,0.1);
+    border:2px solid rgba(11,95,168,0.3);
+    box-shadow:0 0 0 4px rgba(11,95,168,0.1);
   }
   .rb-staff-name { font-family:var(--display); font-size:20px; font-weight:700; color:var(--text); letter-spacing:-0.3px; }
   .rb-staff-meta { font-size:12px; color:var(--text3); font-family:var(--mono); margin-top:3px; }
@@ -1287,7 +1287,7 @@
     transform:scaleX(0); transform-origin:left; transition:transform .5s cubic-bezier(.16,1,.3,1);
   }
   .pr-step-line.done::after { transform:scaleX(1); }
-  .pr-step.active .pr-step-circle { background:var(--accent); border-color:var(--accent2); color:#fff; box-shadow:0 0 0 6px rgba(26,123,216,0.15); transform:scale(1.08); }
+  .pr-step.active .pr-step-circle { background:var(--accent); border-color:var(--accent2); color:#fff; box-shadow:0 0 0 6px rgba(11,95,168,0.15); transform:scale(1.08); }
   .pr-step.active .pr-step-label { color:var(--accent2); font-weight:700; }
   .pr-step.done .pr-step-circle { background:var(--success); border-color:var(--success2); color:#fff; }
   .pr-step.done .pr-step-label { color:var(--success2); }
@@ -1322,7 +1322,7 @@
   .pay-stub .stub-section-title { font-family:var(--display); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#475569; margin:18px 0 8px; }
   .pay-stub-net-banner {
     display:flex; justify-content:space-between; align-items:center;
-    background:linear-gradient(135deg,#0d9e74,#077a58); color:#fff;
+    background:linear-gradient(135deg,#0A7049,#075E42); color:#fff;
     border-radius:10px; padding:16px 22px; margin-top:20px;
   }
   .pay-stub-net-label { font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.4px; }
@@ -1393,22 +1393,22 @@
         <clipPath id="bl"><path d="M52 104 L100 104 L100 168 Q52 148 52 108 Z"/></clipPath>
         <g clip-path="url(#bl)">
           <rect x="50" y="102" width="52" height="68" fill="#0f2a1a"/>
-          <rect x="68" y="110" width="10" height="32" fill="#10b981" opacity=".8"/>
-          <rect x="60" y="120" width="26" height="10" fill="#10b981" opacity=".8"/>
+          <rect x="68" y="110" width="10" height="32" fill="#0A7049" opacity=".8"/>
+          <rect x="60" y="120" width="26" height="10" fill="#0A7049" opacity=".8"/>
         </g>
         <!-- Bottom-right: hard hat / safety icon -->
         <clipPath id="br"><path d="M100 104 L148 104 L148 108 Q148 148 100 168 Z"/></clipPath>
         <g clip-path="url(#br)">
           <rect x="98" y="102" width="52" height="68" fill="#1a1200"/>
-          <path d="M108 132 Q124 112 140 132 L142 140 L106 140 Z" fill="#f59e0b" opacity=".8"/>
+          <path d="M108 132 Q124 112 140 132 L142 140 L106 140 Z" fill="#946008" opacity=".8"/>
           <rect x="106" y="140" width="36" height="5" fill="#d97706" opacity=".8"/>
         </g>
         <!-- Center star emblem -->
         <circle cx="100" cy="104" r="9" fill="#0b0f1a" stroke="#3b82f6" stroke-width="1.5"/>
-        <text x="100" y="108" font-family="Georgia,serif" font-size="10" fill="#60a5fa" text-anchor="middle">✦</text>
+        <text x="100" y="108" font-family="Georgia,serif" font-size="10" fill="#4A9FE0" text-anchor="middle">✦</text>
         <!-- Arc text top -->
         <path id="arcTop" d="M 28,100 A 72,72 0 0,1 172,100" fill="none"/>
-        <text font-family="Georgia,serif" font-size="9.5" fill="#60a5fa" letter-spacing="2.5">
+        <text font-family="Georgia,serif" font-size="9.5" fill="#4A9FE0" letter-spacing="2.5">
           <textPath href="#arcTop" startOffset="8%">AMERICAN SAFETY OPTIONS INC.</textPath>
         </text>
         <!-- Arc text bottom -->
@@ -1447,24 +1447,24 @@
       <clipPath id="tb-tl"><path d="M100 40 L52 62 L52 104 L100 104 Z"/></clipPath>
       <g clip-path="url(#tb-tl)"><rect x="40" y="30" width="80" height="80" fill="#1e3a5f"/><line x1="40" y1="55" x2="110" y2="125" stroke="#3b82f6" stroke-width="4" opacity=".3"/><line x1="40" y1="70" x2="110" y2="140" stroke="#3b82f6" stroke-width="4" opacity=".3"/><line x1="40" y1="85" x2="110" y2="155" stroke="#3b82f6" stroke-width="4" opacity=".3"/></g>
       <clipPath id="tb-tr"><path d="M100 40 L148 62 L148 104 L100 104 Z"/></clipPath>
-      <g clip-path="url(#tb-tr)"><rect x="100" y="38" width="50" height="68" fill="#0f1f38"/><text x="124" y="84" font-family="Georgia,serif" font-size="18" fill="#60a5fa" text-anchor="middle" font-weight="bold">PA</text></g>
+      <g clip-path="url(#tb-tr)"><rect x="100" y="38" width="50" height="68" fill="#0f1f38"/><text x="124" y="84" font-family="Georgia,serif" font-size="18" fill="#4A9FE0" text-anchor="middle" font-weight="bold">PA</text></g>
       <clipPath id="tb-bl"><path d="M52 104 L100 104 L100 168 Q52 148 52 108 Z"/></clipPath>
-      <g clip-path="url(#tb-bl)"><rect x="50" y="102" width="52" height="68" fill="#0f2a1a"/><rect x="68" y="112" width="12" height="36" fill="#10b981" opacity=".8"/><rect x="60" y="122" width="28" height="12" fill="#10b981" opacity=".8"/></g>
+      <g clip-path="url(#tb-bl)"><rect x="50" y="102" width="52" height="68" fill="#0f2a1a"/><rect x="68" y="112" width="12" height="36" fill="#0A7049" opacity=".8"/><rect x="60" y="122" width="28" height="12" fill="#0A7049" opacity=".8"/></g>
       <clipPath id="tb-br"><path d="M100 104 L148 104 L148 108 Q148 148 100 168 Z"/></clipPath>
-      <g clip-path="url(#tb-br)"><rect x="98" y="102" width="52" height="68" fill="#1a1200"/><path d="M108 134 Q124 112 140 134 L143 142 L106 142 Z" fill="#f59e0b" opacity=".8"/><rect x="106" y="142" width="38" height="6" fill="#d97706" opacity=".8"/></g>
+      <g clip-path="url(#tb-br)"><rect x="98" y="102" width="52" height="68" fill="#1a1200"/><path d="M108 134 Q124 112 140 134 L143 142 L106 142 Z" fill="#946008" opacity=".8"/><rect x="106" y="142" width="38" height="6" fill="#d97706" opacity=".8"/></g>
       <circle cx="100" cy="104" r="10" fill="#0b0f1a" stroke="#3b82f6" stroke-width="2"/>
-      <text x="100" y="109" font-family="Georgia,serif" font-size="11" fill="#60a5fa" text-anchor="middle">✦</text>
+      <text x="100" y="109" font-family="Georgia,serif" font-size="11" fill="#4A9FE0" text-anchor="middle">✦</text>
       <path id="tb-arc" d="M 35,100 A 65,65 0 0,1 165,100" fill="none"/>
-      <text font-family="Georgia,serif" font-size="10" fill="#60a5fa" letter-spacing="2"><textPath href="#tb-arc" startOffset="5%">AMERICAN SAFETY OPTIONS</textPath></text>
+      <text font-family="Georgia,serif" font-size="10" fill="#4A9FE0" letter-spacing="2"><textPath href="#tb-arc" startOffset="5%">AMERICAN SAFETY OPTIONS</textPath></text>
     </svg>
     <div class="topbar-brand" style="font-size:13px;line-height:1.25;letter-spacing:-.2px">American Safety Options <span style="font-size:10px;color:var(--accent);font-family:var(--mono);letter-spacing:.5px;font-weight:600">STAFF OT SYSTEM</span></div>
     <div class="topbar-period" id="current-period-label"></div>
     <div class="topbar-spacer"></div>
     <div class="topbar-user">
-      <button id="new-period-topbar-btn" onclick="openNewPeriodModal()" style="display:none;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;padding:5px 12px;color:var(--success);font-size:12px;cursor:pointer;font-family:var(--mono);transition:all .2s" title="New pay period started — click to begin entering data">🗓 New Period</button>
+      <button id="new-period-topbar-btn" onclick="openNewPeriodModal()" style="display:none;background:rgba(14,143,94,0.15);border:1px solid rgba(14,143,94,0.35);border-radius:6px;padding:5px 12px;color:var(--success);font-size:12px;cursor:pointer;font-family:var(--mono);transition:all .2s" title="New pay period started — click to begin entering data">🗓 New Period</button>
       <button class="print-topbar-btn" onclick="printCurrentPage()" title="Print current view">🖨️ Print</button>
-      <span id="save-indicator" onclick="nav('datamanager', document.querySelector('[data-page=datamanager]'))" style="display:none;cursor:pointer;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:20px;background:rgba(212,146,12,0.18);color:var(--warn2);border:1px solid rgba(212,146,12,0.4);animation:pulse 2s infinite" title="Unsaved changes — click to go to Data Manager and Save Data Into File">💾 Unsaved</span>
-      <span id="db-indicator" style="font-size:11px;font-family:var(--mono);padding:3px 9px;border-radius:20px;background:rgba(16,185,129,0.12);color:var(--success);border:1px solid rgba(16,185,129,0.25)" title="Data is saved to this browser">🗄️ DB</span>
+      <span id="save-indicator" onclick="nav('datamanager', document.querySelector('[data-page=datamanager]'))" style="display:none;cursor:pointer;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:20px;background:rgba(180,116,10,0.18);color:var(--warn2);border:1px solid rgba(180,116,10,0.4);animation:pulse 2s infinite" title="Unsaved changes — click to go to Data Manager and Save Data Into File">💾 Unsaved</span>
+      <span id="db-indicator" style="font-size:11px;font-family:var(--mono);padding:3px 9px;border-radius:20px;background:rgba(14,143,94,0.12);color:var(--success);border:1px solid rgba(14,143,94,0.25)" title="Data is saved to this browser">🗄️ DB</span>
       <div class="avatar" id="user-avatar">A</div>
       <span id="user-name-label">Admin</span>
       <span id="topbar-role-badge" style="display:none;font-size:10px;font-family:var(--mono);opacity:.7"></span>
@@ -1787,13 +1787,13 @@
             <div class="form-field">
               <label>Location</label>
               <select id="sf-location" onchange="onLocationChange()"></select>
-              <div id="sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#f59e0b;font-family:var(--mono);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
+              <div id="sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#946008;font-family:var(--mono);background:rgba(180,116,10,0.1);border:1px solid rgba(180,116,10,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
             </div>
             <div class="form-field"><label>Shift Start</label><input type="time" id="sf-start" value="08:00" oninput="updateShiftPreview()"></div>
             <div class="form-field"><label>Shift End</label><input type="time" id="sf-end" value="16:00" oninput="updateShiftPreview()"></div>
           </div>
           <!-- Staff confirmation banner -->
-          <div id="sf-staff-confirm" style="display:none;margin-top:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
+          <div id="sf-staff-confirm" style="display:none;margin-top:12px;background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
             <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;font-family:var(--display);flex-shrink:0" id="sf-staff-avatar"></div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--display)" id="sf-staff-name"></div>
@@ -1809,7 +1809,7 @@
             <span id="shift-calc-preview" style="font-family:var(--mono);font-size:12px;color:var(--text3);"></span>
           </div>
         </div>
-        <div class="card" style="margin-bottom:20px;border-color:rgba(59,130,246,0.3);background:rgba(59,130,246,0.04)">
+        <div class="card" style="margin-bottom:20px;border-color:rgba(11,95,168,0.3);background:rgba(11,95,168,0.04)">
           <div class="card-title" style="margin-bottom:14px">🔍 Filter Time Log</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:end;flex-wrap:wrap">
             <div class="form-field">
@@ -1850,7 +1850,7 @@
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Approvals</button>
         </div>
-        <div style="margin-bottom:18px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="margin-bottom:18px;background:rgba(14,143,94,0.07);border:1px solid rgba(14,143,94,0.3);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <span style="font-size:18px">💾</span>
           <div style="flex:1;font-size:12px;color:var(--text2);line-height:1.6">
             <b style="color:var(--success)">Remember to save your data.</b> After approving or denying shifts, go to <b>Data Manager → Save Data Into File</b> to download an updated copy of this file with all approvals preserved.
@@ -2093,7 +2093,7 @@
             </div>
 
             <!-- Date Correction Tool -->
-            <div class="card" style="border-color:rgba(245,158,11,0.4)">
+            <div class="card" style="border-color:rgba(180,116,10,0.4)">
               <div class="card-title" style="color:var(--warn)">✏️ Correct a Shift Date / Missed Entry</div>
               <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">If a shift was entered with the wrong date, or a day was missed and needs to be added to the correct period, use this tool. A reason is required and the correction is logged as an audit entry.</p>
               <div class="form-grid" style="margin-bottom:12px">
@@ -2239,7 +2239,7 @@
         <div id="dm-status-banner" style="margin-bottom:24px"></div>
 
         <!-- SAVE DATA INTO FILE — primary persistence action -->
-        <div style="margin-bottom:20px;background:linear-gradient(135deg,rgba(16,185,129,0.10),rgba(59,130,246,0.08));border:2px solid rgba(16,185,129,0.4);border-radius:14px;padding:20px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="margin-bottom:20px;background:linear-gradient(135deg,rgba(14,143,94,0.10),rgba(11,95,168,0.08));border:2px solid rgba(14,143,94,0.4);border-radius:14px;padding:20px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
           <div style="font-size:32px">💾</div>
           <div style="flex:1;min-width:200px">
             <div style="font-family:var(--display);font-size:15px;font-weight:700;color:var(--success);margin-bottom:4px">Save Data Into File</div>
@@ -2262,7 +2262,7 @@
                 <input type="file" accept=".json" style="display:none" onchange="dbImportBackup(this)">
               </label>
             </div>
-            <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 16px;font-size:12px;color:var(--text2);line-height:1.7">
+            <div style="background:rgba(11,95,168,0.06);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 16px;font-size:12px;color:var(--text2);line-height:1.7">
               <b style="color:var(--accent2)">What's included in a backup:</b><br>
               All shifts · Staff roster · Locations & rates · Users & passwords · Pay period config · Approved exceptions · Date correction log · Deletion audit log
             </div>
@@ -2276,9 +2276,9 @@
         </div>
 
         <!-- Danger Zone -->
-        <div style="margin-top:24px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:22px 24px">
+        <div style="margin-top:24px;background:rgba(179,49,47,0.05);border:1px solid rgba(179,49,47,0.2);border-radius:12px;padding:22px 24px">
           <div style="font-family:var(--display);font-size:14px;font-weight:700;color:var(--danger);margin-bottom:6px">⚠️ Danger Zone</div>
-          <p style="font-size:13px;color:#fca5a5;line-height:1.7;margin-bottom:16px">
+          <p style="font-size:13px;color:#D97F7C;line-height:1.7;margin-bottom:16px">
             Reset the database to factory defaults. All shifts, staff additions, location changes, users, and configuration will be permanently deleted. This cannot be undone — export a backup first.
           </p>
           <button class="btn btn-danger" onclick="dbReset()">🗑️ Reset to Factory Defaults</button>
@@ -2367,7 +2367,7 @@
         <div class="manual-section" id="msec-0">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🔒</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🔒</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">01 · Logging In</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">How to access the system securely</div>
@@ -2388,7 +2388,7 @@
                 <div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Click "Sign In →"</div><div style="font-size:12px;color:var(--text2)">You'll be taken directly to the Dashboard. If credentials are incorrect, a red error message will appear — double-check your username and try again.</div></div>
               </div>
             </div>
-            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;margin-top:18px;display:flex;gap:10px;align-items:flex-start">
+            <div style="background:rgba(180,116,10,0.08);border:1px solid rgba(180,116,10,0.3);border-radius:10px;padding:14px 18px;margin-top:18px;display:flex;gap:10px;align-items:flex-start">
               <span style="font-size:16px">⚠️</span>
               <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Change the default password immediately</div><div style="font-size:12px;color:var(--text2)">Go to Settings → Password Manager and update the admin password before using the system in production.</div></div>
             </div>
@@ -2399,7 +2399,7 @@
         <div class="manual-section" id="msec-1" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📊</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📊</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">02 · Dashboard Overview</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Your at-a-glance view of the current pay period</div>
@@ -2412,7 +2412,7 @@
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">📍</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Location Summary</div><div style="font-size:12px;color:var(--text2)">Breaks down hours and overtime by work location so you can see where costs are concentrated.</div></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🔔</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Pending Approvals</div><div style="font-size:12px;color:var(--text2)">Any shifts flagged for exceeding 24 hours appear here, waiting for supervisor sign-off.</div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Navigation tip:</b> Use the left sidebar to move between sections. The active section is highlighted in blue with a left border indicator.</div>
             </div>
@@ -2423,7 +2423,7 @@
         <div class="manual-section" id="msec-2" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">03 · Timesheet — Adding Shifts</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Recording work shifts and viewing hours</div>
@@ -2438,7 +2438,7 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">4</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Set Start &amp; End Times</span> <span style="font-size:12px;color:var(--text2)">— Type any start and end time (e.g. 10:26). The system previews calculated hours in real time.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">5</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click "+ Add Shift"</span> <span style="font-size:12px;color:var(--text2)">— The shift is saved and appears in the table below. A green toast will confirm the addition.</span></div></div>
             </div>
-            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+            <div style="background:rgba(180,116,10,0.08);border:1px solid rgba(180,116,10,0.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
               <span style="font-size:16px">⏰</span>
               <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Shifts over 24 hours</div><div style="font-size:12px;color:var(--text2)">If a shift spans more than 24 hours on a given day, the system will automatically flag it and ask for a reason before saving. The shift will go into the Approvals queue.</div></div>
             </div>
@@ -2461,7 +2461,7 @@
                 </tbody>
               </table>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;margin-top:16px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;margin-top:16px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Overtime is calculated per pay period.</b> By default, any hours over the configured threshold count as overtime. You can change this in Pay Period Setup → Settings.</div>
             </div>
@@ -2472,16 +2472,16 @@
         <div class="manual-section" id="msec-3" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(245,158,11,0.15);border:1px solid var(--warn);display:flex;align-items:center;justify-content:center;font-size:20px">⚠️</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(180,116,10,0.15);border:1px solid var(--warn);display:flex;align-items:center;justify-content:center;font-size:20px">⚠️</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">04 · Shift Approvals</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Reviewing and authorizing exceptional shifts</div>
               </div>
             </div>
             <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">The Approvals page handles shifts where an employee's combined daily total exceeds 24 hours. These require a supervisor to review the stated reason and either approve or deny the entry before it counts toward payroll.</p>
-            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+            <div style="background:rgba(179,49,47,0.07);border:1px solid rgba(179,49,47,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
               <span style="font-size:16px">🔴</span>
-              <div><div style="font-size:12px;font-weight:600;color:#f87171;margin-bottom:4px">Why this matters</div><div style="font-size:12px;color:var(--text2)">Shifts over 24 hours on a single day are unusual and may indicate a data-entry error. This approval step prevents accidental overtime inflation and ensures a supervisor has reviewed every long shift.</div></div>
+              <div><div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Why this matters</div><div style="font-size:12px;color:var(--text2)">Shifts over 24 hours on a single day are unusual and may indicate a data-entry error. This approval step prevents accidental overtime inflation and ensures a supervisor has reviewed every long shift.</div></div>
             </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Approval Workflow</div>
             <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
@@ -2489,7 +2489,7 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--warn);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#000;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Supervisor reviews the reason</span><div style="font-size:12px;color:var(--text2);margin-top:3px">Go to Approvals in the sidebar. Pending shifts appear with the employee name, date, total hours, and stated reason.</div></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--warn);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#000;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click Approve or Deny</span><div style="font-size:12px;color:var(--text2);margin-top:3px">✅ <b>Approve</b> moves the shift to the approved list and includes it in payroll calculations. ✕ <b>Deny</b> removes the shift from the system entirely.</div></div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">🔴</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Approval count badge:</b> A red badge appears on the Approvals sidebar link whenever there are pending items — so you'll never miss one.</div>
             </div>
@@ -2500,7 +2500,7 @@
         <div class="manual-section" id="msec-4" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">👥</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(14,143,94,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">👥</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">05 · Staff Management</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Adding, editing, and deactivating employees</div>
@@ -2527,7 +2527,7 @@
                 </tbody>
               </table>
             </div>
-            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(180,116,10,0.08);border:1px solid rgba(180,116,10,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">⚠️</span>
               <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Deactivating vs. Deleting</div><div style="font-size:12px;color:var(--text2)">When an employee leaves, set their status to <b>Inactive</b> rather than deleting them. This preserves their historical shift data in reports while keeping them out of active dropdowns.</div></div>
             </div>
@@ -2538,7 +2538,7 @@
         <div class="manual-section" id="msec-5" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">⚙️</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">⚙️</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">06 · Settings &amp; Pay Periods</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Configuring how the system calculates overtime</div>
@@ -2563,7 +2563,7 @@
                 </tbody>
               </table>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;margin-top:16px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;margin-top:16px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Setting a pay period start date:</b> Enter the first day of your first pay period as the anchor date. The system generates all past and future periods automatically from that date.</div>
             </div>
@@ -2574,7 +2574,7 @@
         <div class="manual-section" id="msec-6" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🗂️</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🗂️</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">07 · Report Builder</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Generating payroll, overtime, and attendance reports</div>
@@ -2611,7 +2611,7 @@
         <div class="manual-section" id="msec-7" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🖨️</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🖨️</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">08 · Printing &amp; Exporting</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Getting data out of the system</div>
@@ -2639,7 +2639,7 @@
         <div class="manual-section" id="msec-8" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🔑</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🔑</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">09 · Password Manager</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Managing user login credentials</div>
@@ -2651,9 +2651,9 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Select and type the new password</span> <span style="font-size:12px;color:var(--text2)">— Choose the user from the dropdown and enter the new password in the field provided.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Save the change</span> <span style="font-size:12px;color:var(--text2)">— Click the Update Password button. The new password takes effect immediately for that user's next login.</span></div></div>
             </div>
-            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(179,49,47,0.07);border:1px solid rgba(179,49,47,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">🔒</span>
-              <div><div style="font-size:12px;font-weight:600;color:#f87171;margin-bottom:4px">Security reminder</div><div style="font-size:12px;color:var(--text2)">Passwords are stored within the application. Do not share login credentials between employees. Each person should have their own account.</div></div>
+              <div><div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Security reminder</div><div style="font-size:12px;color:var(--text2)">Passwords are stored within the application. Do not share login credentials between employees. Each person should have their own account.</div></div>
             </div>
           </div>
         </div>
@@ -2662,7 +2662,7 @@
         <div class="manual-section" id="msec-9" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">❓</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(14,143,94,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">❓</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">10 · Tips &amp; Troubleshooting</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Common questions and quick fixes</div>
@@ -2696,10 +2696,10 @@
             </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px">Color &amp; Badge Guide</div>
             <div style="display:flex;flex-direction:column;gap:8px">
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(59,130,246,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--accent);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Blue</b> — General information, active selections, and totals</div></div>
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(16,185,129,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--success);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--success)">Green</b> — Regular (non-OT) shifts, approved items, success</div></div>
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(245,158,11,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--warn);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--warn)">Amber</b> — Overtime hours and warnings requiring attention</div></div>
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(239,68,68,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--danger);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--danger)">Red</b> — Overtime pay costs and items requiring urgent action</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(11,95,168,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--accent);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Blue</b> — General information, active selections, and totals</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(14,143,94,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--success);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--success)">Green</b> — Regular (non-OT) shifts, approved items, success</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(180,116,10,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--warn);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--warn)">Amber</b> — Overtime hours and warnings requiring attention</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(179,49,47,0.07);border-radius:8px"><div style="width:12px;height:12px;border-radius:50%;background:var(--danger);flex-shrink:0"></div><div style="font-size:12px;color:var(--text2)"><b style="color:var(--danger)">Red</b> — Overtime pay costs and items requiring urgent action</div></div>
             </div>
             <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text3);font-family:var(--mono)">American Safety Options, Inc. · Staff Overtime Management System · Internal Use Only</div>
           </div>
@@ -2709,7 +2709,7 @@
         <div class="manual-section" id="msec-10" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📍</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📍</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">07 · Locations</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Managing work site names and billing rates</div>
@@ -2722,7 +2722,7 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Enter the billing rate (optional)</span> <span style="font-size:12px;color:var(--text2)">— The per-hour rate charged to that client or contract. Shown in location-based cost reports.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click Add Location</span> <span style="font-size:12px;color:var(--text2)">— The location immediately appears in all Timesheet and Report Builder dropdowns.</span></div></div>
             </div>
-            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(180,116,10,0.08);border:1px solid rgba(180,116,10,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">⚠️</span>
               <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Deleting a location</div><div style="font-size:12px;color:var(--text2)">Removing a location does not delete past shifts logged at that site — historical records are preserved. However, the location will no longer be selectable for new shifts. Rename rather than delete if the site is still active.</div></div>
             </div>
@@ -2733,7 +2733,7 @@
         <div class="manual-section" id="msec-11" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">💵</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">💵</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">09 · Pay Period Report</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Payroll summary for a single pay period</div>
@@ -2747,7 +2747,7 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Review the staff table</span> <span style="font-size:12px;color:var(--text2)">— Each row shows one employee's regular hours, OT hours, regular pay, OT pay, and total shift pay. A totals row appears at the bottom.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">4</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Print the report</span> <span style="font-size:12px;color:var(--text2)">— Click 🖨️ Print Report to produce a clean printed copy with the ASO letterhead for filing or sign-off.</span></div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">OT pay is shown in red</b> to make it easy to spot high-cost periods at a glance. Regular pay appears in the standard text colour and total shift pay is highlighted in blue.</div>
             </div>
@@ -2758,7 +2758,7 @@
         <div class="manual-section" id="msec-12" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(59,130,246,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📅</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(11,95,168,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📅</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">10 · Monthly Report</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Overtime summary by calendar month</div>
@@ -2771,7 +2771,7 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Review summary cards</span> <span style="font-size:12px;color:var(--text2)">— Key totals for the month are shown at the top: shifts worked, hours, OT hours, and total payroll.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Print or file</span> <span style="font-size:12px;color:var(--text2)">— Use the 🖨️ Print Monthly button for a formatted printout suitable for payroll records.</span></div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Tip:</b> The Monthly Report spans calendar months regardless of pay period boundaries, making it ideal for month-end cost reports to management. Use the Pay Period Report when you need payroll-boundary alignment.</div>
             </div>
@@ -2782,7 +2782,7 @@
         <div class="manual-section" id="msec-13" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(245,158,11,0.15);border:1px solid var(--warn);display:flex;align-items:center;justify-content:center;font-size:20px">🏆</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(180,116,10,0.15);border:1px solid var(--warn);display:flex;align-items:center;justify-content:center;font-size:20px">🏆</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">11 · OT Leaderboard</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Ranked staff by overtime for any pay period</div>
@@ -2795,7 +2795,7 @@
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🔀</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Sort Options</div><div style="font-size:12px;color:var(--text2)">Rank by OT Hours, OT Pay, Total Hours, or Total Pay using the "Rank by" dropdown.</div></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">📋</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">All Staff Detail</div><div style="font-size:12px;color:var(--text2)">A secondary table lists every staff member's hours for the period, including those with zero OT.</div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Also visible on the Dashboard:</b> A condensed version of the leaderboard appears in the Dashboard panel for the current period. Navigate to the dedicated Leaderboard page for full-screen detail and printable output.</div>
             </div>
@@ -2806,7 +2806,7 @@
         <div class="manual-section" id="msec-14" style="display:none">
           <div class="card" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-              <div style="width:40px;height:40px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">🗄️</div>
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(14,143,94,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">🗄️</div>
               <div>
                 <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">12 · Data Manager</div>
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Backup, restore, and reset the database</div>
@@ -2823,17 +2823,17 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--success);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">1</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click ⬆️ Import Backup</span> <span style="font-size:12px;color:var(--text2)">— A file picker opens. Select your <code style="background:var(--border);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:10px">.json</code> backup file.</span></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--success);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Confirm the import</span> <span style="font-size:12px;color:var(--text2)">— A dialog will show the backup date and ask you to confirm. Importing <b>replaces all current data</b>, so export a fresh backup first if needed.</span></div></div>
             </div>
-            <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+            <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
               <span style="font-size:16px">💡</span>
               <div>
                 <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:4px">What's included in a backup</div>
                 <div style="font-size:12px;color:var(--text2)">All shifts · Staff roster · Locations &amp; rates · Users &amp; passwords · Pay period config · Approved exceptions · Date correction log</div>
               </div>
             </div>
-            <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(179,49,47,0.07);border:1px solid rgba(179,49,47,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">⛔</span>
               <div>
-                <div style="font-size:12px;font-weight:600;color:#f87171;margin-bottom:4px">Factory Reset — use with extreme caution</div>
+                <div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Factory Reset — use with extreme caution</div>
                 <div style="font-size:12px;color:var(--text2)">The <b>Reset to Factory Defaults</b> button permanently deletes all data — shifts, staff, config, and users. This cannot be undone. Always export a backup before using this option.</div>
               </div>
             </div>
@@ -2890,9 +2890,9 @@
   <div class="modal" style="max-width:480px">
     <div class="modal-title" style="color:var(--danger)">🗑️ Delete Shift?</div>
     <div class="modal-sub">// this action cannot be undone</div>
-    <div class="warn-box" style="border-color:rgba(239,68,68,0.35);background:rgba(239,68,68,0.07);margin-bottom:16px">
-      <div class="warn-box-title" style="color:#f87171">⚠️ You are about to permanently delete this shift</div>
-      <p style="font-size:12px;color:#fca5a5;margin-top:6px">All pay calculations for this shift will be removed. If this was an error, use ✏️ Edit to correct the times instead.</p>
+    <div class="warn-box" style="border-color:rgba(179,49,47,0.35);background:rgba(179,49,47,0.07);margin-bottom:16px">
+      <div class="warn-box-title" style="color:#C74B48">⚠️ You are about to permanently delete this shift</div>
+      <p style="font-size:12px;color:#D97F7C;margin-top:6px">All pay calculations for this shift will be removed. If this was an error, use ✏️ Edit to correct the times instead.</p>
     </div>
     <div id="del-modal-details" style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:20px"></div>
     <div class="modal-actions">
@@ -2909,10 +2909,10 @@
   <div class="modal" style="max-width:540px">
     <div class="modal-title" style="color:var(--accent2)">✏️ Correct Shift</div>
     <div class="modal-sub" id="edit-modal-who">// editing shift entry</div>
-    <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:var(--text2)">
+    <div style="background:rgba(11,95,168,0.07);border:1px solid rgba(11,95,168,0.25);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:var(--text2)">
       <b style="color:var(--accent2)">💡 Correction note:</b> Editing a shift marks it as <span style="color:var(--warn);font-family:var(--mono);font-size:11px">✏️ Corrected</span> in the timesheet log for audit visibility. Any previously approved 24-hr exception for this shift will be cleared.
     </div>
-    <div id="edit-period-banner" style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;display:flex;align-items:center;gap:10px">
+    <div id="edit-period-banner" style="background:rgba(14,143,94,0.07);border:1px solid rgba(14,143,94,0.25);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;display:flex;align-items:center;gap:10px">
       <span style="font-size:15px">📆</span>
       <div>
         <span style="color:var(--text3);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Pay Period (locked)</span><br>
@@ -2926,7 +2926,7 @@
       <div class="form-field">
         <label>Location</label>
         <select id="edit-sf-location" onchange="onEditLocationChange()"></select>
-        <div id="edit-sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#f59e0b;font-family:var(--mono);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
+        <div id="edit-sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#946008;font-family:var(--mono);background:rgba(180,116,10,0.1);border:1px solid rgba(180,116,10,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
       </div>
       <div class="form-field"><label>Shift Start</label><input type="time" id="edit-sf-start" oninput="updateEditPreview()"></div>
       <div class="form-field"><label>Shift End</label><input type="time" id="edit-sf-end" oninput="updateEditPreview()"></div>
@@ -2935,7 +2935,7 @@
       </div>
     </div>
     <!-- Edit staff confirmation banner -->
-    <div id="edit-sf-staff-confirm" style="display:none;margin-bottom:16px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
+    <div id="edit-sf-staff-confirm" style="display:none;margin-bottom:16px;background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
       <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;font-family:var(--display);flex-shrink:0" id="edit-sf-staff-avatar"></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--display)" id="edit-sf-staff-name"></div>
@@ -3129,7 +3129,7 @@ function dbImportBackup(input) {
 async function loadAppData() {
   const overlay = document.createElement('div');
   overlay.id = 'aso-connecting';
-  overlay.style.cssText = 'position:fixed;inset:0;background:#050c18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#F4F6FA;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
   overlay.innerHTML =
     '<svg width="80" height="80" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' +
     '<defs><radialGradient id="cg" cx="50%" cy="35%" r="65%">' +
@@ -3137,9 +3137,9 @@ async function loadAppData() {
     '</radialGradient></defs>' +
     '<path d="M32 2 L58 14 L58 36 C58 50 46 60 32 62 C18 60 6 50 6 36 L6 14 Z" fill="url(#cg)" stroke="#3b82f6" stroke-width="2.5"/>' +
     '<text x="32" y="37" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#3b82f6" text-anchor="middle">ASO</text>' +
-    '<text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#60a5fa" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>' +
-    '<div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;color:#cdd9ec">American Safety Options</div>' +
-    '<div id="aso-conn-msg" style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#3a5878;letter-spacing:.5px">Connecting to database\u2026</div>';
+    '<text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#4A9FE0" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>' +
+    '<div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;color:#16283C">American Safety Options</div>' +
+    '<div id="aso-conn-msg" style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5D7288;letter-spacing:.5px">Connecting to database\u2026</div>';
   document.body.appendChild(overlay);
   const msgEl = document.getElementById('aso-conn-msg');
 
@@ -3156,14 +3156,14 @@ async function loadAppData() {
 
   if (!data) {
     overlay.innerHTML =
-      '<div style="text-align:center;color:#f87171;font-family:Montserrat,sans-serif;max-width:440px;padding:48px">' +
+      '<div style="text-align:center;color:#B3312F;font-family:Montserrat,sans-serif;max-width:440px;padding:48px">' +
       '<div style="font-size:36px;margin-bottom:16px">\u26A0\uFE0F</div>' +
       '<div style="font-size:18px;font-weight:700;margin-bottom:12px">Cannot reach ASO Server</div>' +
-      '<div style="font-size:13px;color:#7290b0;line-height:1.7">Make sure <b>server.js</b> is running.<br>' +
+      '<div style="font-size:13px;color:#4C607A;line-height:1.7">Make sure <b>server.js</b> is running.<br>' +
       'Open a terminal in the install folder and run:<br>' +
-      '<code style="background:#0a1525;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#4aaff5">node server.js</code><br><br>' +
+      '<code style="background:#16283C;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#6BB6F0">node server.js</code><br><br>' +
       'Then refresh this page.</div>' +
-      '<button onclick="location.reload()" style="margin-top:24px;background:#1a7bd8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
+      '<button onclick="location.reload()" style="margin-top:24px;background:#0B5FA8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
     return false;
   }
 
@@ -3631,7 +3631,7 @@ function openNewPeriodModal() {
         </div>
       </div>
     </div>
-    <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.6">
+    <div style="background:rgba(14,143,94,0.07);border:1px solid rgba(14,143,94,0.2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.6">
       <b style="color:var(--success)">The new pay period is now active.</b> You can begin entering shift data for 
       <b style="color:var(--text)">${cpLabel}</b>.<br>
       <span style="font-size:12px;color:var(--text3)">OT threshold: ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period · Shifts entered will automatically be assigned to this period.</span>
@@ -3694,7 +3694,7 @@ function renderNewPeriodBanner() {
     </div>`;
   } else if (shiftCount === 0) {
     banner.style.display = 'block';
-    banner.innerHTML = `<div class="new-period-banner" style="border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.06)">
+    banner.innerHTML = `<div class="new-period-banner" style="border-color:rgba(180,116,10,0.3);background:rgba(180,116,10,0.06)">
       <div class="new-period-icon">📋</div>
       <div class="new-period-content">
         <div class="new-period-title" style="color:var(--warn)">Current Period — No Shifts Entered</div>
@@ -3740,7 +3740,7 @@ function renderTimesheetPeriodContext() {
       <div style="font-family:var(--mono);font-size:12px;color:var(--text2)">${start} → ${end}</div>
     </div>
     ${isCurrent && daysLeft !== null ? `<div style="margin-left:8px"><div class="period-context-label">Days Left</div><div style="font-family:var(--mono);font-size:12px;color:${daysLeft<=3?'var(--warn)':'var(--text2)'}">${daysLeft}</div></div>` : ''}
-    <span class="period-context-badge" style="margin-left:8px;background:${isCurrent?'rgba(16,185,129,0.12)':'rgba(59,130,246,0.12)'};color:${isCurrent?'var(--success)':'var(--accent2)'};border-color:${isCurrent?'rgba(16,185,129,0.25)':'rgba(59,130,246,0.25)'}">${isCurrent ? '● CURRENT' : '◉ PAST PERIOD'}</span>
+    <span class="period-context-badge" style="margin-left:8px;background:${isCurrent?'rgba(14,143,94,0.12)':'rgba(11,95,168,0.12)'};color:${isCurrent?'var(--success)':'var(--accent2)'};border-color:${isCurrent?'rgba(14,143,94,0.25)':'rgba(11,95,168,0.25)'}">${isCurrent ? '● CURRENT' : '◉ PAST PERIOD'}</span>
     <span class="period-context-shifts">${shiftCount} shift${shiftCount!==1?'s':''} in period</span>
   `;
 }
@@ -3842,24 +3842,24 @@ function renderPayConfigStatusBanner() {
   const daysLeft = Math.max(0, Math.ceil((new Date(cp.end + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1);
 
   if (isInCurrentPeriod) {
-    banner.innerHTML = `<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    banner.innerHTML = `<div style="background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <div style="font-size:28px">✅</div>
       <div style="flex:1">
         <div style="font-family:var(--display);font-size:15px;font-weight:700;color:var(--success)">Pay Period is Current</div>
         <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:3px">Active Period: ${cpLabel} · ${daysLeft} day${daysLeft!==1?'s':''} remaining · ${shiftCount} shift${shiftCount!==1?'s':''} logged</div>
       </div>
-      <span style="background:rgba(16,185,129,0.15);color:var(--success);border:1px solid rgba(16,185,129,0.3);border-radius:20px;padding:5px 14px;font-size:12px;font-family:var(--mono)">● ACTIVE</span>
+      <span style="background:rgba(14,143,94,0.15);color:var(--success);border:1px solid rgba(14,143,94,0.3);border-radius:20px;padding:5px 14px;font-size:12px;font-family:var(--mono)">● ACTIVE</span>
     </div>`;
   } else {
     // Period has lapsed — show warning with auto-advance option
     const prevCP = getPrevPeriodDates();
     const daysBehind = Math.ceil((new Date(today + 'T00:00:00') - new Date(cp.end + 'T00:00:00')) / 86400000);
-    banner.innerHTML = `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:12px;padding:16px 20px">
+    banner.innerHTML = `<div style="background:rgba(179,49,47,0.08);border:1px solid rgba(179,49,47,0.35);border-radius:12px;padding:16px 20px">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
         <div style="font-size:28px">⚠️</div>
         <div style="flex:1">
           <div style="font-family:var(--display);font-size:15px;font-weight:700;color:var(--danger)">Pay Period Has Passed</div>
-          <div style="font-size:12px;color:#fca5a5;font-family:var(--mono);margin-top:3px">The configured period ended on <b>${cp.end}</b> — ${daysBehind} day${daysBehind!==1?'s':''} ago. Today (${today}) is outside the active window.</div>
+          <div style="font-size:12px;color:#D97F7C;font-family:var(--mono);margin-top:3px">The configured period ended on <b>${cp.end}</b> — ${daysBehind} day${daysBehind!==1?'s':''} ago. Today (${today}) is outside the active window.</div>
         </div>
       </div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">
@@ -4121,8 +4121,8 @@ function renderWeeklyHoursTracker(selectedPeriod, isCurrentPeriod) {
     const reached = hrs >= target;
     const nearTarget = hrs >= target * 0.85 && !reached;
     const color = reached ? 'var(--success)' : nearTarget ? 'var(--warn)' : 'var(--accent)';
-    const bgColor = reached ? 'rgba(13,158,116,0.15)' : nearTarget ? 'rgba(212,146,12,0.12)' : 'rgba(26,123,216,0.1)';
-    const borderColor = reached ? 'rgba(13,158,116,0.35)' : nearTarget ? 'rgba(212,146,12,0.3)' : 'rgba(26,123,216,0.2)';
+    const bgColor = reached ? 'rgba(14,143,94,0.15)' : nearTarget ? 'rgba(180,116,10,0.12)' : 'rgba(11,95,168,0.1)';
+    const borderColor = reached ? 'rgba(14,143,94,0.35)' : nearTarget ? 'rgba(180,116,10,0.3)' : 'rgba(11,95,168,0.2)';
     const statusIcon = reached ? '✅' : nearTarget ? '🟡' : '⬜';
     const badge = reached
       ? `<span class="badge badge-success" style="font-size:9px;padding:2px 7px">MET</span>`
@@ -4137,7 +4137,7 @@ function renderWeeklyHoursTracker(selectedPeriod, isCurrentPeriod) {
           <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">/ ${target} hrs</span>
           ${badge}${nowDot}
         </div>
-        <div style="height:6px;border-radius:4px;background:rgba(26,123,216,0.08);overflow:hidden;border:1px solid ${borderColor}">
+        <div style="height:6px;border-radius:4px;background:rgba(11,95,168,0.08);overflow:hidden;border:1px solid ${borderColor}">
           <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .4s"></div>
         </div>
       </div>`;
@@ -4166,19 +4166,19 @@ function renderWeeklyHoursTracker(selectedPeriod, isCurrentPeriod) {
 
   let html = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
-      <div style="background:rgba(13,158,116,0.1);border:1px solid rgba(13,158,116,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
+      <div style="background:rgba(14,143,94,0.1);border:1px solid rgba(14,143,94,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Week 1 ≥ 40h</div>
         <div style="font-family:var(--display);font-size:22px;font-weight:700;color:var(--success)">${metW1}<span style="font-size:13px;color:var(--text3)">/${staffData.length}</span></div>
       </div>
-      <div style="background:rgba(13,158,116,0.1);border:1px solid rgba(13,158,116,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
+      <div style="background:rgba(14,143,94,0.1);border:1px solid rgba(14,143,94,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Week 2 ≥ 40h</div>
         <div style="font-family:var(--display);font-size:22px;font-weight:700;color:var(--success)">${metW2}<span style="font-size:13px;color:var(--text3)">/${staffData.length}</span></div>
       </div>
-      <div style="background:rgba(26,123,216,0.1);border:1px solid rgba(26,123,216,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
+      <div style="background:rgba(11,95,168,0.1);border:1px solid rgba(11,95,168,0.25);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Period ≥ 80h</div>
         <div style="font-family:var(--display);font-size:22px;font-weight:700;color:var(--accent2)">${metPeriod}<span style="font-size:13px;color:var(--text3)">/${staffData.length}</span></div>
       </div>
-      <div style="background:rgba(200,168,75,0.08);border:1px solid rgba(200,168,75,0.2);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
+      <div style="background:rgba(169,121,31,0.08);border:1px solid rgba(169,121,31,0.2);border-radius:8px;padding:10px 16px;text-align:center;min-width:110px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Both Weeks Met</div>
         <div style="font-family:var(--display);font-size:22px;font-weight:700;color:var(--gold)">${metBoth}<span style="font-size:13px;color:var(--text3)">/${staffData.length}</span></div>
       </div>
@@ -4209,7 +4209,7 @@ function renderWeeklyHoursTracker(selectedPeriod, isCurrentPeriod) {
     const w1Met = w1Hrs >= 40;
     const w2Met = w2Hrs >= 40;
     const periodMet = totalHrs >= 80;
-    const rowHighlight = w1Met && w2Met ? 'background:rgba(13,158,116,0.04)' : '';
+    const rowHighlight = w1Met && w2Met ? 'background:rgba(14,143,94,0.04)' : '';
     const statusBadge = w1Met && w2Met
       ? `<span class="badge badge-success">✅ Full</span>`
       : (w1Met || w2Met)
@@ -4310,8 +4310,8 @@ function renderDashboardTrendChart() {
     data: {
       labels,
       datasets: [
-        { label: 'Regular Pay', data: regData, backgroundColor: 'rgba(74,175,245,0.75)', borderRadius: 4, stack: 'pay' },
-        { label: 'OT Pay', data: otData, backgroundColor: 'rgba(212,146,12,0.85)', borderRadius: 4, stack: 'pay' }
+        { label: 'Regular Pay', data: regData, backgroundColor: 'rgba(25,118,201,0.75)', borderRadius: 4, stack: 'pay' },
+        { label: 'OT Pay', data: otData, backgroundColor: 'rgba(180,116,10,0.85)', borderRadius: 4, stack: 'pay' }
       ]
     },
     options: {
@@ -4319,11 +4319,11 @@ function renderDashboardTrendChart() {
       maintainAspectRatio: false,
       animation: { duration: 700, easing: 'easeOutCubic' },
       scales: {
-        x: { stacked: true, ticks: { color: '#7290b0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { stacked: true, ticks: { color: '#7290b0', font: { size: 10 }, callback: v => '$' + v }, grid: { color: 'rgba(255,255,255,0.06)' } }
+        x: { stacked: true, ticks: { color: '#4C607A', font: { size: 10 } }, grid: { color: 'rgba(22,40,60,0.06)' } },
+        y: { stacked: true, ticks: { color: '#4C607A', font: { size: 10 }, callback: v => '$' + v }, grid: { color: 'rgba(22,40,60,0.08)' } }
       },
       plugins: {
-        legend: { labels: { color: '#cdd9ec', font: { size: 11 }, boxWidth: 12 } },
+        legend: { labels: { color: '#16283C', font: { size: 11 }, boxWidth: 12 } },
         tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + $fmt(ctx.parsed.y) } }
       }
     }
@@ -4368,9 +4368,9 @@ function renderDashboard() {
   const dashAlert = document.getElementById('dash-approval-alert');
   if (PENDING_APPROVALS.length > 0) {
     dashAlert.style.display = 'block';
-    dashAlert.innerHTML = `<div class="ot-alert" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.25)">
+    dashAlert.innerHTML = `<div class="ot-alert" style="background:rgba(180,116,10,0.08);border-color:rgba(180,116,10,0.25)">
       <span class="ot-alert-icon">⚠️</span>
-      <div class="ot-alert-text" style="color:#fbbf24">
+      <div class="ot-alert-text" style="color:#C98A1E">
         <b>${PENDING_APPROVALS.length} shift${PENDING_APPROVALS.length!==1?'s':''} pending supervisor approval</b> — 
         Combined daily hours exceed 24 hrs. 
         <a href="#" onclick="nav('approvals',document.querySelector('[data-page=approvals]'));return false;" style="color:var(--warn);text-decoration:underline">Review now →</a>
@@ -4510,7 +4510,7 @@ function renderDashboard() {
     </tr>`;
     if (selectedHouse) {
       // Show staff details when a specific house is selected
-      locHtml += `<tr style="background:rgba(26,123,216,0.04)">
+      locHtml += `<tr style="background:rgba(11,95,168,0.04)">
         <td colspan="10" style="padding:10px 16px">
           <div style="font-size:11px;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">👥 Staff Assigned to ${esc(l.name)}</div>
           ${assignedStaff.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">` + assignedStaff.map(s => {
@@ -4945,7 +4945,7 @@ function renderTimesheetTable() {
     const name = st ? `${esc(st.last)}, ${esc(st.first)}` : esc(s.staff);
     const hasOT = s.otHrs > 0;
     const isApproved = s.approvedEx !== null;
-    html += `<tr class="${s._new?'new-row':''}" style="${hasOT?'background:rgba(239,68,68,0.04)':''}">
+    html += `<tr class="${s._new?'new-row':''}" style="${hasOT?'background:rgba(179,49,47,0.04)':''}">
       <td class="mono" style="color:var(--text3)">${i+1}</td>
       <td class="mono">${esc(s.date)}</td>
       <td style="color:var(--text);font-weight:500">${name}</td>
@@ -4962,7 +4962,7 @@ function renderTimesheetTable() {
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
       <td>${isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : '')}</td>
       <td style="font-size:11px;color:var(--text3);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${s.period}</td>
-      <td style="white-space:nowrap">${userCan('editShift') ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(59,130,246,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift">✕ Delete</button>` : ''}</td>
+      <td style="white-space:nowrap">${userCan('editShift') ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(11,95,168,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift">✕ Delete</button>` : ''}</td>
     </tr>`;
   });
 
@@ -5035,7 +5035,7 @@ function addShift() {
     document.getElementById('modal-24hr-msg').innerHTML =
       `<b>${name}</b> already has <b>${numFmt(check.existing)} hrs</b> recorded on <b>${date}</b>. ` +
       `Adding this <b>${numFmt(hours)}-hr shift</b> would bring the daily total to ` +
-      `<b style="color:#f87171">${numFmt(check.total)} hours</b> — exceeding the 24-hour daily maximum.<br><br>` +
+      `<b style="color:#C74B48">${numFmt(check.total)} hours</b> — exceeding the 24-hour daily maximum.<br><br>` +
       `Staff may work multiple shifts across different locations on the same day, but combined hours cannot exceed 24 without approval.`;
 
     // Build details table
@@ -5246,8 +5246,8 @@ function onEditDateChange() {
   const periodEnd = modal.getAttribute('data-period-end');
   if (!date || !periodStart || !periodEnd) return;
   const outOfPeriod = date < periodStart || date > periodEnd;
-  banner.style.background = outOfPeriod ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.07)';
-  banner.style.borderColor = outOfPeriod ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.25)';
+  banner.style.background = outOfPeriod ? 'rgba(179,49,47,0.08)' : 'rgba(14,143,94,0.07)';
+  banner.style.borderColor = outOfPeriod ? 'rgba(179,49,47,0.35)' : 'rgba(14,143,94,0.25)';
   const labelEl = document.getElementById('edit-period-label');
   if (labelEl) labelEl.style.color = outOfPeriod ? 'var(--danger2)' : 'var(--success)';
   dateEl.style.borderColor = outOfPeriod ? 'var(--danger)' : '';
@@ -5590,7 +5590,7 @@ function renderPayrollPage() {
   if (rec && rec.finalized) {
     banner.innerHTML = `<div style="background:rgba(34,197,94,.12);border:1px solid var(--success);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">✅ <b>Payroll finalized</b> for this period by ${esc(rec.finalizedBy)} on ${esc(rec.finalizedAt)}. Timesheets are locked.</div>`;
   } else if (rec && rec.confirmed) {
-    banner.innerHTML = `<div style="background:rgba(59,130,246,.12);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">🔒 <b>Timesheets confirmed</b> by ${esc(rec.confirmedBy)} on ${esc(rec.confirmedAt)}. Enter tax rates below to finalize payroll.</div>`;
+    banner.innerHTML = `<div style="background:rgba(11,95,168,.12);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">🔒 <b>Timesheets confirmed</b> by ${esc(rec.confirmedBy)} on ${esc(rec.confirmedAt)}. Enter tax rates below to finalize payroll.</div>`;
   } else {
     banner.innerHTML = '';
   }
@@ -5806,7 +5806,7 @@ function openStubPrintWindow(bodyHtml, title) {
     .pay-stub th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#64748b;padding:6px 8px;border-bottom:1px solid #cbd5e1}
     .pay-stub td{padding:7px 8px;border-bottom:1px solid #e2e8f0;color:#1e293b}
     .stub-section-title{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#475569;margin:18px 0 8px}
-    .pay-stub-net-banner{display:flex;justify-content:space-between;align-items:center;background:#0d9e74;color:#fff;border-radius:10px;padding:16px 22px;margin-top:20px}
+    .pay-stub-net-banner{display:flex;justify-content:space-between;align-items:center;background:#0A7049;color:#fff;border-radius:10px;padding:16px 22px;margin-top:20px}
     .pay-stub-net-label{font-weight:700;font-size:13px;letter-spacing:.4px}
     .pay-stub-net-val{font-weight:800;font-size:22px}
     .pay-stub-ytd{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
@@ -6470,15 +6470,15 @@ function updateLocEditImpact() {
 
   impactDiv.style.display = 'block';
   if (retro === 'forward') {
-    impactDiv.innerHTML = `<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
+    impactDiv.innerHTML = `<div style="background:rgba(11,95,168,0.08);border:1px solid rgba(11,95,168,0.2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
       <b style="color:var(--accent2)">ℹ️ Forward only.</b> The ${totalAtLoc} existing shift(s) at <b>${l.name}</b> are unaffected. Only new shifts will use ${$fmt(newRate)}/hr.
     </div>`;
   } else if (retro === 'date' && !fromDate) {
-    impactDiv.innerHTML = `<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
+    impactDiv.innerHTML = `<div style="background:rgba(180,116,10,0.08);border:1px solid rgba(180,116,10,0.25);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
       <b style="color:var(--warn)">⚠️</b> Please select a date above.
     </div>`;
   } else {
-    impactDiv.innerHTML = `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
+    impactDiv.innerHTML = `<div style="background:rgba(179,49,47,0.08);border:1px solid rgba(179,49,47,0.25);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2)">
       <b style="color:var(--danger)">⚡ ${affected} shift(s)</b> at <b>${l.name}</b> will be recalculated using ${$fmt(newRate)}/hr${retro==='all' ? ' for all time' : (' from ' + fromDate + ' onward')}.
     </div>`;
   }
@@ -6694,13 +6694,13 @@ function renderDataManager() {
   const banner = document.getElementById('dm-status-banner');
   const shiftCount = SHIFTS ? SHIFTS.length : 0;
   const staffCount = STAFF ? STAFF.length : 0;
-  banner.innerHTML = `<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  banner.innerHTML = `<div style="background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
     <div style="font-size:28px">🗄️</div>
     <div style="flex:1">
       <div style="font-family:var(--display);font-size:15px;font-weight:700;color:var(--success)">SQLite Database Active — All Data is Persisted</div>
       <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:3px">Records: ${shiftCount} shifts · ${staffCount} staff · Auto-saves every change · Use "Export Backup" to download a JSON backup</div>
     </div>
-    <span style="background:rgba(16,185,129,0.15);color:var(--success);border:1px solid rgba(16,185,129,0.3);border-radius:20px;padding:5px 14px;font-size:12px;font-family:var(--mono)">● SQLITE</span>
+    <span style="background:rgba(14,143,94,0.15);color:var(--success);border:1px solid rgba(14,143,94,0.3);border-radius:20px;padding:5px 14px;font-size:12px;font-family:var(--mono)">● SQLITE</span>
   </div>`;
 
   // Stats
@@ -7098,7 +7098,7 @@ function rbBuildOvertimeReport(allComputed, fromDate, toDate, staffIds) {
     const lbl = d.otHrs >= 30 ? '🔴 HIGH' : d.otHrs >= 15 ? '🟠 MEDIUM' : '🟡 LOW';
     out += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--danger),#f59e0b);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:13px;color:#fff;flex-shrink:0">#${i+1}</div>
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--danger),#946008);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:13px;color:#fff;flex-shrink:0">#${i+1}</div>
         <div>
           <div style="font-family:var(--display);font-size:14px;font-weight:700;color:var(--text)">${name}</div>
           <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${sid} · ${d.shifts.length} shifts with OT</div>
@@ -7453,7 +7453,7 @@ function renderAuditTrail() {
       const metaHtml = e.meta ? `<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:4px;background:var(--surface2);border-radius:6px;padding:5px 10px;line-height:1.7">${esc(e.meta)}</div>` : '';
       const timeStr = e.at ? e.at.split(',').slice(1).join(',').trim() : '';
       html += `<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid rgba(27,48,85,0.4);align-items:flex-start">
-        <div style="width:32px;height:32px;border-radius:8px;background:rgba(26,123,216,0.1);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${icon}</div>
+        <div style="width:32px;height:32px;border-radius:8px;background:rgba(11,95,168,0.1);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${icon}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
             <span class="badge ${badgeCls}" style="font-size:10px">${esc(typeLabel)}</span>

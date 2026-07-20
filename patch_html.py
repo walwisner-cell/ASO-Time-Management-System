@@ -153,7 +153,7 @@ function dbImportBackup(input) {
 async function loadAppData() {
   const overlay = document.createElement('div');
   overlay.id = 'aso-connecting';
-  overlay.style.cssText = 'position:fixed;inset:0;background:#050c18;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#F4F6FA;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px;';
   overlay.innerHTML =
     '<svg width="80" height="80" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' +
     '<defs><radialGradient id="cg" cx="50%" cy="35%" r="65%">' +
@@ -161,9 +161,9 @@ async function loadAppData() {
     '</radialGradient></defs>' +
     '<path d="M32 2 L58 14 L58 36 C58 50 46 60 32 62 C18 60 6 50 6 36 L6 14 Z" fill="url(#cg)" stroke="#3b82f6" stroke-width="2.5"/>' +
     '<text x="32" y="37" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#3b82f6" text-anchor="middle">ASO</text>' +
-    '<text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#60a5fa" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>' +
-    '<div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;color:#cdd9ec">American Safety Options</div>' +
-    '<div id="aso-conn-msg" style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#3a5878;letter-spacing:.5px">Connecting to database\u2026</div>';
+    '<text x="32" y="48" font-family="Georgia,serif" font-size="6" fill="#4A9FE0" text-anchor="middle" letter-spacing="2">SAFETY</text></svg>' +
+    '<div style="font-family:Montserrat,sans-serif;font-size:15px;font-weight:700;color:#16283C">American Safety Options</div>' +
+    '<div id="aso-conn-msg" style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#5D7288;letter-spacing:.5px">Connecting to database\u2026</div>';
   document.body.appendChild(overlay);
   const msgEl = document.getElementById('aso-conn-msg');
 
@@ -180,14 +180,14 @@ async function loadAppData() {
 
   if (!data) {
     overlay.innerHTML =
-      '<div style="text-align:center;color:#f87171;font-family:Montserrat,sans-serif;max-width:440px;padding:48px">' +
+      '<div style="text-align:center;color:#B3312F;font-family:Montserrat,sans-serif;max-width:440px;padding:48px">' +
       '<div style="font-size:36px;margin-bottom:16px">\u26A0\uFE0F</div>' +
       '<div style="font-size:18px;font-weight:700;margin-bottom:12px">Cannot reach ASO Server</div>' +
-      '<div style="font-size:13px;color:#7290b0;line-height:1.7">Make sure <b>server.js</b> is running.<br>' +
+      '<div style="font-size:13px;color:#4C607A;line-height:1.7">Make sure <b>server.js</b> is running.<br>' +
       'Open a terminal in the install folder and run:<br>' +
-      '<code style="background:#0a1525;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#4aaff5">node server.js</code><br><br>' +
+      '<code style="background:#16283C;padding:4px 12px;border-radius:6px;margin:8px 0;display:inline-block;color:#6BB6F0">node server.js</code><br><br>' +
       'Then refresh this page.</div>' +
-      '<button onclick="location.reload()" style="margin-top:24px;background:#1a7bd8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
+      '<button onclick="location.reload()" style="margin-top:24px;background:#0B5FA8;border:none;border-radius:8px;padding:10px 28px;color:#fff;font-size:14px;font-family:Montserrat,sans-serif;font-weight:700;cursor:pointer">Retry</button></div>';
     return false;
   }
 

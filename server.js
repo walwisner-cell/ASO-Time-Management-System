@@ -423,6 +423,7 @@ async function main() {
 
   app.get('/', (req, res) => {
     if (fs.existsSync(HTML_FILE)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(HTML_FILE);
     } else {
       res.status(404).send(`
