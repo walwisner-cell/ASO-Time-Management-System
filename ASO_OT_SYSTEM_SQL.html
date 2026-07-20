@@ -1529,6 +1529,7 @@
       <div class="nav-item" data-page="leaderboard" onclick="nav('leaderboard',this)"><span class="nav-icon">🏆</span>OT Leaderboard</div>
       <div class="nav-section">Setup</div>
       <div class="nav-item" data-page="payconfig" onclick="nav('payconfig',this)"><span class="nav-icon">⚙️</span>Pay Period Setup</div>
+      <div class="nav-item" data-page="taxbenefits" onclick="nav('taxbenefits',this)"><span class="nav-icon">🧾</span>Taxes &amp; Benefits</div>
       <div class="nav-item" data-page="staff" onclick="nav('staff',this)"><span class="nav-icon">👥</span>Staff Register</div>
       <div class="nav-item" data-page="locations" onclick="nav('locations',this)"><span class="nav-icon">📍</span>Locations</div>
       <div class="nav-item" data-page="passwords" onclick="nav('passwords',this)"><span class="nav-icon">🔐</span>Passwords</div>
@@ -2173,11 +2174,21 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- DEFAULT TAXES & BENEFITS -->
-        <div class="card section-gap">
+      <!-- TAXES & BENEFITS (dedicated page) -->
+      <div class="page" id="page-taxbenefits">
+        <div class="print-header">American Safety Options — Taxes &amp; Benefits &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">Taxes &amp; Benefits</div>
+            <div class="page-sub">Set your standard withholdings and benefits once — every new pay period starts pre-filled with this list</div>
+          </div>
+          <button class="print-btn" onclick="printCurrentPage()">🖨️ Print</button>
+        </div>
+        <div class="card">
           <div class="card-title">🧾 Default Taxes &amp; Benefits</div>
-          <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">Set these up once and every new pay period's Payroll &amp; Taxes step will start pre-filled with this list — no need to re-enter your standard withholdings and benefits each time. You can still adjust the list for an individual period without changing this default.</p>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">Add, remove, or rename any withholding, tax, or benefit deduction — each can be a percentage of gross pay or a flat dollar amount per paycheck. This list becomes the starting point for Step 2 of every new pay period on the Payroll &amp; Taxes page. You can still adjust the list for one specific period without changing this default.</p>
           <div id="cfg-deductions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="addCfgDeductionRow()">➕ Add Tax or Benefit</button>
@@ -3282,6 +3293,7 @@ const PAGE_ROLES = {
   monthly:       ['admin','supervisor','viewer'],
   leaderboard:   ['admin','supervisor','viewer'],
   payconfig:     ['admin'],
+  taxbenefits:   ['admin'],
   staff:         ['admin'],
   locations:     ['admin'],
   passwords:     ['admin'],
@@ -3581,6 +3593,7 @@ function nav(page, el) {
     monthly: renderMonthlySetup,
     leaderboard: renderLeaderboardSetup,
     payconfig: renderPayConfig,
+    taxbenefits: renderTaxBenefitsPage,
     staff: renderStaffPage,
     locations: renderLocationsPage,
     passwords: renderPasswordsPage,
@@ -3881,6 +3894,9 @@ function renderPayConfig() {
   renderPayConfigStatusBanner();
   populateCorrShiftDropdown();
   renderDateCorrectionLog();
+}
+
+function renderTaxBenefitsPage() {
   _cfgDeductionItems = (PAY_CONFIG.defaultDeductions && PAY_CONFIG.defaultDeductions.length)
     ? PAY_CONFIG.defaultDeductions.map(it => ({...it}))
     : defaultPrDeductionItems();
