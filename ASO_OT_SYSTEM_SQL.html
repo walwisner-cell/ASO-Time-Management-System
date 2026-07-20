@@ -1267,6 +1267,43 @@
   }
 
   /* ─────────────────────────────────────────────────────
+     TAXES & BENEFITS — dynamic deduction rows
+  ───────────────────────────────────────────────────── */
+  .pr-ded-row {
+    display:grid;
+    grid-template-columns:1fr 150px 130px 34px;
+    gap:10px;
+    align-items:center;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 10px;
+  }
+  .pr-ded-row input, .pr-ded-row select {
+    width:100%;
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    border-radius:6px;
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:13px;
+    padding:7px 9px;
+  }
+  .pr-ded-row input[type="number"] { font-family:var(--mono); }
+  .pr-ded-remove {
+    width:30px; height:30px;
+    border-radius:6px;
+    border:1px solid rgba(194,74,70,0.4);
+    background:rgba(194,74,70,0.14);
+    color:var(--danger2);
+    cursor:pointer;
+    font-size:14px;
+    transition:all .15s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pr-ded-remove:hover { background:rgba(194,74,70,0.28); transform:scale(1.05); }
+
+  /* ─────────────────────────────────────────────────────
      PAYROLL STEP TRACKER
   ───────────────────────────────────────────────────── */
   .pr-steps {
@@ -1945,17 +1982,17 @@
         <!-- STEP 2: Tax withholding input (unlocked after confirm) -->
         <div id="pr-step2" style="display:none">
           <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:12px">
-            <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Tax Withholding</div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Defaults below (FICA 7.65%, State 3.07%) match American Safety Options' standard estimate methodology — Federal is left at 0% since it isn't withheld at this stage. Adjust any rate as needed; all are flat percentages of gross pay.</div>
-            <div class="form-field" style="max-width:220px;margin-bottom:14px"><label>Pay Date</label><input type="date" id="pr-pay-date"></div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px">
-              <div class="form-field"><label>Federal Tax (%)</label><input type="number" id="pr-tax-federal" step="0.01" min="0" value="0"></div>
-              <div class="form-field"><label>FICA (%)</label><input type="number" id="pr-tax-fica" step="0.01" min="0" value="7.65"></div>
-              <div class="form-field"><label>State Tax (%)</label><input type="number" id="pr-tax-state" step="0.01" min="0" value="3.07"></div>
-              <div class="form-field"><label>Other (%)</label><input type="number" id="pr-tax-other" step="0.01" min="0" value="0"></div>
+            <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Taxes &amp; Benefits</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Add, remove, or rename any withholding, tax, or benefit deduction. Each can be a percentage of gross pay or a flat dollar amount per paycheck. Defaults match American Safety Options' standard estimate methodology (FICA 7.65%, State 3.07%) — edit or delete any of them.</div>
+            <div class="form-field" style="max-width:220px;margin-bottom:16px"><label>Pay Date</label><input type="date" id="pr-pay-date"></div>
+
+            <div id="pr-deductions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+            <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px;margin-bottom:20px" onclick="addPrDeductionRow()">➕ Add Tax or Benefit</button>
+
+            <div>
+              <button class="btn btn-primary" style="font-size:14px;padding:12px 22px" onclick="calculatePayroll()">🧮 Calculate Payroll</button>
+              <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;margin-left:8px" onclick="unlockPayrollPeriod()">🔓 Unlock Timesheets (Undo Confirm)</button>
             </div>
-            <button class="btn btn-primary" style="font-size:14px;padding:12px 22px" onclick="calculatePayroll()">🧮 Calculate Payroll</button>
-            <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;margin-left:8px" onclick="unlockPayrollPeriod()">🔓 Unlock Timesheets (Undo Confirm)</button>
           </div>
         </div>
 
@@ -5644,6 +5681,7 @@ function renderPayrollPage() {
     step1.style.display = 'none';
     step2.style.display = 'none';
     step3.style.display = '';
+    _prDeductionItems = [];
     renderFinalPayrollTable(rec);
     renderPayStubsSection(rec);
   } else if (rec && rec.confirmed) {
@@ -5656,11 +5694,66 @@ function renderPayrollPage() {
       d.setDate(d.getDate() + 19); // period start + ~19 days as a sensible default pay date
       payDateInput.value = d.toISOString().split('T')[0];
     }
+    if (!_prDeductionItems.length) {
+      _prDeductionItems = (rec.deductionItems && rec.deductionItems.length) ? rec.deductionItems.map(it => ({...it})) : defaultPrDeductionItems();
+    }
+    renderPrDeductionsList();
   } else {
     step1.style.display = '';
     step2.style.display = 'none';
     step3.style.display = 'none';
+    _prDeductionItems = [];
   }
+}
+
+// ── Taxes & Benefits (dynamic list) ─────────────────────
+let _prDeductionItems = [];
+let _prDedIdCounter = 0;
+function genDedId() { return 'ded' + Date.now() + (_prDedIdCounter++); }
+
+function defaultPrDeductionItems() {
+  return [
+    { id: genDedId(), label: 'Federal Withholding', type: 'percent', value: 0 },
+    { id: genDedId(), label: 'FICA', type: 'percent', value: 7.65 },
+    { id: genDedId(), label: 'State Withholding', type: 'percent', value: 3.07 },
+  ];
+}
+
+function renderPrDeductionsList() {
+  const el = document.getElementById('pr-deductions-list');
+  if (!el) return;
+  if (!_prDeductionItems.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No taxes or benefits configured — click "Add Tax or Benefit" below.</div>';
+    return;
+  }
+  el.innerHTML = _prDeductionItems.map(it => `
+    <div class="pr-ded-row">
+      <input type="text" value="${esc(it.label)}" placeholder="e.g. 401(k), Health Insurance"
+        onchange="updatePrDeductionField('${it.id}','label',this.value)">
+      <select onchange="updatePrDeductionField('${it.id}','type',this.value)">
+        <option value="percent" ${it.type==='percent'?'selected':''}>% of Gross</option>
+        <option value="flat" ${it.type==='flat'?'selected':''}>Flat $ Amount</option>
+      </select>
+      <input type="number" step="0.01" min="0" value="${it.value}"
+        onchange="updatePrDeductionField('${it.id}','value',parseFloat(this.value)||0)">
+      <button class="pr-ded-remove" onclick="removePrDeductionRow('${it.id}')" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function updatePrDeductionField(id, field, value) {
+  const item = _prDeductionItems.find(i => i.id === id);
+  if (item) item[field] = value;
+}
+
+function addPrDeductionRow() {
+  _prDeductionItems.push({ id: genDedId(), label: '', type: 'percent', value: 0 });
+  renderPrDeductionsList();
+}
+
+function removePrDeductionRow(id) {
+  _prDeductionItems = _prDeductionItems.filter(i => i.id !== id);
+  renderPrDeductionsList();
 }
 
 function updatePrStepTracker(rec) {
@@ -5688,9 +5781,9 @@ function computeYTDForStaff(staffId, uptoPeriodStart) {
   let gross = 0, tax = 0, net = 0;
   (PAYROLL_RECORDS || []).forEach(r => {
     if (!r.finalized || r.periodStart.slice(0,4) !== year || r.periodStart > uptoPeriodStart) return;
-    (r.rows || []).forEach(row => {
-      if (row.staffId !== staffId) return;
-      gross += row.gross; tax += row.totalTax; net += row.net;
+    (r.employeeRows || []).forEach(emp => {
+      if (emp.staffId !== staffId) return;
+      gross += emp.gross; tax += emp.totalDeductions; net += emp.net;
     });
   });
   return { gross, tax, net };
@@ -5710,15 +5803,9 @@ function renderPayStubsSection(rec) {
 
 function buildPayStubHTML(rec, staffId) {
   const rows = (rec.rows || []).filter(r => r.staffId === staffId);
-  if (!rows.length) return null;
+  const emp = (rec.employeeRows || []).find(e => e.staffId === staffId);
+  if (!rows.length || !emp) return null;
   const name = rows[0].name;
-  const gross = rows.reduce((a,r)=>a+r.gross,0);
-  const federalTax = rows.reduce((a,r)=>a+r.federalTax,0);
-  const ficaTax = rows.reduce((a,r)=>a+r.ficaTax,0);
-  const stateTax = rows.reduce((a,r)=>a+r.stateTax,0);
-  const otherTax = rows.reduce((a,r)=>a+r.otherTax,0);
-  const totalTax = rows.reduce((a,r)=>a+r.totalTax,0);
-  const net = rows.reduce((a,r)=>a+r.net,0);
   const ytd = computeYTDForStaff(staffId, rec.periodStart);
   const payDate = rec.payDate ? new Date(rec.payDate+'T00:00:00').toLocaleDateString() : '\u2014';
 
@@ -5728,6 +5815,10 @@ function buildPayStubHTML(rec, staffId) {
     if (regHrs > 0) earningsRows += `<tr><td>${esc(r.location)} \u2014 Regular</td><td class="mono">${numFmt(regHrs)}</td><td class="mono">$${numFmt(r.rate)}</td><td class="mono">${$fmt(r.regPay)}</td></tr>`;
     if (otHrs > 0)  earningsRows += `<tr><td>${esc(r.location)} \u2014 Overtime</td><td class="mono">${numFmt(otHrs)}</td><td class="mono">$${numFmt(r.rate*1.5)}</td><td class="mono">${$fmt(r.otPay)}</td></tr>`;
   });
+
+  const deductionRows = emp.deductions.filter(d => d.amount !== 0).map(d =>
+    `<tr><td>${esc(d.label)}${d.type==='percent'?` (${numFmt(d.rate)}%)`:''}</td><td></td><td></td><td class="mono">${$fmt(d.amount)}</td></tr>`
+  ).join('') || '<tr><td colspan="4" style="color:#94a3b8">No deductions</td></tr>';
 
   return `
     <div class="pay-stub">
@@ -5755,21 +5846,16 @@ function buildPayStubHTML(rec, staffId) {
       <div class="stub-section-title">Earnings</div>
       <table><thead><tr><th>Description</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
       <tbody>${earningsRows}</tbody>
-      <tfoot><tr style="font-weight:700"><td colspan="3">Gross Pay</td><td class="mono">${$fmt(gross)}</td></tr></tfoot></table>
+      <tfoot><tr style="font-weight:700"><td colspan="3">Gross Pay</td><td class="mono">${$fmt(emp.gross)}</td></tr></tfoot></table>
 
-      <div class="stub-section-title">Deductions</div>
+      <div class="stub-section-title">Taxes &amp; Benefits</div>
       <table><thead><tr><th>Description</th><th></th><th></th><th>Amount</th></tr></thead>
-      <tbody>
-        ${federalTax>0?`<tr><td>Federal Withholding</td><td></td><td></td><td class="mono">${$fmt(federalTax)}</td></tr>`:''}
-        <tr><td>FICA (Social Security &amp; Medicare)</td><td></td><td></td><td class="mono">${$fmt(ficaTax)}</td></tr>
-        <tr><td>State Withholding</td><td></td><td></td><td class="mono">${$fmt(stateTax)}</td></tr>
-        ${otherTax>0?`<tr><td>Other</td><td></td><td></td><td class="mono">${$fmt(otherTax)}</td></tr>`:''}
-      </tbody>
-      <tfoot><tr style="font-weight:700"><td colspan="3">Total Deductions</td><td class="mono">${$fmt(totalTax)}</td></tr></tfoot></table>
+      <tbody>${deductionRows}</tbody>
+      <tfoot><tr style="font-weight:700"><td colspan="3">Total Withheld</td><td class="mono">${$fmt(emp.totalDeductions)}</td></tr></tfoot></table>
 
       <div class="pay-stub-net-banner">
         <div class="pay-stub-net-label">NET PAY</div>
-        <div class="pay-stub-net-val">${$fmt(net)}</div>
+        <div class="pay-stub-net-val">${$fmt(emp.net)}</div>
       </div>
 
       <div class="pay-stub-ytd">
@@ -5880,34 +5966,44 @@ function calculatePayroll() {
   const rec = findPayrollRecord(periodStart);
   if (!rec || !rec.confirmed) { showToast('Confirm timesheets first', 'warn'); return; }
 
-  const fed   = parseFloat(document.getElementById('pr-tax-federal').value) || 0;
-  const fica  = parseFloat(document.getElementById('pr-tax-fica').value)    || 0;
-  const state = parseFloat(document.getElementById('pr-tax-state').value)  || 0;
-  const other = parseFloat(document.getElementById('pr-tax-other').value)  || 0;
   const payDate = document.getElementById('pr-pay-date').value;
-
   if (!payDate) { showToast('Enter a pay date before calculating payroll', 'danger'); return; }
-  if ([fed, fica, state, other].some(v => v < 0)) { showToast('Tax rates cannot be negative', 'danger'); return; }
-  if (fed + fica + state + other >= 100) { showToast('Combined tax rates are 100% or more — check your entries', 'warn'); return; }
+
+  const items = _prDeductionItems.map(it => ({ ...it, label: (it.label||'').trim() }));
+  if (items.some(it => !it.label)) { showToast('Every tax/benefit needs a name', 'danger'); return; }
+  if (items.some(it => it.value < 0)) { showToast('Amounts cannot be negative', 'danger'); return; }
+  const pctTotal = items.filter(it=>it.type==='percent').reduce((a,it)=>a+it.value,0);
+  if (pctTotal >= 100) { showToast('Combined percentage deductions are 100% or more — check your entries', 'warn'); return; }
 
   const detailRows = buildPayrollDetailRows(label);
-  const finalRows = detailRows.map(d => {
-    const federalTax = d.gross * fed   / 100;
-    const ficaTax    = d.gross * fica  / 100;
-    const stateTax   = d.gross * state / 100;
-    const otherTax   = d.gross * other / 100;
-    const totalTax = federalTax + ficaTax + stateTax + otherTax;
-    return { ...d, federalTax, ficaTax, stateTax, otherTax, totalTax, net: d.gross - totalTax };
+
+  // Aggregate hours/gross by employee (a staff member may have rows at multiple houses)
+  const byEmployee = {};
+  detailRows.forEach(r => {
+    if (!byEmployee[r.staffId]) byEmployee[r.staffId] = { staffId: r.staffId, name: r.name, gross: 0 };
+    byEmployee[r.staffId].gross += r.gross;
   });
 
-  rec.taxRates = { federal: fed, fica, state, other };
+  const employeeRows = Object.values(byEmployee).map(emp => {
+    let totalDeductions = 0;
+    const deductions = items.map(it => {
+      const amount = it.type === 'percent' ? emp.gross * it.value / 100 : it.value;
+      totalDeductions += amount;
+      return { label: it.label, type: it.type, rate: it.value, amount };
+    });
+    return { ...emp, deductions, totalDeductions, net: emp.gross - totalDeductions };
+  }).sort((a,b) => a.name.localeCompare(b.name));
+
+  rec.deductionItems = items;
   rec.payDate = payDate;
   rec.finalized = true;
   rec.finalizedBy = _currentUser ? _currentUser.name : 'System';
   rec.finalizedAt = new Date().toLocaleString();
-  rec.rows = finalRows;
+  rec.rows = detailRows;
+  rec.employeeRows = employeeRows;
 
-  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (Federal ${fed}%, FICA ${fica}%, State ${state}%, Other ${other}%)`, { periodStart });
+  const itemSummary = items.map(it => `${it.label} ${it.type==='percent'?it.value+'%':'$'+it.value}`).join(', ');
+  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (${itemSummary})`, { periodStart });
   dbSave();
   showToast('✅ Payroll calculated and finalized');
   renderPayrollPage();
@@ -5915,21 +6011,23 @@ function calculatePayroll() {
 
 function renderFinalPayrollTable(rec) {
   const rows = rec.rows || [];
-  let totGross=0, totFed=0, totFica=0, totState=0, totOther=0, totTax=0, totNet=0;
-  rows.forEach(r => {
-    totGross+=r.gross; totFed+=r.federalTax; totFica+=r.ficaTax; totState+=r.stateTax;
-    totOther+=r.otherTax; totTax+=r.totalTax; totNet+=r.net;
-  });
+  const empRows = rec.employeeRows || [];
+  const totGross = empRows.reduce((a,e)=>a+e.gross,0);
+  const totDed = empRows.reduce((a,e)=>a+e.totalDeductions,0);
+  const totNet = empRows.reduce((a,e)=>a+e.net,0);
+  const itemLabels = (rec.deductionItems||[]).map(it => it.label);
 
   document.getElementById('pr-final-summary').innerHTML = `
     <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val count-up" data-target="${totGross}" data-money style="color:var(--accent2)">$0.00</div></div>
-    <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val count-up" data-target="${totTax}" data-money style="color:var(--danger)">$0.00</div></div>
+    <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val count-up" data-target="${totDed}" data-money style="color:var(--danger)">$0.00</div></div>
     <div class="rs-card"><div class="rs-label">Net Pay</div><div class="rs-val count-up" data-target="${totNet}" data-money style="color:var(--success)">$0.00</div></div>
-    <div class="rs-card"><div class="rs-label">Rates Used</div><div class="rs-val" style="font-size:12px">Fed ${rec.taxRates.federal}% · FICA ${rec.taxRates.fica}% · State ${rec.taxRates.state}%${rec.taxRates.other>0?` · Other ${rec.taxRates.other}%`:''}</div></div>
+    <div class="rs-card"><div class="rs-label">Taxes &amp; Benefits Applied</div><div class="rs-val" style="font-size:12px">${itemLabels.length ? esc(itemLabels.join(' · ')) : 'None'}</div></div>
   `;
   animateStatsIn('#pr-final-summary');
 
-  let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Rate</th><th>Gross</th><th>Federal</th><th>FICA</th><th>State</th><th>Other</th><th>Total Tax</th><th>Net Pay</th></tr></thead><tbody>';
+  // Table 1: Hours & gross pay by house (audit/cost-tracking detail)
+  let html = '<div style="font-family:var(--display);font-weight:700;font-size:13px;color:var(--text);margin-bottom:8px">Hours &amp; Gross Pay by House</div>';
+  html += '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Rate</th><th>Gross</th></tr></thead><tbody>';
   rows.forEach(r => {
     html += `<tr>
       <td style="color:var(--text3)">${esc(r.location)}</td>
@@ -5940,27 +6038,35 @@ function renderFinalPayrollTable(rec) {
       <td class="mono" style="color:${r.wk2OT>0?'var(--warn)':'var(--text3)'}">${r.wk2OT > 0 ? numFmt(r.wk2OT) : '\u2014'}</td>
       <td class="mono">${numFmt(r.totalHrs)}</td>
       <td class="mono">$${numFmt(r.rate)}</td>
-      <td class="mono">${$fmt(r.gross)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.federalTax)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.ficaTax)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.stateTax)}</td>
-      <td class="mono" style="color:var(--danger)">${$fmt(r.otherTax)}</td>
-      <td class="mono" style="color:var(--danger);font-weight:600">${$fmt(r.totalTax)}</td>
-      <td class="mono" style="color:var(--success);font-weight:700">${$fmt(r.net)}</td>
+      <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(r.gross)}</td>
     </tr>`;
   });
-  html += `<tr style="background:var(--surface2);font-weight:700">
-    <td colspan="8" style="color:var(--text)">TOTALS</td>
-    <td class="mono">${$fmt(totGross)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totFed)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totFica)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totState)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totOther)}</td>
-    <td class="mono" style="color:var(--danger)">${$fmt(totTax)}</td>
-    <td class="mono" style="color:var(--success)">${$fmt(totNet)}</td>
-  </tr>`;
   html += '</tbody></table>';
   document.getElementById('pr-final-table').innerHTML = html;
+
+  // Table 2: Net pay summary by employee, with the deduction breakdown listed per row
+  let html2 = '<div style="font-family:var(--display);font-weight:700;font-size:13px;color:var(--text);margin:24px 0 8px">Net Pay Summary by Employee</div>';
+  html2 += '<table><thead><tr><th>Staff Name</th><th>Gross Pay</th><th>Taxes &amp; Benefits</th><th>Total Withheld</th><th>Net Pay</th></tr></thead><tbody>';
+  empRows.forEach(e => {
+    const breakdown = e.deductions.filter(d => d.amount !== 0)
+      .map(d => `<div>${esc(d.label)}: <span class="mono">${$fmt(d.amount)}</span></div>`).join('') || '<span style="color:var(--text3)">None</span>';
+    html2 += `<tr>
+      <td style="color:var(--text);font-weight:500">${esc(e.name)}</td>
+      <td class="mono">${$fmt(e.gross)}</td>
+      <td style="font-size:11px;color:var(--text2)">${breakdown}</td>
+      <td class="mono" style="color:var(--danger);font-weight:600">${$fmt(e.totalDeductions)}</td>
+      <td class="mono" style="color:var(--success);font-weight:700">${$fmt(e.net)}</td>
+    </tr>`;
+  });
+  html2 += `<tr style="background:var(--surface2);font-weight:700">
+    <td style="color:var(--text)">TOTALS</td>
+    <td class="mono">${$fmt(totGross)}</td>
+    <td></td>
+    <td class="mono" style="color:var(--danger)">${$fmt(totDed)}</td>
+    <td class="mono" style="color:var(--success)">${$fmt(totNet)}</td>
+  </tr>`;
+  html2 += '</tbody></table>';
+  document.getElementById('pr-final-table').innerHTML += html2;
 }
 
 function unlockPayrollPeriod() {
@@ -5971,10 +6077,12 @@ function unlockPayrollPeriod() {
 
   const label = rec.periodLabel;
   rec.confirmed = false; rec.confirmedBy = null; rec.confirmedAt = null;
-  rec.taxRates = null;
+  rec.deductionItems = null;
   rec.payDate = null;
   rec.finalized = false; rec.finalizedBy = null; rec.finalizedAt = null;
   rec.rows = null;
+  rec.employeeRows = null;
+  _prDeductionItems = [];
 
   const payDateInput = document.getElementById('pr-pay-date');
   if (payDateInput) payDateInput.value = '';
@@ -5990,18 +6098,31 @@ function exportPayrollCSV() {
   const rec = findPayrollRecord(periodStart);
   if (!rec || !rec.finalized) { showToast('No finalized payroll to export', 'warn'); return; }
 
+  const itemLabels = (rec.deductionItems||[]).map(it => it.label);
+
   let csv = `American Safety Options — Payroll — ${rec.periodLabel}\n`;
   csv += `Pay Date: ${rec.payDate || '—'}\n`;
   csv += `Confirmed by: ${rec.confirmedBy} on ${rec.confirmedAt}\n`;
   csv += `Finalized by: ${rec.finalizedBy} on ${rec.finalizedAt}\n`;
-  csv += `Tax Rates — Federal ${rec.taxRates.federal}%, FICA ${rec.taxRates.fica}%, State ${rec.taxRates.state}%, Other ${rec.taxRates.other}%\n\n`;
-  csv += '"House","Staff Name","Reg Wk1","Reg Wk2","OT Wk1","OT Wk2","Total Hrs","Rate","Gross","Federal","FICA","State","Other","Total Tax","Net Pay"\n';
-  rec.rows.forEach(r => {
+  csv += `Taxes & Benefits: ${itemLabels.join(', ') || 'None'}\n\n`;
+
+  csv += 'HOURS & GROSS PAY BY HOUSE\n';
+  csv += '"House","Staff Name","Reg Wk1","Reg Wk2","OT Wk1","OT Wk2","Total Hrs","Rate","Gross"\n';
+  (rec.rows||[]).forEach(r => {
     csv += [r.location, r.name, r.wk1Reg.toFixed(2), r.wk2Reg.toFixed(2), r.wk1OT.toFixed(2), r.wk2OT.toFixed(2),
-            r.totalHrs.toFixed(2), r.rate.toFixed(2), r.gross.toFixed(2), r.federalTax.toFixed(2), r.ficaTax.toFixed(2),
-            r.stateTax.toFixed(2), r.otherTax.toFixed(2), r.totalTax.toFixed(2), r.net.toFixed(2)]
+            r.totalHrs.toFixed(2), r.rate.toFixed(2), r.gross.toFixed(2)]
       .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
   });
+
+  csv += '\nNET PAY SUMMARY BY EMPLOYEE\n';
+  csv += ['"Staff Name"','"Gross Pay"', ...itemLabels.map(l=>`"${l.replace(/"/g,'""')}"`), '"Total Withheld"','"Net Pay"'].join(',') + '\n';
+  (rec.employeeRows||[]).forEach(e => {
+    const dedByLabel = {};
+    e.deductions.forEach(d => { dedByLabel[d.label] = d.amount; });
+    csv += [e.name, e.gross.toFixed(2), ...itemLabels.map(l => (dedByLabel[l]||0).toFixed(2)), e.totalDeductions.toFixed(2), e.net.toFixed(2)]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
