@@ -1942,8 +1942,8 @@
         <div class="print-header">American Safety Options — Payroll &amp; Tax Withholding &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
         <div class="page-header">
           <div class="page-header-left">
-            <div class="page-title">Payroll &amp; Taxes</div>
-            <div class="page-sub">Confirm timesheets, then apply tax withholding to finalize payroll</div>
+            <div class="page-title">Payroll</div>
+            <div class="page-sub">Review timesheets, confirm taxes &amp; benefits, then run payroll</div>
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print</button>
         </div>
@@ -1955,50 +1955,37 @@
         <div class="pr-steps">
           <div class="pr-step" id="pr-step-ind-1">
             <div class="pr-step-circle">1</div>
-            <div class="pr-step-label">Review<br>Timesheets</div>
+            <div class="pr-step-label">Review &amp;<br>Confirm</div>
           </div>
           <div class="pr-step-line" id="pr-step-line-1"></div>
           <div class="pr-step" id="pr-step-ind-2">
             <div class="pr-step-circle">2</div>
-            <div class="pr-step-label">Set Tax<br>Rates</div>
-          </div>
-          <div class="pr-step-line" id="pr-step-line-2"></div>
-          <div class="pr-step" id="pr-step-ind-3">
-            <div class="pr-step-circle">3</div>
-            <div class="pr-step-label">Finalized<br>Payroll</div>
+            <div class="pr-step-label">Payroll<br>Complete</div>
           </div>
         </div>
 
         <div id="pr-status-banner"></div>
 
-        <!-- STEP 1: Review timesheets + confirm -->
+        <!-- STEP 1: Review timesheets, taxes auto-applied from your saved defaults, confirm & run -->
         <div id="pr-step1">
           <div class="report-summary" id="pr-summary"></div>
           <div class="table-wrap" id="pr-table"></div>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end">
-            <button class="btn btn-success" style="font-size:14px;padding:12px 22px" onclick="confirmTimesheetsForPeriod()">✅ Confirm Timesheets for This Period</button>
-          </div>
-        </div>
 
-        <!-- STEP 2: Tax withholding input (unlocked after confirm) -->
-        <div id="pr-step2" style="display:none">
-          <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:12px">
+          <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:20px">
             <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Taxes &amp; Benefits</div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Add, remove, or rename any withholding, tax, or benefit deduction. Each can be a percentage of gross pay or a flat dollar amount per paycheck. Defaults match American Safety Options' standard estimate methodology (FICA 7.65%, State 3.07%) — edit or delete any of them.</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Applied automatically from your saved defaults (<a href="#" onclick="nav('taxbenefits', document.querySelector('[data-page=taxbenefits]')); return false;" style="color:var(--accent2)">edit defaults</a>). Adjust anything below for this period only — changes here don't affect your saved defaults.</div>
             <div class="form-field" style="max-width:220px;margin-bottom:16px"><label>Pay Date</label><input type="date" id="pr-pay-date"></div>
-
             <div id="pr-deductions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
-            <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px;margin-bottom:20px" onclick="addPrDeductionRow()">➕ Add Tax or Benefit</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="addPrDeductionRow()">➕ Add Tax or Benefit</button>
+          </div>
 
-            <div>
-              <button class="btn btn-primary" style="font-size:14px;padding:12px 22px" onclick="calculatePayroll()">🧮 Calculate Payroll</button>
-              <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;margin-left:8px" onclick="unlockPayrollPeriod()">🔓 Unlock Timesheets (Undo Confirm)</button>
-            </div>
+          <div style="margin-top:20px;display:flex;justify-content:flex-end">
+            <button class="btn btn-success" style="font-size:14px;padding:12px 22px" onclick="confirmAndRunPayroll()">✅ Confirm &amp; Run Payroll</button>
           </div>
         </div>
 
-        <!-- STEP 3: Finalized payroll -->
-        <div id="pr-step3" style="display:none">
+        <!-- STEP 2: Finalized payroll -->
+        <div id="pr-step2" style="display:none">
           <div class="report-summary" id="pr-final-summary"></div>
           <div class="table-wrap" id="pr-final-table"></div>
           <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
@@ -5664,8 +5651,6 @@ function renderPayrollPage() {
   const banner = document.getElementById('pr-status-banner');
   if (rec && rec.finalized) {
     banner.innerHTML = `<div style="background:rgba(34,197,94,.12);border:1px solid var(--success);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">✅ <b>Payroll finalized</b> for this period by ${esc(rec.finalizedBy)} on ${esc(rec.finalizedAt)}. Timesheets are locked.</div>`;
-  } else if (rec && rec.confirmed) {
-    banner.innerHTML = `<div style="background:rgba(46,138,232,.12);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">🔒 <b>Timesheets confirmed</b> by ${esc(rec.confirmedBy)} on ${esc(rec.confirmedAt)}. Enter tax rates below to finalize payroll.</div>`;
   } else {
     banner.innerHTML = '';
   }
@@ -5704,21 +5689,18 @@ function renderPayrollPage() {
 
   const step1 = document.getElementById('pr-step1');
   const step2 = document.getElementById('pr-step2');
-  const step3 = document.getElementById('pr-step3');
 
   updatePrStepTracker(rec);
 
   if (rec && rec.finalized) {
     step1.style.display = 'none';
-    step2.style.display = 'none';
-    step3.style.display = '';
+    step2.style.display = '';
     _prDeductionItems = [];
     renderFinalPayrollTable(rec);
     renderPayStubsSection(rec);
-  } else if (rec && rec.confirmed) {
-    step1.style.display = 'none';
-    step2.style.display = '';
-    step3.style.display = 'none';
+  } else {
+    step1.style.display = '';
+    step2.style.display = 'none';
     const payDateInput = document.getElementById('pr-pay-date');
     if (payDateInput && !payDateInput.value && periodStart) {
       const d = new Date(periodStart + 'T00:00:00');
@@ -5726,14 +5708,11 @@ function renderPayrollPage() {
       payDateInput.value = d.toISOString().split('T')[0];
     }
     if (!_prDeductionItems.length) {
-      _prDeductionItems = (rec.deductionItems && rec.deductionItems.length) ? rec.deductionItems.map(it => ({...it})) : defaultPrDeductionItems();
+      _prDeductionItems = (rec && rec.deductionItems && rec.deductionItems.length)
+        ? rec.deductionItems.map(it => ({...it}))
+        : defaultPrDeductionItems();
     }
     renderPrDeductionsList();
-  } else {
-    step1.style.display = '';
-    step2.style.display = 'none';
-    step3.style.display = 'none';
-    _prDeductionItems = [];
   }
 }
 
@@ -5843,15 +5822,10 @@ function saveCfgDeductionDefaults() {
 function updatePrStepTracker(rec) {
   const s1 = document.getElementById('pr-step-ind-1');
   const s2 = document.getElementById('pr-step-ind-2');
-  const s3 = document.getElementById('pr-step-ind-3');
   const l1 = document.getElementById('pr-step-line-1');
-  const l2 = document.getElementById('pr-step-line-2');
-  [s1,s2,s3].forEach(s => s.classList.remove('active','done'));
-  [l1,l2].forEach(l => l.classList.remove('done'));
+  [s1,s2].forEach(s => s.classList.remove('active','done'));
+  l1.classList.remove('done');
   if (rec && rec.finalized) {
-    s1.classList.add('done'); s2.classList.add('done'); s3.classList.add('active');
-    l1.classList.add('done'); l2.classList.add('done');
-  } else if (rec && rec.confirmed) {
     s1.classList.add('done'); s2.classList.add('active');
     l1.classList.add('done');
   } else {
@@ -6016,7 +5990,7 @@ function printAllPayStubs() {
   openStubPrintWindow(html, `Pay Stubs — ${rec.periodLabel}`);
 }
 
-function confirmTimesheetsForPeriod() {
+function confirmAndRunPayroll() {
   const label = getPrSelectedLabel();
   const periodStart = getPrSelectedStart();
   if (!periodStart) { showToast('Cannot determine this period\'s date range', 'danger'); return; }
@@ -6025,39 +5999,17 @@ function confirmTimesheetsForPeriod() {
   const hasShifts = Object.values(byStaff).some(d => d.shifts > 0);
   if (!hasShifts) { showToast('No shifts recorded for this period yet', 'warn'); return; }
 
-  if (!confirm(`Confirm timesheets for ${label}?\n\nThis locks the period so payroll can be calculated. You can unlock it later if corrections are needed.`)) return;
-
-  if (!PAYROLL_RECORDS) PAYROLL_RECORDS = [];
-  let rec = findPayrollRecord(periodStart);
-  if (!rec) {
-    rec = { periodStart, periodLabel: label, confirmed:false, confirmedBy:null, confirmedAt:null, taxRates:null, finalized:false, finalizedBy:null, finalizedAt:null, rows:null };
-    PAYROLL_RECORDS.push(rec);
-  }
-  rec.periodLabel = label;
-  rec.confirmed = true;
-  rec.confirmedBy = _currentUser ? _currentUser.name : 'System';
-  rec.confirmedAt = new Date().toLocaleString();
-
-  auditLog('PAYROLL_CONFIRM', `Confirmed timesheets for pay period: ${label}`, { periodStart });
-  dbSave();
-  showToast('✅ Timesheets confirmed — enter tax rates to finalize payroll');
-  renderPayrollPage();
-}
-
-function calculatePayroll() {
-  const label = getPrSelectedLabel();
-  const periodStart = getPrSelectedStart();
-  const rec = findPayrollRecord(periodStart);
-  if (!rec || !rec.confirmed) { showToast('Confirm timesheets first', 'warn'); return; }
-
   const payDate = document.getElementById('pr-pay-date').value;
-  if (!payDate) { showToast('Enter a pay date before calculating payroll', 'danger'); return; }
+  if (!payDate) { showToast('Enter a pay date before running payroll', 'danger'); return; }
 
   const items = _prDeductionItems.map(it => ({ ...it, label: (it.label||'').trim() }));
   if (items.some(it => !it.label)) { showToast('Every tax/benefit needs a name', 'danger'); return; }
   if (items.some(it => it.value < 0)) { showToast('Amounts cannot be negative', 'danger'); return; }
   const pctTotal = items.filter(it=>it.type==='percent').reduce((a,it)=>a+it.value,0);
   if (pctTotal >= 100) { showToast('Combined percentage deductions are 100% or more — check your entries', 'warn'); return; }
+
+  const itemSummary = items.map(it => `${it.label} ${it.type==='percent'?it.value+'%':'$'+it.value}`).join(', ') || 'none';
+  if (!confirm(`Confirm and run payroll for ${label}?\n\nTaxes & benefits applied: ${itemSummary}\n\nThis locks the period's timesheets. You can unlock it later if corrections are needed.`)) return;
 
   const detailRows = buildPayrollDetailRows(label);
 
@@ -6078,6 +6030,16 @@ function calculatePayroll() {
     return { ...emp, deductions, totalDeductions, net: emp.gross - totalDeductions };
   }).sort((a,b) => a.name.localeCompare(b.name));
 
+  if (!PAYROLL_RECORDS) PAYROLL_RECORDS = [];
+  let rec = findPayrollRecord(periodStart);
+  if (!rec) {
+    rec = { periodStart, periodLabel: label, confirmed:false, confirmedBy:null, confirmedAt:null, finalized:false, finalizedBy:null, finalizedAt:null, rows:null };
+    PAYROLL_RECORDS.push(rec);
+  }
+  rec.periodLabel = label;
+  rec.confirmed = true;
+  rec.confirmedBy = _currentUser ? _currentUser.name : 'System';
+  rec.confirmedAt = new Date().toLocaleString();
   rec.deductionItems = items;
   rec.payDate = payDate;
   rec.finalized = true;
@@ -6086,10 +6048,10 @@ function calculatePayroll() {
   rec.rows = detailRows;
   rec.employeeRows = employeeRows;
 
-  const itemSummary = items.map(it => `${it.label} ${it.type==='percent'?it.value+'%':'$'+it.value}`).join(', ');
-  auditLog('PAYROLL_FINALIZE', `Finalized payroll for pay period: ${label} (${itemSummary})`, { periodStart });
+  auditLog('PAYROLL_CONFIRM', `Confirmed timesheets for pay period: ${label}`, { periodStart });
+  auditLog('PAYROLL_FINALIZE', `Ran payroll for pay period: ${label} (${itemSummary})`, { periodStart });
   dbSave();
-  showToast('✅ Payroll calculated and finalized');
+  showToast('✅ Payroll confirmed and finalized');
   renderPayrollPage();
 }
 
