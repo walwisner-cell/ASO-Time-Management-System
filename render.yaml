@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: aso-ot-system
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DB_DIR
+        value: /var/data
+    disk:
+      name: aso-ot-data
+      mountPath: /var/data
+      sizeGB: 1

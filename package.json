@@ -1,0 +1,28 @@
+{
+  "name": "aso-ot-system",
+  "version": "9.2.0",
+  "description": "American Safety Options — Staff Overtime Management System (SQL Edition)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "pkg": "pkg server.js --targets node18-win-x64 --output dist/ASO-Server.exe --compress GZip"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "ASO_OT_SYSTEM_SQL.html"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "American Safety Options",
+  "license": "UNLICENSED"
+}
