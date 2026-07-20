@@ -50,7 +50,12 @@ async function verifyPassword(storedHash, plaintext) {
 
 // ── Default seed data ──────────────────────────────────────
 const DEFAULT_SEED = {
-  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80 },
+  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80,
+    defaultDeductions: [
+      { id: 'ded_federal', label: 'Federal Withholding', type: 'percent', value: 0 },
+      { id: 'ded_fica', label: 'FICA', type: 'percent', value: 7.65 },
+      { id: 'ded_state', label: 'State Withholding', type: 'percent', value: 3.07 },
+    ] },
   USERS: [{ id: 'U001', username: 'admin', password: 'admin123', name: 'Admin', role: 'admin' }],
   LOCATIONS: [
     { id:'L01', name:'Serah House',     rate:18.5,  mult:1.5, notes:'Standard',                rateHistory:[{rate:18.5,  mult:1.5,effectiveFrom:'2000-01-01'}] },
@@ -124,8 +129,11 @@ function createSchema() {
     id INTEGER PRIMARY KEY CHECK (id = 1),
     anchor_date TEXT NOT NULL,
     period_days INTEGER NOT NULL DEFAULT 14,
-    ot_threshold INTEGER NOT NULL DEFAULT 80
+    ot_threshold INTEGER NOT NULL DEFAULT 80,
+    default_deductions TEXT DEFAULT '[]'
   )`);
+  // Safe migration for databases created before default_deductions existed
+  try { db.run(`ALTER TABLE pay_config ADD COLUMN default_deductions TEXT DEFAULT '[]'`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer'
@@ -165,7 +173,8 @@ function createSchema() {
 function loadDB() {
   const pcRow = get('SELECT * FROM pay_config WHERE id=1');
   const PAY_CONFIG = pcRow
-    ? { anchorDate: pcRow.anchor_date, periodDays: pcRow.period_days, otThreshold: pcRow.ot_threshold }
+    ? { anchorDate: pcRow.anchor_date, periodDays: pcRow.period_days, otThreshold: pcRow.ot_threshold,
+        defaultDeductions: JSON.parse(pcRow.default_deductions || '[]') }
     : DEFAULT_SEED.PAY_CONFIG;
 
   // Password hashes never leave the server — the client has no legitimate use for them.
@@ -203,10 +212,12 @@ function saveDB(data) {
           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS } = data;
 
   // PAY_CONFIG
-  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold) VALUES (1,?,?,?)
+  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions) VALUES (1,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET anchor_date=excluded.anchor_date,
-       period_days=excluded.period_days, ot_threshold=excluded.ot_threshold`,
-    [PAY_CONFIG.anchorDate, PAY_CONFIG.periodDays, PAY_CONFIG.otThreshold]);
+       period_days=excluded.period_days, ot_threshold=excluded.ot_threshold,
+       default_deductions=excluded.default_deductions`,
+    [PAY_CONFIG.anchorDate, PAY_CONFIG.periodDays, PAY_CONFIG.otThreshold,
+     JSON.stringify(PAY_CONFIG.defaultDeductions || [])]);
 
   // USERS — passwords are managed exclusively through /api/auth/login (self-migration)
   // and /api/users/:id/password. Bulk saves NEVER overwrite an existing user's password

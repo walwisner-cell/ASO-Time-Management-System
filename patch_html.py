@@ -75,7 +75,7 @@ var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
-  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80 },
+  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, defaultDeductions: [] },
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],

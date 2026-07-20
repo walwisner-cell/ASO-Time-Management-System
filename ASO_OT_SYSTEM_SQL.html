@@ -2173,6 +2173,17 @@
             </div>
           </div>
         </div>
+
+        <!-- DEFAULT TAXES & BENEFITS -->
+        <div class="card section-gap">
+          <div class="card-title">🧾 Default Taxes &amp; Benefits</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">Set these up once and every new pay period's Payroll &amp; Taxes step will start pre-filled with this list — no need to re-enter your standard withholdings and benefits each time. You can still adjust the list for an individual period without changing this default.</p>
+          <div id="cfg-deductions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="addCfgDeductionRow()">➕ Add Tax or Benefit</button>
+            <button class="btn btn-success" style="font-size:12px;padding:7px 14px" onclick="saveCfgDeductionDefaults()">💾 Save as Default</button>
+          </div>
+        </div>
       </div>
 
       <!-- STAFF REGISTER -->
@@ -3095,7 +3106,7 @@ var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
-  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80 },
+  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, defaultDeductions: [] },
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
@@ -3870,6 +3881,10 @@ function renderPayConfig() {
   renderPayConfigStatusBanner();
   populateCorrShiftDropdown();
   renderDateCorrectionLog();
+  _cfgDeductionItems = (PAY_CONFIG.defaultDeductions && PAY_CONFIG.defaultDeductions.length)
+    ? PAY_CONFIG.defaultDeductions.map(it => ({...it}))
+    : defaultPrDeductionItems();
+  renderCfgDeductionsList();
 }
 
 function renderPayConfigStatusBanner() {
@@ -5712,6 +5727,9 @@ let _prDedIdCounter = 0;
 function genDedId() { return 'ded' + Date.now() + (_prDedIdCounter++); }
 
 function defaultPrDeductionItems() {
+  if (PAY_CONFIG && PAY_CONFIG.defaultDeductions && PAY_CONFIG.defaultDeductions.length) {
+    return PAY_CONFIG.defaultDeductions.map(it => ({ ...it, id: genDedId() }));
+  }
   return [
     { id: genDedId(), label: 'Federal Withholding', type: 'percent', value: 0 },
     { id: genDedId(), label: 'FICA', type: 'percent', value: 7.65 },
@@ -5754,6 +5772,56 @@ function addPrDeductionRow() {
 function removePrDeductionRow(id) {
   _prDeductionItems = _prDeductionItems.filter(i => i.id !== id);
   renderPrDeductionsList();
+}
+
+// ── Default Taxes & Benefits (Pay Period Setup page) ────
+let _cfgDeductionItems = [];
+
+function renderCfgDeductionsList() {
+  const el = document.getElementById('cfg-deductions-list');
+  if (!el) return;
+  if (!_cfgDeductionItems.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No defaults configured — click "Add Tax or Benefit" below.</div>';
+    return;
+  }
+  el.innerHTML = _cfgDeductionItems.map(it => `
+    <div class="pr-ded-row">
+      <input type="text" value="${esc(it.label)}" placeholder="e.g. 401(k), Health Insurance"
+        onchange="updateCfgDeductionField('${it.id}','label',this.value)">
+      <select onchange="updateCfgDeductionField('${it.id}','type',this.value)">
+        <option value="percent" ${it.type==='percent'?'selected':''}>% of Gross</option>
+        <option value="flat" ${it.type==='flat'?'selected':''}>Flat $ Amount</option>
+      </select>
+      <input type="number" step="0.01" min="0" value="${it.value}"
+        onchange="updateCfgDeductionField('${it.id}','value',parseFloat(this.value)||0)">
+      <button class="pr-ded-remove" onclick="removeCfgDeductionRow('${it.id}')" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateCfgDeductionField(id, field, value) {
+  const item = _cfgDeductionItems.find(i => i.id === id);
+  if (item) item[field] = value;
+}
+
+function addCfgDeductionRow() {
+  _cfgDeductionItems.push({ id: genDedId(), label: '', type: 'percent', value: 0 });
+  renderCfgDeductionsList();
+}
+
+function removeCfgDeductionRow(id) {
+  _cfgDeductionItems = _cfgDeductionItems.filter(i => i.id !== id);
+  renderCfgDeductionsList();
+}
+
+function saveCfgDeductionDefaults() {
+  const items = _cfgDeductionItems.map(it => ({ ...it, label: (it.label||'').trim() }));
+  if (items.some(it => !it.label)) { showToast('Every tax/benefit needs a name', 'danger'); return; }
+  if (items.some(it => it.value < 0)) { showToast('Amounts cannot be negative', 'danger'); return; }
+  PAY_CONFIG.defaultDeductions = items;
+  auditLog('PAY_CONFIG', `Default taxes & benefits updated: ${items.map(it=>it.label).join(', ') || 'none'}`);
+  dbSave();
+  showToast('✅ Default taxes & benefits saved — new pay periods will start with this list');
 }
 
 function updatePrStepTracker(rec) {
