@@ -366,7 +366,7 @@
     cursor:pointer;
     font-size:13px;
     color:var(--text2);
-    transition:all .15s ease;
+    transition:all .18s cubic-bezier(.16,1,.3,1);
     font-family:var(--sans);
     font-weight:500;
     border-left:2px solid transparent;
@@ -376,6 +376,17 @@
     color:var(--text);
     background:rgba(26,123,216,0.07);
     border-left-color:rgba(26,123,216,0.4);
+    padding-left:26px;
+  }
+  .nav-pulse-badge {
+    margin-left:auto;
+    font-size:8px;
+    color:var(--success2);
+    animation:navPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes navPulse {
+    0%, 100% { opacity:1; transform:scale(1); }
+    50% { opacity:.35; transform:scale(.7); }
   }
   .nav-item.active {
     color:var(--accent2);
@@ -1247,7 +1258,89 @@
     .rb-generate-btn { display:none !important; }
     .rb-staff-chips, .rb-loc-chips { display:none !important; }
   }
+
+  /* ─────────────────────────────────────────────────────
+     PAYROLL STEP TRACKER
+  ───────────────────────────────────────────────────── */
+  .pr-steps {
+    display:flex;
+    align-items:center;
+    margin:22px 0 26px;
+    padding:20px 24px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-sm);
+  }
+  .pr-step { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:96px; }
+  .pr-step-circle {
+    width:36px; height:36px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--display); font-weight:700; font-size:14px;
+    background:var(--surface2); border:2px solid var(--border2); color:var(--text3);
+    transition:all .35s cubic-bezier(.16,1,.3,1);
+  }
+  .pr-step-label { font-size:11px; color:var(--text3); text-align:center; line-height:1.4; font-weight:500; transition:color .3s; }
+  .pr-step-line { flex:1; height:2px; background:var(--border2); margin:0 6px; margin-bottom:24px; position:relative; overflow:hidden; }
+  .pr-step-line::after {
+    content:''; position:absolute; inset:0; background:linear-gradient(90deg, var(--accent), var(--success2));
+    transform:scaleX(0); transform-origin:left; transition:transform .5s cubic-bezier(.16,1,.3,1);
+  }
+  .pr-step-line.done::after { transform:scaleX(1); }
+  .pr-step.active .pr-step-circle { background:var(--accent); border-color:var(--accent2); color:#fff; box-shadow:0 0 0 6px rgba(26,123,216,0.15); transform:scale(1.08); }
+  .pr-step.active .pr-step-label { color:var(--accent2); font-weight:700; }
+  .pr-step.done .pr-step-circle { background:var(--success); border-color:var(--success2); color:#fff; }
+  .pr-step.done .pr-step-label { color:var(--success2); }
+
+  /* ─────────────────────────────────────────────────────
+     PAY STUBS
+  ───────────────────────────────────────────────────── */
+  .pay-stubs-panel { margin-top:28px; }
+  .pay-stubs-panel-head {
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+    padding-bottom:16px; margin-bottom:18px; border-bottom:1px solid var(--border);
+  }
+  .pay-stub {
+    background:#f8fafc; color:#1e293b; border-radius:var(--radius-lg);
+    padding:32px 36px; max-width:720px; margin:0 auto;
+    box-shadow:0 10px 40px rgba(0,0,0,.35);
+    font-family:var(--sans);
+  }
+  .pay-stub-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #1d4ed8; padding-bottom:16px; margin-bottom:20px; }
+  .pay-stub-org { font-family:Georgia,serif; font-size:19px; font-weight:700; color:#1d4ed8; }
+  .pay-stub-org-sub { font-size:10px; color:#64748b; letter-spacing:1.5px; text-transform:uppercase; margin-top:3px; font-family:var(--mono); }
+  .pay-stub-title { text-align:right; }
+  .pay-stub-title-main { font-family:var(--display); font-size:15px; font-weight:700; color:#1e293b; }
+  .pay-stub-title-sub { font-size:11px; color:#64748b; font-family:var(--mono); margin-top:2px; }
+  .pay-stub-info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:22px; }
+  .pay-stub-info-box { background:#eef2f9; border-radius:8px; padding:12px 16px; }
+  .pay-stub-info-label { font-size:9px; color:#64748b; text-transform:uppercase; letter-spacing:.8px; font-family:var(--mono); margin-bottom:4px; }
+  .pay-stub-info-val { font-size:13px; color:#1e293b; font-weight:600; }
+  .pay-stub table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px; }
+  .pay-stub th { text-align:left; font-size:9px; text-transform:uppercase; letter-spacing:.6px; color:#64748b; font-family:var(--mono); padding:6px 8px; border-bottom:1px solid #cbd5e1; }
+  .pay-stub td { padding:7px 8px; border-bottom:1px solid #e2e8f0; color:#1e293b; }
+  .pay-stub .stub-section-title { font-family:var(--display); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#475569; margin:18px 0 8px; }
+  .pay-stub-net-banner {
+    display:flex; justify-content:space-between; align-items:center;
+    background:linear-gradient(135deg,#0d9e74,#077a58); color:#fff;
+    border-radius:10px; padding:16px 22px; margin-top:20px;
+  }
+  .pay-stub-net-label { font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.4px; }
+  .pay-stub-net-val { font-family:var(--display); font-weight:800; font-size:22px; }
+  .pay-stub-ytd { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+  .pay-stub-ytd-box { background:#eef2f9; border-radius:8px; padding:10px 14px; text-align:center; }
+  .pay-stub-ytd-label { font-size:9px; color:#64748b; text-transform:uppercase; letter-spacing:.6px; font-family:var(--mono); }
+  .pay-stub-ytd-val { font-size:14px; font-weight:700; color:#1e293b; margin-top:3px; font-family:var(--mono); }
+  .pay-stub-empty { text-align:center; padding:40px; color:var(--text3); font-size:13px; }
+
+  /* ─────────────────────────────────────────────────────
+     STAT CARD / NUMBER MICRO-INTERACTIONS
+  ───────────────────────────────────────────────────── */
+  .rs-card, .stat-card { transition:transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s, border-color .25s; }
+  .rs-card:hover, .stat-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--border2); }
+  .count-up { display:inline-block; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -1387,7 +1480,7 @@
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-page="reportbuilder" onclick="nav('reportbuilder',this)"><span class="nav-icon">🗂️</span>Report Builder</div>
       <div class="nav-item" data-page="payperiod" onclick="nav('payperiod',this)"><span class="nav-icon">💵</span>Pay Period Report</div>
-      <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes</div>
+      <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes <span class="nav-pulse-badge">●</span></div>
       <div class="nav-item" data-page="monthly" onclick="nav('monthly',this)"><span class="nav-icon">📅</span>Monthly Report</div>
       <div class="nav-item" data-page="leaderboard" onclick="nav('leaderboard',this)"><span class="nav-icon">🏆</span>OT Leaderboard</div>
       <div class="nav-section">Setup</div>
@@ -1451,6 +1544,11 @@
         <!-- New pay period banner -->
         <div id="dash-new-period-banner" style="display:none"></div>
         <div class="stats-grid" id="dash-stats"></div>
+        <div class="card section-gap" style="padding:20px 22px">
+          <div class="card-title" style="margin-bottom:4px">📈 Payroll Trend — Last 6 Periods</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:14px;font-family:var(--mono)">Regular vs. overtime cost per pay period</div>
+          <div style="height:220px"><canvas id="dash-trend-chart"></canvas></div>
+        </div>
         <div class="two-col section-gap">
           <div class="card">
             <div class="card-title" id="dash-ot-card-title">🔴 Staff with Overtime</div>
@@ -1809,6 +1907,23 @@
           <select id="pr-select" onchange="renderPayrollPage()"></select>
         </div>
 
+        <div class="pr-steps">
+          <div class="pr-step" id="pr-step-ind-1">
+            <div class="pr-step-circle">1</div>
+            <div class="pr-step-label">Review<br>Timesheets</div>
+          </div>
+          <div class="pr-step-line" id="pr-step-line-1"></div>
+          <div class="pr-step" id="pr-step-ind-2">
+            <div class="pr-step-circle">2</div>
+            <div class="pr-step-label">Set Tax<br>Rates</div>
+          </div>
+          <div class="pr-step-line" id="pr-step-line-2"></div>
+          <div class="pr-step" id="pr-step-ind-3">
+            <div class="pr-step-circle">3</div>
+            <div class="pr-step-label">Finalized<br>Payroll</div>
+          </div>
+        </div>
+
         <div id="pr-status-banner"></div>
 
         <!-- STEP 1: Review timesheets + confirm -->
@@ -1825,6 +1940,7 @@
           <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:12px">
             <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Tax Withholding</div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Defaults below (FICA 7.65%, State 3.07%) match American Safety Options' standard estimate methodology — Federal is left at 0% since it isn't withheld at this stage. Adjust any rate as needed; all are flat percentages of gross pay.</div>
+            <div class="form-field" style="max-width:220px;margin-bottom:14px"><label>Pay Date</label><input type="date" id="pr-pay-date"></div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px">
               <div class="form-field"><label>Federal Tax (%)</label><input type="number" id="pr-tax-federal" step="0.01" min="0" value="0"></div>
               <div class="form-field"><label>FICA (%)</label><input type="number" id="pr-tax-fica" step="0.01" min="0" value="7.65"></div>
@@ -1843,6 +1959,21 @@
           <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end">
             <button class="btn btn-success" onclick="exportPayrollCSV()">⬇️ Export CSV</button>
             <button class="btn btn-ghost" onclick="unlockPayrollPeriod()">🔓 Unlock &amp; Recalculate</button>
+          </div>
+
+          <div class="pay-stubs-panel">
+            <div class="pay-stubs-panel-head">
+              <div>
+                <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text)">🧾 Pay Stubs</div>
+                <div style="font-size:12px;color:var(--text2);margin-top:2px">Individual, printable pay stubs generated from this finalized payroll</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <select id="pr-stub-select" onchange="renderPayStubPreview()" style="min-width:220px"></select>
+                <button class="btn btn-primary" style="font-size:12px;padding:8px 16px" onclick="printPayStub()">🖨️ Print This Stub</button>
+                <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px" onclick="printAllPayStubs()">🖨️ Print All Stubs</button>
+              </div>
+            </div>
+            <div id="pr-stub-preview"></div>
           </div>
         </div>
       </div>
@@ -3345,6 +3476,12 @@ function enterApp() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('user-name-label').textContent = user.name;
   document.getElementById('user-avatar').textContent = user.name[0];
+  try {
+    if (localStorage.getItem('aso_payroll_seen') === '1') {
+      const badge = document.querySelector('.nav-item[data-page="payroll"] .nav-pulse-badge');
+      if (badge) badge.remove();
+    }
+  } catch(e) {}
   const roleEl = document.getElementById('topbar-role-badge');
   if (roleEl) {
     const roleColors = { admin: 'var(--accent2)', supervisor: 'var(--warn)', viewer: 'var(--text3)' };
@@ -3376,6 +3513,11 @@ function nav(page, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
   document.getElementById('page-' + page).classList.add('active');
+  if (page === 'payroll') {
+    const badge = document.querySelector('.nav-item[data-page="payroll"] .nav-pulse-badge');
+    if (badge) badge.remove();
+    try { localStorage.setItem('aso_payroll_seen', '1'); } catch(e) {}
+  }
   const renders = {
     dashboard: renderDashboard,
     timesheet: renderTimesheet,
@@ -3619,6 +3761,35 @@ function updatePrintDates() {
 
 function $fmt(n) { return '$' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function numFmt(n) { return Number(n).toFixed(2).replace(/\.?0+$/, ''); }
+
+// Animates a number counting up to its target value — used to make stat
+// cards feel alive rather than just appearing as static text.
+function animateCountUp(el, target, opts) {
+  if (!el) return;
+  opts = opts || {};
+  const isMoney = !!opts.money;
+  const duration = opts.duration || 650;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = isMoney ? $fmt(target) : numFmt(target);
+    return;
+  }
+  const startTime = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - startTime) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const val = target * eased;
+    el.textContent = isMoney ? $fmt(val) : numFmt(val);
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+function animateStatsIn(containerSelector) {
+  document.querySelectorAll(containerSelector + ' .count-up').forEach(el => {
+    const target = parseFloat(el.getAttribute('data-target'));
+    if (isNaN(target)) return;
+    animateCountUp(el, target, { money: el.hasAttribute('data-money') });
+  });
+}
 
 // ──────────────────────────────────────────────────────────
 // PRINT
@@ -4120,6 +4291,46 @@ function onDashPeriodChange() {
   renderDashboard();
 }
 
+let _dashTrendChart = null;
+function renderDashboardTrendChart() {
+  const canvas = document.getElementById('dash-trend-chart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const periods = getPeriodsAroundToday(5, 0);
+  const all = computeShiftsWithOT();
+  const labels = [], regData = [], otData = [];
+  periods.forEach(p => {
+    const rows = all.filter(s => s.period === p.label);
+    regData.push(Number(rows.reduce((a,s)=>a+s.regPay,0).toFixed(2)));
+    otData.push(Number(rows.reduce((a,s)=>a+s.otPay,0).toFixed(2)));
+    labels.push(p.label.split(' (')[0]);
+  });
+
+  if (_dashTrendChart) _dashTrendChart.destroy();
+  _dashTrendChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Regular Pay', data: regData, backgroundColor: 'rgba(74,175,245,0.75)', borderRadius: 4, stack: 'pay' },
+        { label: 'OT Pay', data: otData, backgroundColor: 'rgba(212,146,12,0.85)', borderRadius: 4, stack: 'pay' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 700, easing: 'easeOutCubic' },
+      scales: {
+        x: { stacked: true, ticks: { color: '#7290b0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { stacked: true, ticks: { color: '#7290b0', font: { size: 10 }, callback: v => '$' + v }, grid: { color: 'rgba(255,255,255,0.06)' } }
+      },
+      plugins: {
+        legend: { labels: { color: '#cdd9ec', font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + $fmt(ctx.parsed.y) } }
+      }
+    }
+  });
+}
+
 function renderDashboard() {
   const selectedPeriod = populateDashPeriodDropdown();
   const all = computeShiftsWithOT();
@@ -4171,14 +4382,16 @@ function renderDashboard() {
   }
 
   document.getElementById('dash-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Total Shifts</div><div class="stat-value">${totalShifts}</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
-    <div class="stat-card"><div class="stat-label">Total Hours</div><div class="stat-value accent">${numFmt(totalHrs)}</div><div class="stat-sub">hrs worked</div></div>
-    <div class="stat-card"><div class="stat-label">Regular Pay</div><div class="stat-value success">${$fmt(totalRegPay)}</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
-    <div class="stat-card"><div class="stat-label">OT Hours</div><div class="stat-value danger">${numFmt(totalOTHrs)}</div><div class="stat-sub">hrs overtime</div></div>
-    <div class="stat-card"><div class="stat-label">OT Cost</div><div class="stat-value warn">${$fmt(totalOTPay)}</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
-    <div class="stat-card"><div class="stat-label">Active Staff</div><div class="stat-value">${activeStaff}</div><div class="stat-sub">registered</div></div>
-    <div class="stat-card"><div class="stat-label">Pending Approvals</div><div class="stat-value ${PENDING_APPROVALS.length>0?'warn':'success'}">${PENDING_APPROVALS.length}</div><div class="stat-sub">awaiting review</div></div>
+    <div class="stat-card"><div class="stat-label">Total Shifts</div><div class="stat-value count-up" data-target="${totalShifts}">0</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Hours</div><div class="stat-value accent count-up" data-target="${totalHrs}">0</div><div class="stat-sub">hrs worked</div></div>
+    <div class="stat-card"><div class="stat-label">Regular Pay</div><div class="stat-value success count-up" data-target="${totalRegPay}" data-money>$0.00</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
+    <div class="stat-card"><div class="stat-label">OT Hours</div><div class="stat-value danger count-up" data-target="${totalOTHrs}">0</div><div class="stat-sub">hrs overtime</div></div>
+    <div class="stat-card"><div class="stat-label">OT Cost</div><div class="stat-value warn count-up" data-target="${totalOTPay}" data-money>$0.00</div><div class="stat-sub">${isCurrentPeriod?'current period':'selected period'}</div></div>
+    <div class="stat-card"><div class="stat-label">Active Staff</div><div class="stat-value count-up" data-target="${activeStaff}">0</div><div class="stat-sub">registered</div></div>
+    <div class="stat-card"><div class="stat-label">Pending Approvals</div><div class="stat-value ${PENDING_APPROVALS.length>0?'warn':'success'} count-up" data-target="${PENDING_APPROVALS.length}">0</div><div class="stat-sub">awaiting review</div></div>
   `;
+  animateStatsIn('#dash-stats');
+  renderDashboardTrendChart();
 
   // Update card titles dynamically
   const otCardTitle = document.getElementById('dash-ot-card-title');
@@ -5390,11 +5603,12 @@ function renderPayrollPage() {
     totShifts += d.shifts; totReg += d.regHrs; totOT += d.otHrs; totRegP += d.regPay; totOTP += d.otPay;
   });
   document.getElementById('pr-summary').innerHTML = `
-    <div class="rs-card"><div class="rs-label">Shifts</div><div class="rs-val">${totShifts}</div></div>
-    <div class="rs-card"><div class="rs-label">Regular Hrs</div><div class="rs-val" style="color:var(--accent2)">${numFmt(totReg)}</div></div>
-    <div class="rs-card"><div class="rs-label">OT Hours</div><div class="rs-val" style="color:var(--warn)">${numFmt(totOT)}</div></div>
-    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totRegP+totOTP)}</div></div>
+    <div class="rs-card"><div class="rs-label">Shifts</div><div class="rs-val count-up" data-target="${totShifts}">0</div></div>
+    <div class="rs-card"><div class="rs-label">Regular Hrs</div><div class="rs-val count-up" data-target="${totReg}" style="color:var(--accent2)">0</div></div>
+    <div class="rs-card"><div class="rs-label">OT Hours</div><div class="rs-val count-up" data-target="${totOT}" style="color:var(--warn)">0</div></div>
+    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val count-up" data-target="${totRegP+totOTP}" data-money style="color:var(--success)">$0.00</div></div>
   `;
+  animateStatsIn('#pr-summary');
 
   let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
   const detailRows = buildPayrollDetailRows(label);
@@ -5418,20 +5632,212 @@ function renderPayrollPage() {
   const step2 = document.getElementById('pr-step2');
   const step3 = document.getElementById('pr-step3');
 
+  updatePrStepTracker(rec);
+
   if (rec && rec.finalized) {
     step1.style.display = 'none';
     step2.style.display = 'none';
     step3.style.display = '';
     renderFinalPayrollTable(rec);
+    renderPayStubsSection(rec);
   } else if (rec && rec.confirmed) {
     step1.style.display = 'none';
     step2.style.display = '';
     step3.style.display = 'none';
+    const payDateInput = document.getElementById('pr-pay-date');
+    if (payDateInput && !payDateInput.value && periodStart) {
+      const d = new Date(periodStart + 'T00:00:00');
+      d.setDate(d.getDate() + 19); // period start + ~19 days as a sensible default pay date
+      payDateInput.value = d.toISOString().split('T')[0];
+    }
   } else {
     step1.style.display = '';
     step2.style.display = 'none';
     step3.style.display = 'none';
   }
+}
+
+function updatePrStepTracker(rec) {
+  const s1 = document.getElementById('pr-step-ind-1');
+  const s2 = document.getElementById('pr-step-ind-2');
+  const s3 = document.getElementById('pr-step-ind-3');
+  const l1 = document.getElementById('pr-step-line-1');
+  const l2 = document.getElementById('pr-step-line-2');
+  [s1,s2,s3].forEach(s => s.classList.remove('active','done'));
+  [l1,l2].forEach(l => l.classList.remove('done'));
+  if (rec && rec.finalized) {
+    s1.classList.add('done'); s2.classList.add('done'); s3.classList.add('active');
+    l1.classList.add('done'); l2.classList.add('done');
+  } else if (rec && rec.confirmed) {
+    s1.classList.add('done'); s2.classList.add('active');
+    l1.classList.add('done');
+  } else {
+    s1.classList.add('active');
+  }
+}
+
+// ── Pay Stubs ────────────────────────────────────────────
+function computeYTDForStaff(staffId, uptoPeriodStart) {
+  const year = uptoPeriodStart.slice(0, 4);
+  let gross = 0, tax = 0, net = 0;
+  (PAYROLL_RECORDS || []).forEach(r => {
+    if (!r.finalized || r.periodStart.slice(0,4) !== year || r.periodStart > uptoPeriodStart) return;
+    (r.rows || []).forEach(row => {
+      if (row.staffId !== staffId) return;
+      gross += row.gross; tax += row.totalTax; net += row.net;
+    });
+  });
+  return { gross, tax, net };
+}
+
+function renderPayStubsSection(rec) {
+  const sel = document.getElementById('pr-stub-select');
+  const staffIds = [...new Set((rec.rows||[]).map(r => r.staffId))];
+  const prevVal = sel.value;
+  sel.innerHTML = staffIds.map(id => {
+    const row = rec.rows.find(r => r.staffId === id);
+    return `<option value="${id}">${esc(row.name)}</option>`;
+  }).join('');
+  if (staffIds.includes(prevVal)) sel.value = prevVal;
+  renderPayStubPreview();
+}
+
+function buildPayStubHTML(rec, staffId) {
+  const rows = (rec.rows || []).filter(r => r.staffId === staffId);
+  if (!rows.length) return null;
+  const name = rows[0].name;
+  const gross = rows.reduce((a,r)=>a+r.gross,0);
+  const federalTax = rows.reduce((a,r)=>a+r.federalTax,0);
+  const ficaTax = rows.reduce((a,r)=>a+r.ficaTax,0);
+  const stateTax = rows.reduce((a,r)=>a+r.stateTax,0);
+  const otherTax = rows.reduce((a,r)=>a+r.otherTax,0);
+  const totalTax = rows.reduce((a,r)=>a+r.totalTax,0);
+  const net = rows.reduce((a,r)=>a+r.net,0);
+  const ytd = computeYTDForStaff(staffId, rec.periodStart);
+  const payDate = rec.payDate ? new Date(rec.payDate+'T00:00:00').toLocaleDateString() : '\u2014';
+
+  let earningsRows = '';
+  rows.forEach(r => {
+    const regHrs = r.wk1Reg + r.wk2Reg, otHrs = r.wk1OT + r.wk2OT;
+    if (regHrs > 0) earningsRows += `<tr><td>${esc(r.location)} \u2014 Regular</td><td class="mono">${numFmt(regHrs)}</td><td class="mono">$${numFmt(r.rate)}</td><td class="mono">${$fmt(r.regPay)}</td></tr>`;
+    if (otHrs > 0)  earningsRows += `<tr><td>${esc(r.location)} \u2014 Overtime</td><td class="mono">${numFmt(otHrs)}</td><td class="mono">$${numFmt(r.rate*1.5)}</td><td class="mono">${$fmt(r.otPay)}</td></tr>`;
+  });
+
+  return `
+    <div class="pay-stub">
+      <div class="pay-stub-header">
+        <div>
+          <div class="pay-stub-org">American Safety Options, Inc.</div>
+          <div class="pay-stub-org-sub">Earnings Statement</div>
+        </div>
+        <div class="pay-stub-title">
+          <div class="pay-stub-title-main">Pay Stub</div>
+          <div class="pay-stub-title-sub">Pay Date: ${payDate}</div>
+        </div>
+      </div>
+      <div class="pay-stub-info-grid">
+        <div class="pay-stub-info-box">
+          <div class="pay-stub-info-label">Employee</div>
+          <div class="pay-stub-info-val">${esc(name)}</div>
+        </div>
+        <div class="pay-stub-info-box">
+          <div class="pay-stub-info-label">Pay Period</div>
+          <div class="pay-stub-info-val">${esc(rec.periodLabel)}</div>
+        </div>
+      </div>
+
+      <div class="stub-section-title">Earnings</div>
+      <table><thead><tr><th>Description</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
+      <tbody>${earningsRows}</tbody>
+      <tfoot><tr style="font-weight:700"><td colspan="3">Gross Pay</td><td class="mono">${$fmt(gross)}</td></tr></tfoot></table>
+
+      <div class="stub-section-title">Deductions</div>
+      <table><thead><tr><th>Description</th><th></th><th></th><th>Amount</th></tr></thead>
+      <tbody>
+        ${federalTax>0?`<tr><td>Federal Withholding</td><td></td><td></td><td class="mono">${$fmt(federalTax)}</td></tr>`:''}
+        <tr><td>FICA (Social Security &amp; Medicare)</td><td></td><td></td><td class="mono">${$fmt(ficaTax)}</td></tr>
+        <tr><td>State Withholding</td><td></td><td></td><td class="mono">${$fmt(stateTax)}</td></tr>
+        ${otherTax>0?`<tr><td>Other</td><td></td><td></td><td class="mono">${$fmt(otherTax)}</td></tr>`:''}
+      </tbody>
+      <tfoot><tr style="font-weight:700"><td colspan="3">Total Deductions</td><td class="mono">${$fmt(totalTax)}</td></tr></tfoot></table>
+
+      <div class="pay-stub-net-banner">
+        <div class="pay-stub-net-label">NET PAY</div>
+        <div class="pay-stub-net-val">${$fmt(net)}</div>
+      </div>
+
+      <div class="pay-stub-ytd">
+        <div class="pay-stub-ytd-box"><div class="pay-stub-ytd-label">YTD Gross</div><div class="pay-stub-ytd-val">${$fmt(ytd.gross)}</div></div>
+        <div class="pay-stub-ytd-box"><div class="pay-stub-ytd-label">YTD Taxes</div><div class="pay-stub-ytd-val">${$fmt(ytd.tax)}</div></div>
+        <div class="pay-stub-ytd-box"><div class="pay-stub-ytd-label">YTD Net</div><div class="pay-stub-ytd-val">${$fmt(ytd.net)}</div></div>
+      </div>
+    </div>`;
+}
+
+function renderPayStubPreview() {
+  const label = getPrSelectedLabel();
+  const periodStart = getPrSelectedStart();
+  const rec = findPayrollRecord(periodStart);
+  const sel = document.getElementById('pr-stub-select');
+  const preview = document.getElementById('pr-stub-preview');
+  if (!rec || !rec.finalized || !sel.value) {
+    preview.innerHTML = '<div class="pay-stub-empty">No pay stub available yet.</div>';
+    return;
+  }
+  const html = buildPayStubHTML(rec, sel.value);
+  preview.innerHTML = html || '<div class="pay-stub-empty">Could not build a pay stub for this employee.</div>';
+}
+
+function openStubPrintWindow(bodyHtml, title) {
+  const win = window.open('', '_blank', 'width=820,height=1060');
+  if (!win) { showToast('Please allow pop-ups to print pay stubs', 'warn'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><meta charset="utf-8"><style>
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;margin:0;padding:24px;color:#1e293b}
+    .pay-stub{background:#f8fafc;border-radius:14px;padding:32px 36px;max-width:720px;margin:0 auto 32px;box-shadow:none;border:1px solid #e2e8f0}
+    .pay-stub-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1d4ed8;padding-bottom:16px;margin-bottom:20px}
+    .pay-stub-org{font-family:Georgia,serif;font-size:19px;font-weight:700;color:#1d4ed8}
+    .pay-stub-org-sub{font-size:10px;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-top:3px}
+    .pay-stub-title{text-align:right} .pay-stub-title-main{font-size:15px;font-weight:700;color:#1e293b}
+    .pay-stub-title-sub{font-size:11px;color:#64748b;margin-top:2px}
+    .pay-stub-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+    .pay-stub-info-box{background:#eef2f9;border-radius:8px;padding:12px 16px}
+    .pay-stub-info-label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+    .pay-stub-info-val{font-size:13px;color:#1e293b;font-weight:600}
+    .pay-stub table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px}
+    .pay-stub th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#64748b;padding:6px 8px;border-bottom:1px solid #cbd5e1}
+    .pay-stub td{padding:7px 8px;border-bottom:1px solid #e2e8f0;color:#1e293b}
+    .stub-section-title{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#475569;margin:18px 0 8px}
+    .pay-stub-net-banner{display:flex;justify-content:space-between;align-items:center;background:#0d9e74;color:#fff;border-radius:10px;padding:16px 22px;margin-top:20px}
+    .pay-stub-net-label{font-weight:700;font-size:13px;letter-spacing:.4px}
+    .pay-stub-net-val{font-weight:800;font-size:22px}
+    .pay-stub-ytd{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+    .pay-stub-ytd-box{background:#eef2f9;border-radius:8px;padding:10px 14px;text-align:center}
+    .pay-stub-ytd-label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.6px}
+    .pay-stub-ytd-val{font-size:14px;font-weight:700;color:#1e293b;margin-top:3px}
+    @media print { .pay-stub { page-break-after:always; box-shadow:none; border:none; } }
+  </style></head><body>${bodyHtml}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 350);
+}
+
+function printPayStub() {
+  const label = getPrSelectedLabel();
+  const rec = findPayrollRecord(getPrSelectedStart());
+  const sel = document.getElementById('pr-stub-select');
+  if (!rec || !rec.finalized || !sel.value) { showToast('No pay stub selected', 'warn'); return; }
+  const html = buildPayStubHTML(rec, sel.value);
+  if (!html) { showToast('Could not build this pay stub', 'danger'); return; }
+  openStubPrintWindow(html, `Pay Stub — ${sel.options[sel.selectedIndex].textContent}`);
+}
+
+function printAllPayStubs() {
+  const rec = findPayrollRecord(getPrSelectedStart());
+  if (!rec || !rec.finalized) { showToast('No finalized payroll for this period', 'warn'); return; }
+  const staffIds = [...new Set((rec.rows||[]).map(r => r.staffId))];
+  if (!staffIds.length) { showToast('No employees in this payroll', 'warn'); return; }
+  const html = staffIds.map(id => buildPayStubHTML(rec, id)).filter(Boolean).join('');
+  openStubPrintWindow(html, `Pay Stubs — ${rec.periodLabel}`);
 }
 
 function confirmTimesheetsForPeriod() {
@@ -5472,7 +5878,9 @@ function calculatePayroll() {
   const fica  = parseFloat(document.getElementById('pr-tax-fica').value)    || 0;
   const state = parseFloat(document.getElementById('pr-tax-state').value)  || 0;
   const other = parseFloat(document.getElementById('pr-tax-other').value)  || 0;
+  const payDate = document.getElementById('pr-pay-date').value;
 
+  if (!payDate) { showToast('Enter a pay date before calculating payroll', 'danger'); return; }
   if ([fed, fica, state, other].some(v => v < 0)) { showToast('Tax rates cannot be negative', 'danger'); return; }
   if (fed + fica + state + other >= 100) { showToast('Combined tax rates are 100% or more — check your entries', 'warn'); return; }
 
@@ -5487,6 +5895,7 @@ function calculatePayroll() {
   });
 
   rec.taxRates = { federal: fed, fica, state, other };
+  rec.payDate = payDate;
   rec.finalized = true;
   rec.finalizedBy = _currentUser ? _currentUser.name : 'System';
   rec.finalizedAt = new Date().toLocaleString();
@@ -5507,11 +5916,12 @@ function renderFinalPayrollTable(rec) {
   });
 
   document.getElementById('pr-final-summary').innerHTML = `
-    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val" style="color:var(--accent2)">${$fmt(totGross)}</div></div>
-    <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val" style="color:var(--danger)">${$fmt(totTax)}</div></div>
-    <div class="rs-card"><div class="rs-label">Net Pay</div><div class="rs-val" style="color:var(--success)">${$fmt(totNet)}</div></div>
+    <div class="rs-card"><div class="rs-label">Gross Pay</div><div class="rs-val count-up" data-target="${totGross}" data-money style="color:var(--accent2)">$0.00</div></div>
+    <div class="rs-card"><div class="rs-label">Total Withheld</div><div class="rs-val count-up" data-target="${totTax}" data-money style="color:var(--danger)">$0.00</div></div>
+    <div class="rs-card"><div class="rs-label">Net Pay</div><div class="rs-val count-up" data-target="${totNet}" data-money style="color:var(--success)">$0.00</div></div>
     <div class="rs-card"><div class="rs-label">Rates Used</div><div class="rs-val" style="font-size:12px">Fed ${rec.taxRates.federal}% · FICA ${rec.taxRates.fica}% · State ${rec.taxRates.state}%${rec.taxRates.other>0?` · Other ${rec.taxRates.other}%`:''}</div></div>
   `;
+  animateStatsIn('#pr-final-summary');
 
   let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Rate</th><th>Gross</th><th>Federal</th><th>FICA</th><th>State</th><th>Other</th><th>Total Tax</th><th>Net Pay</th></tr></thead><tbody>';
   rows.forEach(r => {
@@ -5556,8 +5966,12 @@ function unlockPayrollPeriod() {
   const label = rec.periodLabel;
   rec.confirmed = false; rec.confirmedBy = null; rec.confirmedAt = null;
   rec.taxRates = null;
+  rec.payDate = null;
   rec.finalized = false; rec.finalizedBy = null; rec.finalizedAt = null;
   rec.rows = null;
+
+  const payDateInput = document.getElementById('pr-pay-date');
+  if (payDateInput) payDateInput.value = '';
 
   auditLog('PAYROLL_UNLOCK', `Unlocked payroll for pay period: ${label}`, { periodStart });
   dbSave();
@@ -5571,6 +5985,7 @@ function exportPayrollCSV() {
   if (!rec || !rec.finalized) { showToast('No finalized payroll to export', 'warn'); return; }
 
   let csv = `American Safety Options — Payroll — ${rec.periodLabel}\n`;
+  csv += `Pay Date: ${rec.payDate || '—'}\n`;
   csv += `Confirmed by: ${rec.confirmedBy} on ${rec.confirmedAt}\n`;
   csv += `Finalized by: ${rec.finalizedBy} on ${rec.finalizedAt}\n`;
   csv += `Tax Rates — Federal ${rec.taxRates.federal}%, FICA ${rec.taxRates.fica}%, State ${rec.taxRates.state}%, Other ${rec.taxRates.other}%\n\n`;
@@ -7088,7 +7503,6 @@ function atExportCSV() {
 // ── Wire Audit Logging into Report Builder house filter ──
 function rbFilterStaffByHouse() {
   const houseVal = document.getElementById('rb-house-filter') ? document.getElementById('rb-house-filter').value : '';
-  // Re-build staff chips filtered by house
   const chips = document.getElementById('rb-staff-chips');
   if (!chips) return;
   const statusF = document.getElementById('rb-status-filter') ? document.getElementById('rb-status-filter').value : '';
@@ -7096,9 +7510,9 @@ function rbFilterStaffByHouse() {
   if (statusF) pool = pool.filter(s => s.status === statusF);
   if (houseVal) pool = pool.filter(s => s.loc === houseVal);
   chips.innerHTML = pool.map(s => {
-    const isSel = chips.querySelectorAll ? [...chips.querySelectorAll('.rb-chip.selected')].some(c => c.getAttribute('data-id') === s.id) : true;
-    return `<div class="rb-chip selected" data-id="${s.id}" onclick="rbToggleChip(this)">
-      <div class="rb-chip-dot"></div>${esc(s.last)}, ${esc(s.first)}
+    const sel = _rbSelectedStaff.has(s.id);
+    return `<div class="rb-chip${sel?' selected':''}" data-id="${s.id}" onclick="rbToggleStaff('${s.id}',this)">
+      <div class="rb-chip-dot"></div><span>${esc(s.first)} ${esc(s.last)}</span>
     </div>`;
   }).join('');
 }
