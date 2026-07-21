@@ -10,6 +10,7 @@
 | `start.vbs` | Silent Windows launcher (no terminal window) |
 | `installer.iss` | Inno Setup script → builds the Windows .exe installer |
 | `patch_html.py` | Utility: re-patches a new HTML version to use the SQL backend (see warning in that file) |
+| `test.js` | Automated regression tests — run `node test.js` before deploying a change |
 | `render.yaml` | Deployment config for hosting on [Render](https://render.com) |
 
 The app covers timesheets, overtime calculation, shift approvals, staff/location
@@ -62,6 +63,17 @@ Data is saved to:  `C:\Users\<you>\ASO_OT_Data\aso_ot.db`
 | `DB_DIR` | `~/ASO_OT_Data` | Folder where the SQLite file is stored |
 
 ---
+
+## Running Tests
+
+Before deploying any change, run the automated regression suite:
+```
+node test.js
+```
+It boots a disposable test server against a scratch database (never touches
+your real data), checks authentication, the employee data-scoping security
+boundary, input validation, backups, and audit logging, then reports pass/fail
+and exits with code 1 if anything broke. Takes a few seconds.
 
 ## Deploying to Render
 

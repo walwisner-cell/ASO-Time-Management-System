@@ -1557,10 +1557,10 @@
       <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
       <div class="nav-item" data-page="timesheet" onclick="nav('timesheet',this)"><span class="nav-icon">📋</span>Timesheet Log</div>
       <div class="nav-item" data-page="approvals" onclick="nav('approvals',this)"><span class="nav-icon">⚠️</span>Approvals <span class="nav-badge" id="approvals-badge" style="display:none">0</span></div>
+      <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes <span class="nav-pulse-badge">●</span></div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-page="reportbuilder" onclick="nav('reportbuilder',this)"><span class="nav-icon">🗂️</span>Report Builder</div>
       <div class="nav-item" data-page="payperiod" onclick="nav('payperiod',this)"><span class="nav-icon">💵</span>Pay Period Report</div>
-      <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes <span class="nav-pulse-badge">●</span></div>
       <div class="nav-item" data-page="monthly" onclick="nav('monthly',this)"><span class="nav-icon">📅</span>Monthly Report</div>
       <div class="nav-item" data-page="leaderboard" onclick="nav('leaderboard',this)"><span class="nav-icon">🏆</span>OT Leaderboard</div>
       <div class="nav-section">Setup</div>
@@ -1619,7 +1619,7 @@
                 <div class="form-field"><label>End Date</label><input type="date" id="mp-lv-end"></div>
               </div>
               <div class="form-field"><label>Total Hours</label><input type="number" id="mp-lv-hours" min="0.5" step="0.5" placeholder="e.g. 8"></div>
-              <div class="form-field"><label>Notes (optional)</label><input type="text" id="mp-lv-notes" placeholder="Optional note for your supervisor"></div>
+              <div class="form-field"><label>Notes (optional)</label><input type="text" id="mp-lv-notes" maxlength="500" placeholder="Optional note for your supervisor"></div>
               <button class="btn btn-primary" style="font-size:13px;padding:10px 18px" onclick="submitMyLeaveRequest()">📨 Submit Request</button>
             </div>
           </div>
@@ -2348,7 +2348,7 @@
             <div class="card-title">➕ Add New User</div>
             <div class="form-field" style="margin-bottom:14px"><label>Full Name</label><input type="text" id="pw-name" placeholder="e.g. Jane Smith" style="width:100%"></div>
             <div class="form-field" style="margin-bottom:14px"><label>Username</label><input type="text" id="pw-user" placeholder="e.g. jsmith" style="width:100%"></div>
-            <div class="form-field" style="margin-bottom:14px"><label>Password</label><input type="password" id="pw-pass" placeholder="Min 6 characters" style="width:100%"></div>
+            <div class="form-field" style="margin-bottom:14px"><label>Password</label><input type="password" id="pw-pass" placeholder="Min 8 characters" style="width:100%"></div>
             <div class="form-field" style="margin-bottom:14px"><label>Confirm Password</label><input type="password" id="pw-pass2" placeholder="Repeat password" style="width:100%"></div>
             <div class="form-field" style="margin-bottom:16px"><label>Role</label>
               <select id="pw-role" onchange="onPwRoleChange()" style="width:100%"><option value="admin">Admin (full access)</option><option value="supervisor">Supervisor (can approve)</option><option value="viewer">Viewer (read-only)</option><option value="employee">Employee (self-service only)</option></select></div>
@@ -3362,6 +3362,16 @@ function esc(str) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Neutralizes CSV/spreadsheet formula injection: a field starting with
+// = + - or @ gets interpreted as a formula by Excel/Sheets when the file is
+// opened, which is a well-known real attack (e.g. a crafted name or note
+// field executing a command). Prefixing a leading apostrophe forces it to
+// display as plain text instead — the standard industry-recommended fix.
+function csvSafe(value) {
+  const s = String(value == null ? '' : value);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
 // ──────────────────────────────────────────────────────────
 // SAVE INDICATOR — amber badge in topbar when unsaved changes exist
 // ──────────────────────────────────────────────────────────
@@ -3996,7 +4006,8 @@ function printCurrentPage() {
 // ──────────────────────────────────────────────────────────
 function updateApprovalsBadge() {
   const badge = document.getElementById('approvals-badge');
-  const count = PENDING_APPROVALS.length;
+  const pendingLeave = (LEAVE_REQUESTS || []).filter(r => r.status === 'pending').length;
+  const count = PENDING_APPROVALS.length + pendingLeave;
   if (count > 0) {
     badge.textContent = count;
     badge.style.display = 'inline-block';
@@ -4217,7 +4228,7 @@ function renderDateCorrectionLog() {
         <span style="color:var(--danger)">${c.oldDate}</span> → <span style="color:var(--success)">${c.newDate}</span>
         &nbsp;·&nbsp; ${c.oldPeriod.split(' (')[0]} ${periodChanged?'→ <b style="color:var(--accent2)">'+c.newPeriod.split(' (')[0]+'</b>':''}
       </div>
-      <div style="font-size:12px;color:var(--text2);font-style:italic;margin-bottom:4px">"${c.reason}"</div>
+      <div style="font-size:12px;color:var(--text2);font-style:italic;margin-bottom:4px">"${esc(c.reason)}"</div>
       <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">By: ${c.correctedBy} · ${c.correctedAt}</div>
     </div>`;
   }).join('');
@@ -4597,7 +4608,7 @@ function renderMyLeaveHistory() {
   const el = document.getElementById('mp-leave-history');
   const mine = (LEAVE_REQUESTS||[]).slice().sort((a,b) => (b.requestedAt||'').localeCompare(a.requestedAt||''));
   if (!mine.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">No requests yet.</div>'; return; }
-  let html = '<table><thead><tr><th>Type</th><th>Dates</th><th>Hours</th><th>Status</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Type</th><th>Dates</th><th>Hours</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
   mine.forEach(r => {
     const badgeClass = r.status === 'approved' ? 'badge-success' : r.status === 'denied' ? 'badge-danger' : 'badge-warn';
     html += `<tr>
@@ -4605,6 +4616,7 @@ function renderMyLeaveHistory() {
       <td class="mono">${r.startDate} \u2192 ${r.endDate}</td>
       <td class="mono">${numFmt(r.hours)}</td>
       <td><span class="badge ${badgeClass}">${esc(r.status)}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${r.notes ? esc(r.notes) : '<span style="color:var(--text3)">\u2014</span>'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -4774,7 +4786,7 @@ function renderDashboard() {
         <td style="padding:8px 6px;color:var(--text2)">${ex.location}</td>
         <td class="mono" style="padding:8px 6px;color:var(--warn)">${numFmt(ex.totalDailyHrs)} hrs</td>
         <td style="padding:8px 6px;color:var(--success)">${ex.approvedBy}</td>
-        <td style="padding:8px 6px;color:var(--text3);font-size:11px;font-style:italic">${ex.reason}</td>
+        <td style="padding:8px 6px;color:var(--text3);font-size:11px;font-style:italic">${esc(ex.reason)}</td>
       </tr>`;
     });
     approvedHtml += '</tbody></table>';
@@ -4899,7 +4911,7 @@ function renderLeaveRequestsAdmin() {
       : `<span style="font-size:11px;color:var(--text3)">${esc(r.reviewedBy||'')}</span>`;
     html += `<tr>
       <td style="color:var(--text);font-weight:500">${esc(name)}</td>
-      <td style="text-transform:capitalize">${esc(r.type)}</td>
+      <td style="text-transform:capitalize">${esc(r.type)}${r.notes ? `<div style="font-size:11px;color:var(--text3);font-weight:400;text-transform:none;margin-top:2px">${esc(r.notes)}</div>` : ''}</td>
       <td class="mono">${r.startDate} \u2192 ${r.endDate}</td>
       <td class="mono">${numFmt(r.hours)}</td>
       <td class="mono" style="color:var(--text3);font-size:11px">${esc(r.requestedAt)}</td>
@@ -4931,6 +4943,7 @@ async function reviewLeaveRequest(id, action) {
     }
     showToast(action === 'approve' ? '✅ Time off approved' : 'Time off request denied');
     renderLeaveRequestsAdmin();
+    updateApprovalsBadge();
   } catch (e) {
     showToast('Review failed — check your connection', 'danger');
   }
@@ -4938,6 +4951,7 @@ async function reviewLeaveRequest(id, action) {
 
 function renderApprovalsPage() {
   renderLeaveRequestsAdmin();
+  updateApprovalsBadge();
   // Pending
   const pendingEl = document.getElementById('pending-approvals-list');
   if (PENDING_APPROVALS.length === 0) {
@@ -6402,7 +6416,7 @@ function exportPayrollCSV() {
   (rec.rows||[]).forEach(r => {
     csv += [r.location, r.name, r.wk1Reg.toFixed(2), r.wk2Reg.toFixed(2), r.wk1OT.toFixed(2), r.wk2OT.toFixed(2),
             r.totalHrs.toFixed(2), r.rate.toFixed(2), r.gross.toFixed(2)]
-      .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+      .map(v => `"${csvSafe(v).replace(/"/g,'""')}"`).join(',') + '\n';
   });
 
   csv += '\nNET PAY SUMMARY BY EMPLOYEE\n';
@@ -6411,7 +6425,7 @@ function exportPayrollCSV() {
     const dedByLabel = {};
     e.deductions.forEach(d => { dedByLabel[d.label] = d.amount; });
     csv += [e.name, e.gross.toFixed(2), ...itemLabels.map(l => (dedByLabel[l]||0).toFixed(2)), e.totalDeductions.toFixed(2), e.net.toFixed(2)]
-      .map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+      .map(v => `"${csvSafe(v).replace(/"/g,'""')}"`).join(',') + '\n';
   });
 
   const blob = new Blob([csv], {type:'text/csv'});
@@ -6607,8 +6621,9 @@ function renderStaffPage() {
 }
 
 function renderStaffTable() {
-  let html = '<table><thead><tr><th>ID</th><th>Name</th><th>Title</th><th>Type</th><th>Location</th><th>Rate</th><th>Start Date</th><th>Status</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>ID</th><th>Name</th><th>Title</th><th>Type</th><th>Location</th><th>Rate</th><th>Start Date</th><th>PTO Balance</th><th>Status</th><th></th></tr></thead><tbody>';
   STAFF.forEach(s => {
+    const bal = s.ptoBalance || 0;
     html += `<tr>
       <td class="mono" style="color:var(--text3)">${s.id}</td>
       <td style="color:var(--text);font-weight:500">${s.first} ${s.last}</td>
@@ -6617,6 +6632,9 @@ function renderStaffTable() {
       <td>${s.loc}</td>
       <td class="mono">${$fmt(s.rate)}</td>
       <td class="mono" style="color:var(--text3)">${s.start}</td>
+      <td class="mono" style="color:${bal<0?'var(--danger)':'var(--success)'}">${numFmt(bal)}h
+        <button class="btn btn-ghost" style="padding:2px 8px;font-size:10px;margin-left:4px" onclick="adjustPtoBalance('${s.id}','${esc(s.first)} ${esc(s.last)}')">Adjust</button>
+      </td>
       <td><span class="badge ${s.status==='Active'?'badge-success':'badge-muted'}">${s.status}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openEditStaffModal('${s.id}')">✏️ Edit</button>
@@ -6627,6 +6645,29 @@ function renderStaffTable() {
   });
   html += '</tbody></table>';
   document.getElementById('staff-table').innerHTML = html;
+}
+
+async function adjustPtoBalance(staffId, staffName) {
+  const deltaStr = prompt(`Adjust PTO balance for ${staffName}.\n\nEnter hours to add (e.g. 40) or subtract (e.g. -8):`);
+  if (deltaStr === null) return;
+  const delta = parseFloat(deltaStr);
+  if (!Number.isFinite(delta) || delta === 0) { showToast('Enter a non-zero number of hours', 'danger'); return; }
+  const reason = prompt('Reason for this adjustment (optional):') || '';
+
+  try {
+    const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}/pto-adjust`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ delta, reason })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Adjustment failed', 'danger'); return; }
+    const st = STAFF.find(s => s.id === staffId);
+    if (st) st.ptoBalance = body.newBalance;
+    showToast(`✅ PTO balance updated to ${numFmt(body.newBalance)}h`);
+    renderStaffTable();
+  } catch (e) {
+    showToast('Adjustment failed — check your connection', 'danger');
+  }
 }
 
 function addStaff() {
@@ -6667,7 +6708,28 @@ function toggleStaffStatus(id) {
 }
 function deleteStaff(id) {
   const s = STAFF.find(x=>x.id===id);
-  if (s) auditLog('DEACTIVATE_STAFF', `Staff deleted: ${s.last}, ${s.first} (${id})`, `Permanently removed from system`);
+  if (!s) return;
+
+  const hasShifts = SHIFTS.some(sh => sh.staff === id);
+  const hasPayroll = (PAYROLL_RECORDS||[]).some(r => (r.rows||[]).some(row => row.staffId === id));
+  const linkedUser = USERS.find(u => u.staffId === id);
+  const warnings = [];
+  if (hasShifts) warnings.push('shift history');
+  if (hasPayroll) warnings.push('past payroll records');
+  if (linkedUser) warnings.push(`an active employee login (@${linkedUser.username})`);
+
+  let msg = `Permanently delete ${s.first} ${s.last}?`;
+  if (warnings.length) {
+    msg += `\n\nThis person has ${warnings.join(', ')}. Deleting them will NOT erase that history, but their name may show as missing in old records going forward.`;
+    if (linkedUser) msg += ` Their employee login account will also be removed.`;
+    msg += `\n\nIf you just want to stop scheduling them (and keep everything intact), use "Deactivate" instead.\n\nDelete anyway?`;
+  }
+  if (!confirm(msg)) return;
+
+  if (linkedUser) USERS = USERS.filter(u => u.id !== linkedUser.id);
+
+  auditLog('DEACTIVATE_STAFF', `Staff deleted: ${s.last}, ${s.first} (${id})`,
+    warnings.length ? `Permanently removed — had: ${warnings.join(', ')}` : 'Permanently removed from system');
   STAFF = STAFF.filter(x=>x.id!==id);
   dbSave();
   renderStaffTable();
@@ -6752,7 +6814,7 @@ function renderLocationsPage() {
       <td class="mono">${$fmt(l.rate)}${hasHistory ? ' <span style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:4px">▸ history</span>' : ''}</td>
       <td class="mono">${l.mult}×</td>
       <td class="mono" style="color:var(--warn)">${$fmt(l.rate*l.mult)}</td>
-      <td style="color:var(--text3)">${l.notes || ''}</td>
+      <td style="color:var(--text3)">${esc(l.notes || '')}</td>
       <td style="display:flex;gap:6px;flex-wrap:nowrap">
         <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="openEditLocationModal('${l.id}')">✏️ Edit</button>
         <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteLocation('${l.id}')">✕</button>
@@ -6785,7 +6847,20 @@ function addLocation() {
 }
 function deleteLocation(id) {
   const l = LOCATIONS.find(x=>x.id===id);
-  if (l) auditLog('DELETE_LOCATION', `Location deleted: ${l.name}`, `Rate was: ${$fmt(l.rate)}/hr`);
+  if (!l) return;
+
+  const staffAssigned = STAFF.filter(s => s.loc === l.name).length;
+  const shiftsHere = SHIFTS.filter(s => s.location === l.name || s.loc === l.name).length;
+  let msg = `Delete ${l.name}?`;
+  if (staffAssigned || shiftsHere) {
+    const parts = [];
+    if (staffAssigned) parts.push(`${staffAssigned} staff member${staffAssigned!==1?'s':''} assigned here`);
+    if (shiftsHere) parts.push(`${shiftsHere} shift${shiftsHere!==1?'s':''} on record here`);
+    msg += `\n\nThis location has ${parts.join(' and ')}. Existing shift history stays intact, but this location will no longer be selectable for new shifts, and assigned staff will need a new location set.\n\nDelete anyway?`;
+  }
+  if (!confirm(msg)) return;
+
+  auditLog('DELETE_LOCATION', `Location deleted: ${l.name}`, `Rate was: ${$fmt(l.rate)}/hr`);
   LOCATIONS = LOCATIONS.filter(l=>l.id!==id);
   dbSave();
   renderLocationsPage();
@@ -7044,7 +7119,7 @@ function addUser() {
   const pass2 = document.getElementById('pw-pass2').value;
   const role = document.getElementById('pw-role').value;
   if (!name || !username) { showToast('Name and username required', 'danger'); return; }
-  if (pass.length < 6) { showToast('Password must be at least 6 characters', 'danger'); return; }
+  if (pass.length < 8) { showToast('Password must be at least 8 characters', 'danger'); return; }
   if (pass !== pass2) { showToast('Passwords do not match', 'danger'); return; }
   if (USERS.find(u=>u.username===username)) { showToast('Username already exists', 'danger'); return; }
 
@@ -7085,7 +7160,7 @@ async function changePassword() {
   const userId = document.getElementById('chpw-user').value;
   const newPass = document.getElementById('chpw-new').value;
   const newPass2 = document.getElementById('chpw-new2').value;
-  if (newPass.length < 6) { showToast('Password must be at least 6 characters', 'danger'); return; }
+  if (newPass.length < 8) { showToast('Password must be at least 8 characters', 'danger'); return; }
   if (newPass !== newPass2) { showToast('Passwords do not match', 'danger'); return; }
   const user = USERS.find(u=>u.id===userId);
   if (!user) { showToast('User not found', 'danger'); return; }
@@ -7743,7 +7818,7 @@ function rbExportCSV() {
     const rows = table.querySelectorAll('tr');
     rows.forEach(row => {
       const cells = row.querySelectorAll('th,td');
-      csv += [...cells].map(c => `"${c.textContent.replace(/"/g,'""').trim()}"`).join(',') + '\n';
+      csv += [...cells].map(c => `"${csvSafe(c.textContent.trim()).replace(/"/g,'""')}"`).join(',') + '\n';
     });
     csv += '\n';
   });
@@ -7782,6 +7857,10 @@ const AT_ICONS = {
   PAYROLL_CONFIRM:  '🔒',
   PAYROLL_FINALIZE: '🧾',
   PAYROLL_UNLOCK:   '🔓',
+  LEAVE_REQUESTED:  '📨',
+  LEAVE_LOGGED:     '🌴',
+  LEAVE_APPROVED:   '✅',
+  LEAVE_DENIED:     '✕',
 };
 const AT_COLORS = {
   ADD_SHIFT:'var(--success)',    EDIT_SHIFT:'var(--accent2)',  DELETE_SHIFT:'var(--danger)',
@@ -7792,6 +7871,7 @@ const AT_COLORS = {
   ADD_USER:'var(--success)',     DELETE_USER:'var(--danger)',  CHANGE_PASSWORD:'var(--gold)',
   PAY_CONFIG:'var(--gold)',      DATA_IMPORT:'var(--accent2)',
   PAYROLL_CONFIRM:'var(--accent)', PAYROLL_FINALIZE:'var(--success)', PAYROLL_UNLOCK:'var(--warn)',
+  LEAVE_REQUESTED:'var(--warn)', LEAVE_LOGGED:'var(--success2)', LEAVE_APPROVED:'var(--success)', LEAVE_DENIED:'var(--danger)',
 };
 
 function auditLog(type, detail, meta) {
@@ -7925,7 +8005,7 @@ function atExportCSV() {
   csv += `Exported: ${new Date().toLocaleString()}\n\n`;
   csv += '"Type","Detail","Meta","By","Role","Date/Time"\n';
   AUDIT_LOG.forEach(e => {
-    csv += `"${(e.type||'').replace(/"/g,'""')}","${(e.detail||'').replace(/"/g,'""')}","${(e.meta||'').replace(/"/g,'""')}","${(e.by||'').replace(/"/g,'""')}","${(e.byRole||'').replace(/"/g,'""')}","${(e.at||'').replace(/"/g,'""')}"\n`;
+    csv += `"${csvSafe(e.type||'').replace(/"/g,'""')}","${csvSafe(e.detail||'').replace(/"/g,'""')}","${csvSafe(e.meta||'').replace(/"/g,'""')}","${csvSafe(e.by||'').replace(/"/g,'""')}","${csvSafe(e.byRole||'').replace(/"/g,'""')}","${csvSafe(e.at||'').replace(/"/g,'""')}"\n`;
   });
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);

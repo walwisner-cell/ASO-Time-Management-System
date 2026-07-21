@@ -15,6 +15,22 @@ const cookieParser = require('cookie-parser');
 const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 
+// ── Crash resilience ────────────────────────────────────────
+// Without these, one uncaught error anywhere (a bad dependency call, a typo in
+// a rarely-hit code path, a promise rejection nobody awaited) kills the whole
+// process for every user until the host notices and restarts it. Instead:
+// log clearly, save whatever's in memory to disk if possible, then exit —
+// letting the platform's normal restart bring the app back up cleanly rather
+// than continuing to run in a potentially corrupted state.
+function crashSafeExit(kind, err) {
+  console.error(`[ASO] ${kind}:`, err);
+  try { if (typeof persistDB === 'function' && db) persistDB(); }
+  catch (saveErr) { console.error('[ASO] Could not save DB during crash handling:', saveErr); }
+  process.exit(1);
+}
+process.on('uncaughtException', (err) => crashSafeExit('Uncaught exception', err));
+process.on('unhandledRejection', (err) => crashSafeExit('Unhandled promise rejection', err));
+
 // ── Configuration ──────────────────────────────────────────
 const PORT      = process.env.PORT || 8420;
 const HOST      = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
@@ -126,6 +142,23 @@ function persistDB() {
   fs.writeFileSync(DB_PATH, Buffer.from(data));
 }
 
+// Writes directly to the audit_log table — used for actions that happen through
+// dedicated endpoints (like leave requests) rather than the generic bulk-save
+// path, so they're never silently missing from the tamper-resistant audit trail.
+// Matches the exact shape the client's own auditLog() function produces
+// (type/detail/meta/by/byRole/at/ts) so entries render identically either way.
+function writeAuditLog(type, detail, user, meta) {
+  const id = 'AL' + Date.now() + Math.random().toString(36).slice(2,8);
+  const ts = Date.now();
+  const at = new Date().toLocaleString();
+  const by = (user && user.name) || 'System';
+  const byRole = (user && user.role) || 'system';
+  run(`INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,action,user_id,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, type, detail || '', meta ? JSON.stringify(meta) : '', by, byRole, at, ts,
+       type, (user && user.id) || '', new Date(ts).toISOString()]);
+}
+
 // ── Backups ────────────────────────────────────────────────
 // Snapshots the current DB file into BACKUP_DIR with a timestamped name, then
 // prunes older automatic backups beyond BACKUP_RETENTION. Manual backups
@@ -216,8 +249,18 @@ function createSchema() {
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
-    user_id TEXT DEFAULT '', created_at TEXT NOT NULL
+    user_id TEXT DEFAULT '', created_at TEXT NOT NULL,
+    type TEXT DEFAULT '', meta TEXT DEFAULT '', by TEXT DEFAULT '',
+    by_role TEXT DEFAULT '', at TEXT DEFAULT '', ts INTEGER DEFAULT 0
   )`);
+  // Migration: the audit log was originally built around action/user_id/created_at
+  // columns, but the client (and the Audit Trail page that renders it) has always
+  // used a different shape — type/by/byRole/at/ts. That mismatch meant every
+  // audit entry came back malformed after a page reload. These columns fix it.
+  ['type','meta','by','by_role','at'].forEach(col => {
+    try { db.run(`ALTER TABLE audit_log ADD COLUMN ${col} TEXT DEFAULT ''`); } catch (e) { /* already exists */ }
+  });
+  try { db.run(`ALTER TABLE audit_log ADD COLUMN ts INTEGER DEFAULT 0`); } catch (e) { /* already exists */ }
 }
 
 function loadDB() {
@@ -251,8 +294,9 @@ function loadDB() {
   const DATE_CORRECTION_LOG = all('SELECT data FROM date_correction_log').map(r => JSON.parse(r.data));
   const DELETION_LOG        = all('SELECT data FROM deletion_log').map(r => JSON.parse(r.data));
   const PAYROLL_RECORDS     = all('SELECT data FROM payroll_records').map(r => JSON.parse(r.data));
-  const AUDIT_LOG = all('SELECT id,action,detail,user_id,created_at FROM audit_log')
-    .map(r => ({ id: r.id, action: r.action, detail: r.detail, userId: r.user_id, ts: r.created_at }));
+  const AUDIT_LOG = all('SELECT id,type,detail,meta,by,by_role,at,ts FROM audit_log ORDER BY ts DESC')
+    .map(r => ({ id: r.id, type: r.type, detail: r.detail, meta: r.meta ? JSON.parse(r.meta) : null,
+                 by: r.by, byRole: r.by_role, at: r.at, ts: r.ts }));
   const LEAVE_REQUESTS = all('SELECT * FROM leave_requests').map(r => ({
     id: r.id, staffId: r.staff_id, type: r.type, startDate: r.start_date, endDate: r.end_date,
     hours: r.hours, status: r.status, notes: r.notes, requestedBy: r.requested_by,
@@ -301,11 +345,20 @@ function saveDB(data) {
     run('INSERT INTO locations (id,name,rate,mult,notes,rate_history) VALUES (?,?,?,?,?,?)',
         [l.id, l.name, l.rate, l.mult, l.notes||'', JSON.stringify(l.rateHistory||[])]);
 
-  // STAFF
+  // STAFF — pto_balance is intentionally NEVER taken from the client payload.
+  // It's only ever changed through the leave-request endpoints (request/approve),
+  // which write it directly to the database. If a bulk save trusted whatever
+  // balance number happened to be in the browser's memory, a stale second tab
+  // (or one opened before someone else's PTO approval landed) could silently
+  // revert an already-approved deduction back to an old value.
+  const existingPtoBalances = {};
+  all('SELECT id, pto_balance FROM staff').forEach(r => { existingPtoBalances[r.id] = r.pto_balance; });
   run('DELETE FROM staff');
-  for (const s of (STAFF || []))
+  for (const s of (STAFF || [])) {
+    const ptoBalance = existingPtoBalances[s.id] !== undefined ? existingPtoBalances[s.id] : (s.ptoBalance || 0);
     run('INSERT INTO staff (id,first,last,title,type,loc,rate,start,status,pto_balance) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active', s.ptoBalance||0]);
+        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active', ptoBalance]);
+  }
 
   // SHIFTS
   run('DELETE FROM shifts');
@@ -342,8 +395,11 @@ function saveDB(data) {
 
   run('DELETE FROM audit_log');
   for (const r of (AUDIT_LOG||[]))
-    run('INSERT INTO audit_log (id,action,detail,user_id,created_at) VALUES (?,?,?,?,?)',
-        [r.id||('AL'+Date.now()+Math.random()), r.action||'', r.detail||'', r.userId||r.user_id||'', r.ts||r.created_at||new Date().toISOString()]);
+    run('INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,action,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [r.id||('AL'+Date.now()+Math.random()), r.type||'', r.detail||'',
+         r.meta ? JSON.stringify(r.meta) : '', r.by||'System', r.byRole||'system',
+         r.at||new Date().toLocaleString(), r.ts||Date.now(),
+         r.type||'', r.by||'', new Date(r.ts||Date.now()).toISOString()]);
 
   persistDB();
 }
@@ -425,9 +481,29 @@ function deepChanged(a, b) { return JSON.stringify(a) !== JSON.stringify(b); }
 function sortedById(arr) { return [...(arr||[])].sort((a,b) => String(a.id).localeCompare(String(b.id))); }
 function stripPasswords(arr) { return sortedById((arr||[]).map(({ password, ...rest }) => rest)); }
 
+// Validates the actual content of shift records, independent of who's allowed
+// to submit them. authorizeSave only checks WHO can add/edit/delete a shift —
+// nothing previously checked WHETHER the shift data itself made sense, so a
+// malformed payload (negative hours, a staff ID that doesn't exist) could be
+// saved without any complaint and quietly corrupt payroll calculations.
+function validateShifts(incomingShifts, staffIds) {
+  for (const s of (incomingShifts || [])) {
+    if (!s.id || typeof s.id !== 'string') return 'A shift is missing a valid ID';
+    if (!s.staff || !staffIds.has(s.staff)) return `Shift ${s.id} references a staff member that doesn't exist`;
+    if (!s.date || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return `Shift ${s.id} has an invalid date`;
+    const hours = Number(s.hours);
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return `Shift ${s.id} has an invalid hours value (must be 0\u201324)`;
+  }
+  return null;
+}
+
 function authorizeSave(existing, incoming, user) {
   const isAdmin = user.role === 'admin';
   const canShift = user.role === 'admin' || user.role === 'supervisor';
+
+  const staffIds = new Set((incoming.STAFF || existing.STAFF || []).map(s => s.id));
+  const shiftValidationError = validateShifts(incoming.SHIFTS, staffIds);
+  if (shiftValidationError) return shiftValidationError;
 
   if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !isAdmin)
     return 'Pay period settings can only be changed by an admin account';
@@ -455,6 +531,27 @@ function authorizeSave(existing, incoming, user) {
   for (const id in existingShiftsById) {
     if (!incomingShiftsById[id] && user.role !== 'admin') return 'Deleting shifts requires an admin account';
   }
+
+  // These were previously unchecked entirely — any authenticated role, including
+  // 'viewer' (meant to be strictly read-only), could fabricate a fake approved
+  // exception or silently wipe a pending 24-hour violation via a raw API call
+  // that never touched the UI. Matches the same admin/supervisor gate the
+  // Approvals page itself uses.
+  if (deepChanged(sortedById(incoming.PENDING_APPROVALS), sortedById(existing.PENDING_APPROVALS)) && !canShift)
+    return 'Managing pending approvals requires an admin or supervisor account';
+
+  if (deepChanged(sortedById(incoming.APPROVED_EXCEPTIONS), sortedById(existing.APPROVED_EXCEPTIONS)) && !canShift)
+    return 'Managing approved exceptions requires an admin or supervisor account';
+
+  // Date corrections and deletion history are only ever legitimately created by
+  // admin-only actions (Pay Period Setup's date-correction tool, and shift
+  // deletion) — same reasoning as above, a lower-severity but real gap since
+  // these logs weren't checked at all before.
+  if ((incoming.DATE_CORRECTION_LOG||[]).length > (existing.DATE_CORRECTION_LOG||[]).length && !isAdmin)
+    return 'Date corrections require an admin account';
+
+  if ((incoming.DELETION_LOG||[]).length > (existing.DELETION_LOG||[]).length && !isAdmin)
+    return 'Recording a deletion requires an admin account';
 
   return null; // authorized
 }
@@ -537,12 +634,26 @@ async function main() {
   app.use(express.json({ limit: '10mb' }));
   app.use(cookieParser());
 
+  // Rate-limited by IP, which matters here specifically: staff at the same
+  // house share one WiFi connection, and several people logging in around a
+  // shift change could plausibly hit a low shared limit together even with
+  // no malicious intent. 60/15min still blocks a real brute-force attempt
+  // (a genuine attacker trying hundreds of passwords) while giving a house
+  // with a dozen-plus staff realistic headroom for normal daily use.
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 20,
+    max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many login attempts — please wait a few minutes and try again' }
+    message: { error: 'Too many login attempts from this network — please wait a few minutes and try again' }
+  });
+
+  const writeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests — please wait a few minutes and try again' }
   });
 
   app.get('/', (req, res) => {
@@ -603,11 +714,11 @@ async function main() {
 
   // Self-service (or admin-on-behalf-of) password change — the only way a
   // password is ever set for an EXISTING account. See saveDB() for why.
-  app.post('/api/users/:id/password', requireAuth, (req, res) => {
+  app.post('/api/users/:id/password', requireAuth, writeLimiter, (req, res) => {
     try {
       const targetId = req.params.id;
       const { password } = req.body || {};
-      if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
       if (req.user.id !== targetId && req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Not authorized to change this password' });
       }
@@ -677,7 +788,12 @@ async function main() {
   app.post('/api/db/import', requireAuth, requireAdmin, (req, res) => {
     try {
       const data = req.body;
-      if (!data.SHIFTS || !data.STAFF) return res.status(400).json({ error: 'Invalid backup' });
+      if (!Array.isArray(data.SHIFTS) || !Array.isArray(data.STAFF)) {
+        return res.status(400).json({ error: 'Invalid backup — SHIFTS and STAFF must be present' });
+      }
+      const staffIds = new Set(data.STAFF.map(s => s.id));
+      const shiftError = validateShifts(data.SHIFTS, staffIds);
+      if (shiftError) return res.status(400).json({ error: `Backup contains invalid shift data: ${shiftError}` });
       saveDB(data);
       res.json({ ok: true, shifts: data.SHIFTS.length, staff: data.STAFF.length });
     } catch(e) { res.status(500).json({ error: e.message }); }
@@ -706,16 +822,32 @@ async function main() {
   // to their own linked staff record server-side. Admin/supervisor can log
   // PTO on behalf of anyone, and their entries are auto-approved immediately
   // (they already have the authority to grant it) with the balance deducted.
-  app.post('/api/leave-requests', requireAuth, (req, res) => {
+  const LEAVE_TYPES = ['vacation', 'sick', 'personal'];
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  app.post('/api/leave-requests', requireAuth, writeLimiter, (req, res) => {
     try {
       const isStaffAction = req.user.role === 'admin' || req.user.role === 'supervisor';
       const staffId = isStaffAction ? (req.body.staffId || req.user.staffId) : req.user.staffId;
       if (!staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
 
-      const { type, startDate, endDate, hours, notes } = req.body || {};
-      if (!type || !startDate || !endDate || !hours || hours <= 0) {
-        return res.status(400).json({ error: 'Type, dates, and hours are required' });
+      const { type, startDate, endDate, notes } = req.body || {};
+      const hours = Number(req.body && req.body.hours);
+
+      if (!LEAVE_TYPES.includes(type)) {
+        return res.status(400).json({ error: 'Type must be vacation, sick, or personal' });
       }
+      if (!ISO_DATE_RE.test(startDate) || !ISO_DATE_RE.test(endDate)) {
+        return res.status(400).json({ error: 'Dates must be valid (YYYY-MM-DD)' });
+      }
+      if (endDate < startDate) {
+        return res.status(400).json({ error: 'End date must be on or after the start date' });
+      }
+      if (!Number.isFinite(hours) || hours <= 0 || hours > 500) {
+        return res.status(400).json({ error: 'Hours must be a positive number (500 or fewer)' });
+      }
+      const safeNotes = typeof notes === 'string' ? notes.slice(0, 500) : '';
+
       const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
       if (!staff) return res.status(404).json({ error: 'Staff record not found' });
 
@@ -724,12 +856,17 @@ async function main() {
       const now = new Date().toLocaleString();
       run(`INSERT INTO leave_requests (id,staff_id,type,start_date,end_date,hours,status,notes,requested_by,requested_at,reviewed_by,reviewed_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, staffId, type, startDate, endDate, hours, status, notes || '', req.user.name, now,
+        [id, staffId, type, startDate, endDate, hours, status, safeNotes, req.user.name, now,
          isStaffAction ? req.user.name : '', isStaffAction ? now : '']);
 
       if (isStaffAction) {
         run('UPDATE staff SET pto_balance = pto_balance - ? WHERE id = ?', [hours, staffId]);
       }
+      writeAuditLog(
+        isStaffAction ? 'LEAVE_LOGGED' : 'LEAVE_REQUESTED',
+        `${req.user.name} ${isStaffAction ? 'logged' : 'requested'} ${hours}h ${type} for ${staff.first} ${staff.last} (${startDate} to ${endDate})`,
+        req.user
+      );
       persistDB();
       res.json({ ok: true, id, status });
     } catch(e) { res.status(500).json({ error: e.message }); }
@@ -738,7 +875,7 @@ async function main() {
   // Approve/deny a pending request — admin/supervisor only. Approving deducts
   // the hours from the employee's PTO balance at review time (not request time),
   // since a denied request should never have touched the balance.
-  app.post('/api/leave-requests/:id/review', requireAuth, (req, res) => {
+  app.post('/api/leave-requests/:id/review', requireAuth, writeLimiter, (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
       return res.status(403).json({ error: 'Not authorized to review leave requests' });
     }
@@ -756,8 +893,40 @@ async function main() {
       if (action === 'approve') {
         run('UPDATE staff SET pto_balance = pto_balance - ? WHERE id = ?', [reqRow.hours, reqRow.staff_id]);
       }
+      const staff = get('SELECT * FROM staff WHERE id = ?', [reqRow.staff_id]);
+      writeAuditLog(
+        action === 'approve' ? 'LEAVE_APPROVED' : 'LEAVE_DENIED',
+        `${req.user.name} ${action === 'approve' ? 'approved' : 'denied'} ${reqRow.hours}h ${reqRow.type} for ${staff ? staff.first+' '+staff.last : reqRow.staff_id}`,
+        req.user
+      );
       persistDB();
       res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Manual PTO balance adjustment — admin only. For granting an annual
+  // allotment or correcting a mistake. Writes directly to the database (same
+  // pattern as leave-request review) so it's never at risk of being reverted
+  // by a stale bulk save, and always leaves an audit trail entry.
+  app.post('/api/staff/:id/pto-adjust', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+    try {
+      const delta = Number(req.body && req.body.delta);
+      const reason = typeof (req.body && req.body.reason) === 'string' ? req.body.reason.slice(0, 300) : '';
+      if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 2000) {
+        return res.status(400).json({ error: 'Adjustment must be a non-zero number (2000 hours or fewer in magnitude)' });
+      }
+      const staff = get('SELECT * FROM staff WHERE id = ?', [req.params.id]);
+      if (!staff) return res.status(404).json({ error: 'Staff record not found' });
+
+      run('UPDATE staff SET pto_balance = pto_balance + ? WHERE id = ?', [delta, req.params.id]);
+      const updated = get('SELECT pto_balance FROM staff WHERE id = ?', [req.params.id]);
+      writeAuditLog(
+        'PTO_ADJUSTED',
+        `${req.user.name} adjusted PTO balance for ${staff.first} ${staff.last} by ${delta > 0 ? '+' : ''}${delta}h${reason ? ` (${reason})` : ''}`,
+        req.user
+      );
+      persistDB();
+      res.json({ ok: true, newBalance: updated.pto_balance });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -766,7 +935,7 @@ async function main() {
     catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/backups', requireAuth, requireAdmin, (req, res) => {
+  app.post('/api/backups', requireAuth, requireAdmin, writeLimiter, (req, res) => {
     try {
       const filename = createBackup('manual');
       res.json({ ok: true, filename });
@@ -786,6 +955,15 @@ async function main() {
   });
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+  // Catch-all error handler — must be registered after every route. Anything
+  // that throws synchronously in a route handler and wasn't already caught by
+  // its own try/catch lands here instead of crashing the whole process.
+  app.use((err, req, res, next) => {
+    console.error('[ASO] Unhandled route error:', err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: 'Something went wrong on the server. Please try again.' });
+  });
 
   app.listen(PORT, HOST, () => {
     console.log('');
