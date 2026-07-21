@@ -3800,7 +3800,7 @@ function getLocOTRate(locName, date) {
 function buildTimeOptions(selectedValue) {
   const opts = [];
   for (let h = 0; h < 24; h++) {
-    for (const m of [0, 15, 30, 45]) {
+    for (let m = 0; m < 60; m++) {
       const value = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       const period = h < 12 ? 'AM' : 'PM';
       const h12 = h % 12 === 0 ? 12 : h % 12;
