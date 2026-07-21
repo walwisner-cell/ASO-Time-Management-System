@@ -103,11 +103,53 @@
     align-items:center;
     justify-content:center;
     min-height:100vh;
+    gap:40px;
+    padding:24px;
     background:
       radial-gradient(ellipse at 20% 10%, rgba(46,138,232,0.15) 0%, transparent 50%),
       radial-gradient(ellipse at 80% 90%, rgba(46,138,232,0.12) 0%, transparent 50%),
       radial-gradient(ellipse at 60% 40%, rgba(232,200,120,0.04) 0%, transparent 45%),
       var(--bg);
+  }
+  .login-about {
+    width:380px;
+    animation:fadeUp .55s cubic-bezier(.16,1,.3,1) .1s both;
+  }
+  .login-about-title {
+    font-family:var(--display);
+    font-size:20px;
+    font-weight:700;
+    color:var(--text);
+    margin-bottom:8px;
+  }
+  .login-about-sub {
+    font-size:13px;
+    color:var(--text2);
+    line-height:1.7;
+    margin-bottom:22px;
+  }
+  .login-feature {
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    padding:11px 0;
+    border-bottom:1px solid var(--border);
+  }
+  .login-feature:last-child { border-bottom:none; }
+  .login-feature-icon {
+    width:30px; height:30px;
+    border-radius:8px;
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px;
+    flex-shrink:0;
+  }
+  .login-feature-text { font-size:12.5px; color:var(--text2); line-height:1.5; }
+  .login-feature-text b { color:var(--text); font-weight:600; }
+  @media (max-width: 900px) {
+    #login-screen { flex-direction:column; padding:20px 16px; }
+    .login-about { width:100%; max-width:460px; order:2; }
   }
   .login-card {
     width:460px;
@@ -122,6 +164,7 @@
     animation:fadeUp .55s cubic-bezier(.16,1,.3,1);
     position:relative;
     overflow:hidden;
+    flex-shrink:0;
   }
   .login-card::before {
     content:'';
@@ -1432,6 +1475,34 @@
 
 <!-- LOGIN -->
 <div id="login-screen">
+  <div class="login-about">
+    <div class="login-about-title">Staff Overtime &amp; Payroll System</div>
+    <div class="login-about-sub">The system American Safety Options uses to track staff shifts, calculate overtime, run payroll, and manage time off — for admins, supervisors, and staff alike.</div>
+    <div class="login-feature">
+      <div class="login-feature-icon">📋</div>
+      <div class="login-feature-text"><b>Timesheets &amp; Overtime</b> — log shifts by house and staff member; overtime is calculated automatically against your configured threshold, with built-in protection against overlapping or 24+ hour entries.</div>
+    </div>
+    <div class="login-feature">
+      <div class="login-feature-icon">🧾</div>
+      <div class="login-feature-text"><b>Payroll &amp; Pay Stubs</b> — set your standard taxes and benefits once, then run a full pay period in one step — gross pay, net pay, and printable stubs per employee.</div>
+    </div>
+    <div class="login-feature">
+      <div class="login-feature-icon">👤</div>
+      <div class="login-feature-text"><b>Employee Self-Service</b> — staff can log in to see their own shifts, pull their own pay stubs, and request time off — never anyone else's data.</div>
+    </div>
+    <div class="login-feature">
+      <div class="login-feature-icon">🌴</div>
+      <div class="login-feature-text"><b>Time Off &amp; Approvals</b> — PTO balances, employee requests, and a review queue for supervisors to approve or deny.</div>
+    </div>
+    <div class="login-feature">
+      <div class="login-feature-icon">📊</div>
+      <div class="login-feature-text"><b>Reporting</b> — a custom Report Builder, Pay Period and Monthly reports, and an OT Leaderboard, all exportable to CSV or print.</div>
+    </div>
+    <div class="login-feature">
+      <div class="login-feature-icon">🔐</div>
+      <div class="login-feature-text"><b>Secure by Design</b> — role-based access enforced on the server, automatic daily backups, and a full audit trail of every change.</div>
+    </div>
+  </div>
   <div class="login-card">
     <div class="aso-login-logo-wrap">
       <!-- ASO Seal -->
@@ -2500,7 +2571,7 @@
         <div class="page-header">
           <div class="page-header-left">
             <div class="page-title">📖 User Manual</div>
-            <div class="page-sub">Complete guide to the ASO Staff Overtime Management System · v8.0</div>
+            <div class="page-sub">Complete guide to the ASO Staff Overtime Management System · v10.0</div>
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Manual</button>
         </div>
@@ -2522,6 +2593,11 @@
           <button class="period-pill" onclick="showSection(7,this)">13 Printing</button>
           <button class="period-pill" onclick="showSection(8,this)">14 Passwords</button>
           <button class="period-pill" onclick="showSection(9,this)">15 Tips</button>
+          <button class="period-pill" onclick="showSection(15,this)">16 Payroll</button>
+          <button class="period-pill" onclick="showSection(16,this)">17 Taxes &amp; Benefits</button>
+          <button class="period-pill" onclick="showSection(17,this)">18 My Schedule &amp; Pay</button>
+          <button class="period-pill" onclick="showSection(18,this)">19 Mobile Access</button>
+          <button class="period-pill" onclick="showSection(19,this)">20 Roles &amp; Accounts</button>
         </div>
 
         <!-- ── SECTION 0: Logging In ── -->
@@ -2603,6 +2679,10 @@
               <span style="font-size:16px">⏰</span>
               <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Shifts over 24 hours</div><div style="font-size:12px;color:var(--text2)">If a shift spans more than 24 hours on a given day, the system will automatically flag it and ask for a reason before saving. The shift will go into the Approvals queue.</div></div>
             </div>
+            <div style="background:rgba(194,74,70,0.07);border:1px solid rgba(194,74,70,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+              <span style="font-size:16px">🚫</span>
+              <div><div style="font-size:12px;font-weight:600;color:var(--danger2);margin-bottom:4px">Overlapping shifts are blocked</div><div style="font-size:12px;color:var(--text2)">The system won't let you save a shift whose time range overlaps with an existing shift for the same person on the same day — including overnight shifts that cross midnight. You'll get a clear error naming the conflicting shift so you can fix the times or edit the existing entry instead.</div></div>
+            </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Table Column Reference</div>
             <div class="table-wrap">
               <table style="font-size:12px">
@@ -2650,10 +2730,12 @@
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--warn);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#000;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Supervisor reviews the reason</span><div style="font-size:12px;color:var(--text2);margin-top:3px">Go to Approvals in the sidebar. Pending shifts appear with the employee name, date, total hours, and stated reason.</div></div></div>
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--warn);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#000;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click Approve or Deny</span><div style="font-size:12px;color:var(--text2);margin-top:3px">✅ <b>Approve</b> moves the shift to the approved list and includes it in payroll calculations. ✕ <b>Deny</b> removes the shift from the system entirely.</div></div></div>
             </div>
-            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
               <span style="font-size:16px">🔴</span>
-              <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Approval count badge:</b> A red badge appears on the Approvals sidebar link whenever there are pending items — so you'll never miss one.</div>
+              <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Approval count badge:</b> A red badge appears on the Approvals sidebar link whenever there are pending items — so you'll never miss one. This badge now also counts pending time-off requests, not just shift exceptions.</div>
             </div>
+            <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Time Off Requests</div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px">Below the shift approvals, this same page has a "Time Off Requests" table showing every PTO request from employee self-service accounts — pending, approved, and denied. Each pending request shows the employee, type (vacation/sick/personal), dates, hours, and any note they included. Click ✅ Approve or ✕ Deny. Approving deducts the hours from that person's PTO balance immediately; denying leaves their balance untouched.</p>
           </div>
         </div>
 
@@ -2688,9 +2770,13 @@
                 </tbody>
               </table>
             </div>
-            <div style="background:rgba(198,138,30,0.08);border:1px solid rgba(198,138,30,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <div style="background:rgba(198,138,30,0.08);border:1px solid rgba(198,138,30,0.3);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;gap:10px">
               <span style="font-size:16px">⚠️</span>
-              <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Deactivating vs. Deleting</div><div style="font-size:12px;color:var(--text2)">When an employee leaves, set their status to <b>Inactive</b> rather than deleting them. This preserves their historical shift data in reports while keeping them out of active dropdowns.</div></div>
+              <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Deactivating vs. Deleting</div><div style="font-size:12px;color:var(--text2)">When an employee leaves, set their status to <b>Inactive</b> rather than deleting them. This preserves their historical shift data in reports while keeping them out of active dropdowns. Deleting someone with existing shift or payroll history now shows a warning explaining what stays behind.</div></div>
+            </div>
+            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+              <span style="font-size:16px">🌴</span>
+              <div><div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:4px">PTO Balance</div><div style="font-size:12px;color:var(--text2)">Each staff member's row shows their current time-off balance. Click <b>Adjust</b> next to it to grant an annual allotment or correct a mistake — enter a positive number to add hours or a negative number to subtract, plus an optional reason. This is the only way to manually change a balance; it's otherwise only affected by approved time-off requests, so it can never be silently overwritten by an unrelated save elsewhere in the app.</div></div>
             </div>
           </div>
         </div>
@@ -2710,7 +2796,7 @@
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">📅</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Pay Period Config</div><div style="font-size:12px;color:var(--text2)">Set whether pay periods are weekly, bi-weekly, semi-monthly, or monthly. The current period is highlighted on all dashboards.</div></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">⏰</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">OT Threshold</div><div style="font-size:12px;color:var(--text2)">Set how many hours per pay period trigger overtime. The federal default is 40 hours/week. Changes apply to new shifts only.</div></div>
               <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">📍</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Locations</div><div style="font-size:12px;color:var(--text2)">Add, rename, or remove work locations. These appear in the Timesheet and Report Builder dropdowns.</div></div>
-              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🔐</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Password Manager</div><div style="font-size:12px;color:var(--text2)">Change any user's login password. Each staff member can have their own login tied to their employee record.</div></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🔐</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Password Manager</div><div style="font-size:12px;color:var(--text2)">Create logins with 4 roles — Admin, Supervisor, Viewer, or Employee (self-service, linked to one staff record). Change any user's password here too. See Section 19 for the full breakdown of what each role can see and do.</div></div>
             </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Pay Period Types</div>
             <div class="table-wrap">
@@ -2973,7 +3059,14 @@
                 <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Backup, restore, and reset the database</div>
               </div>
             </div>
-            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">The Data Manager (sidebar → Management section) is your hub for keeping data safe. Because the system stores everything in your browser's local storage, regular backups are strongly recommended — especially before clearing browser data or moving to a new computer.</p>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">The Data Manager (sidebar → Setup) is your hub for keeping data safe. Your data lives in a real database on the server, not in your browser — but exporting a manual backup periodically, and storing it somewhere other than the server, is still strongly recommended in case of accidental data changes.</p>
+            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+              <span style="font-size:16px">🗃️</span>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:4px">Automatic server backups</div>
+                <div style="font-size:12px;color:var(--text2)">The server automatically snapshots the whole database once a day (the last 14 are kept), and you can trigger one manually anytime with the "Backup Now" button on this page. These live on the same server as your live data, so they protect against accidental mistakes (a bad import, an accidental bulk change) — but not against the server itself failing. Keep exporting the JSON backup below periodically and store a copy somewhere separate, like your own computer or a cloud drive.</div>
+              </div>
+            </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Exporting a Backup</div>
             <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
               <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--success);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">1</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click ⬇️ Export Backup</span> <span style="font-size:12px;color:var(--text2)">— Downloads a <code style="background:var(--border);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:10px">.json</code> file named with today's date (e.g., <code style="background:var(--border);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:10px">ASO_backup_2025-06-12.json</code>).</span></div></div>
@@ -2988,7 +3081,7 @@
               <span style="font-size:16px">💡</span>
               <div>
                 <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:4px">What's included in a backup</div>
-                <div style="font-size:12px;color:var(--text2)">All shifts · Staff roster · Locations &amp; rates · Users &amp; passwords · Pay period config · Approved exceptions · Date correction log</div>
+                <div style="font-size:12px;color:var(--text2)">All shifts · Staff roster (incl. PTO balances) · Locations &amp; rates · Users &amp; passwords · Pay period config &amp; tax/benefit defaults · Payroll history &amp; pay stubs · Time off requests · Approved exceptions · Date correction log · Audit trail</div>
               </div>
             </div>
             <div style="background:rgba(194,74,70,0.07);border:1px solid rgba(194,74,70,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
@@ -2998,6 +3091,124 @@
                 <div style="font-size:12px;color:var(--text2)">The <b>Reset to Factory Defaults</b> button permanently deletes all data — shifts, staff, config, and users. This cannot be undone. Always export a backup before using this option.</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 15: Payroll ── -->
+        <div class="manual-section" id="msec-15" style="display:none">
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(14,143,94,0.12);border:1px solid var(--success);display:flex;align-items:center;justify-content:center;font-size:20px">🧾</div>
+              <div>
+                <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">16 · Payroll</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Running payroll for a pay period, start to finish</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">Payroll (sidebar → Main) takes your recorded shifts for a period and turns them into gross pay, net pay, and printable pay stubs — in two steps.</p>
+            <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Step 1 — Review &amp; Confirm</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">1</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Pick a Pay Period</span> <span style="font-size:12px;color:var(--text2)">— The dropdown lists any period with recorded shifts, current or past.</span></div></div>
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Check the hours &amp; gross pay table</span> <span style="font-size:12px;color:var(--text2)">— Broken down by house/location, so you can catch a missing or wrong shift before running numbers.</span></div></div>
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Taxes &amp; benefits are already filled in</span> <span style="font-size:12px;color:var(--text2)">— Pulled automatically from whatever you saved on the Taxes &amp; Benefits page. You can tweak anything for just this one period without touching your saved defaults.</span></div></div>
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">4</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Set the Pay Date, click Confirm &amp; Run Payroll</span> <span style="font-size:12px;color:var(--text2)">— This locks the period's timesheets (no more edits without unlocking) and calculates everything in one step.</span></div></div>
+            </div>
+            <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Step 2 — Payroll Complete</div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">Shows a Net Pay Summary per employee (gross, each tax/benefit deducted, net), plus the Pay Stubs panel below — pick anyone from the dropdown, preview their stub, and print one or all of them. Export CSV downloads both the hours-by-house detail and the net-pay summary in one file.</p>
+            <div style="background:rgba(198,138,30,0.08);border:1px solid rgba(198,138,30,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+              <span style="font-size:16px">⚠️</span>
+              <div><div style="font-size:12px;font-weight:600;color:var(--warn);margin-bottom:4px">Made a mistake?</div><div style="font-size:12px;color:var(--text2)">Click "🔓 Unlock &amp; Recalculate" to undo the confirm/finalize and go back to Step 1 with your timesheets editable again.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 16: Taxes & Benefits ── -->
+        <div class="manual-section" id="msec-16" style="display:none">
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(46,138,232,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🧾</div>
+              <div>
+                <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">17 · Taxes &amp; Benefits</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Set your standard withholdings and benefits once</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">This page (sidebar → Setup) is where you configure the list of taxes and benefits that get applied automatically every time you run payroll — so you don't rebuild the same list every pay period.</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">1</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Add a tax or benefit</span> <span style="font-size:12px;color:var(--text2)">— Give it any name (Federal Withholding, Health Insurance, 401(k) — anything).</span></div></div>
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">2</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Choose % of Gross or Flat $ Amount</span> <span style="font-size:12px;color:var(--text2)">— Percentage deductions scale with each paycheck; flat amounts stay the same every time (e.g. a fixed insurance premium).</span></div></div>
+              <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;display:flex;gap:12px;align-items:flex-start"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:11px;color:#fff;flex-shrink:0">3</div><div><span style="font-size:13px;font-weight:600;color:var(--text)">Click Save as Default</span> <span style="font-size:12px;color:var(--text2)">— Every new pay period's Payroll page will now start with this exact list already filled in.</span></div></div>
+            </div>
+            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+              <span style="font-size:16px">💡</span>
+              <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">These are estimates, not IRS tax tables.</b> Percentage-based withholding here is a flat rate you set, not real federal/state bracket calculations tied to W-4 elections. Treat Payroll's numbers as a solid working estimate and pay-stub generator — for anything filed with tax authorities, have an accountant or your payroll processor verify the real withholding.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 17: My Schedule & Pay ── -->
+        <div class="manual-section" id="msec-17" style="display:none">
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(232,200,120,0.15);border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:20px">👤</div>
+              <div>
+                <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">18 · My Schedule &amp; Pay (Employee Portal)</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">What staff see when they log in with an Employee account</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">Anyone logging in with an <b>Employee</b> role account sees a stripped-down sidebar with just one item — "My Schedule &amp; Pay" — and nothing else. This page has three parts:</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px">
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">📅</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">My Shifts</div><div style="font-size:12px;color:var(--text2)">Their own shift history and this period's hours — nobody else's.</div></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🧾</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">My Pay Stubs</div><div style="font-size:12px;color:var(--text2)">A dropdown of their own finalized pay periods, with a full printable stub for each.</div></div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px"><div style="font-size:18px;margin-bottom:8px">🌴</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Time Off</div><div style="font-size:12px;color:var(--text2)">Their current PTO balance, a request form (type, dates, hours, optional note), and their own request history with status.</div></div>
+            </div>
+            <div style="background:rgba(14,143,94,0.08);border:1px solid var(--success);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+              <span style="font-size:16px">🔒</span>
+              <div><div style="font-size:12px;font-weight:600;color:var(--success);margin-bottom:4px">This is enforced by the server, not just hidden in the browser</div><div style="font-size:12px;color:var(--text2)">An employee account only ever receives their own data from the server in the first place — it's not that other people's data is hidden on screen, it's that it never gets sent to their browser at all. Submitting a time-off request always attaches to their own record, even if someone tried to tamper with the request.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 18: Mobile Access ── -->
+        <div class="manual-section" id="msec-18" style="display:none">
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(46,138,232,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">📱</div>
+              <div>
+                <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">19 · Using It On a Phone</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">The sidebar becomes a menu on small screens</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">On a narrow screen (phone, or a browser window shrunk down), the sidebar hides itself and a ☰ menu button appears in the top-left of the topbar. Tap it to slide the sidebar out, tap a page to go there (the menu closes automatically), or tap outside the sidebar to dismiss it without navigating.</p>
+            <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+              <span style="font-size:16px">💡</span>
+              <div style="font-size:12px;color:var(--text2)">This is especially useful for employee self-service accounts — staff can check their schedule, pull up a pay stub, or request time off from their own phone without needing a desktop.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 19: Roles & Accounts ── -->
+        <div class="manual-section" id="msec-19" style="display:none">
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(46,138,232,0.15);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px">🔐</div>
+              <div>
+                <div style="font-family:var(--display);font-size:18px;font-weight:700;color:var(--text)">20 · Roles &amp; Accounts</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">What each of the four account types can do</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px">Every login belongs to exactly one role. These aren't just UI hints — the server itself enforces what each role can read and write, so hiding a button in the browser isn't the only thing standing between a role and something it shouldn't touch.</p>
+            <div class="table-wrap">
+              <table style="font-size:12px">
+                <thead><tr><th>Role</th><th>Can do</th><th>Cannot do</th></tr></thead>
+                <tbody>
+                  <tr><td><b style="color:var(--accent2)">👑 Admin</b></td><td>Everything — staff, locations, users, payroll, backups, factory reset</td><td>—</td></tr>
+                  <tr><td><b style="color:var(--warn)">🔍 Supervisor</b></td><td>Add/edit shifts, approve shift exceptions &amp; time-off requests</td><td>Delete shifts, manage staff/locations/users/payroll, backups</td></tr>
+                  <tr><td><b style="color:var(--text3)">👁️ Viewer</b></td><td>View reports and dashboards</td><td>Any changes at all — add, edit, approve, or delete anything</td></tr>
+                  <tr><td><b style="color:var(--success2)">👤 Employee</b></td><td>View their own shifts, pay stubs, and PTO; request time off</td><td>See any other employee's data, or access any admin/report page</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin:20px 0 12px">Creating an Employee Account</div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.7">Passwords → Add New User → set the Role to "Employee (self-service only)" → a "Link to Staff Member" dropdown appears — pick which staff record this login belongs to. One staff member can only ever have one employee login at a time.</p>
           </div>
         </div>
 
