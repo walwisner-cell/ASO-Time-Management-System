@@ -2002,8 +2002,8 @@
               <select id="sf-location" onchange="onLocationChange()"></select>
               <div id="sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
             </div>
-            <div class="form-field"><label>Shift Start</label><input type="time" id="sf-start" value="08:00" oninput="updateShiftPreview()"></div>
-            <div class="form-field"><label>Shift End</label><input type="time" id="sf-end" value="16:00" oninput="updateShiftPreview()"></div>
+            <div class="form-field"><label>Shift Start</label><select id="sf-start" onchange="updateShiftPreview()"></select></div>
+            <div class="form-field"><label>Shift End</label><select id="sf-end" onchange="updateShiftPreview()"></select></div>
           </div>
           <!-- Staff confirmation banner -->
           <div id="sf-staff-confirm" style="display:none;margin-top:12px;background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
@@ -3312,8 +3312,8 @@
         <select id="edit-sf-location" onchange="onEditLocationChange()"></select>
         <div id="edit-sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
       </div>
-      <div class="form-field"><label>Shift Start</label><input type="time" id="edit-sf-start" oninput="updateEditPreview()"></div>
-      <div class="form-field"><label>Shift End</label><input type="time" id="edit-sf-end" oninput="updateEditPreview()"></div>
+      <div class="form-field"><label>Shift Start</label><select id="edit-sf-start" onchange="updateEditPreview()"></select></div>
+      <div class="form-field"><label>Shift End</label><select id="edit-sf-end" onchange="updateEditPreview()"></select></div>
       <div class="form-field" style="display:flex;align-items:flex-end">
         <span id="edit-shift-preview" style="font-family:var(--mono);font-size:13px;color:var(--accent2);padding-bottom:10px"></span>
       </div>
@@ -3790,6 +3790,25 @@ function getLocOTMult(locName, date) {
 }
 function getLocOTRate(locName, date) {
   return getLocRate(locName, date) * getLocOTMult(locName, date);
+}
+
+// Builds <option> HTML for a time-select dropdown, in 15-minute increments.
+// The option VALUE stays 24-hour "HH:MM" (exactly what an <input type="time">
+// used to produce), so every existing calculation — calcHours(), shift
+// storage, overlap detection — keeps working completely unchanged. Only the
+// visible LABEL is friendlier: 12-hour with AM/PM.
+function buildTimeOptions(selectedValue) {
+  const opts = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      const value = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const period = h < 12 ? 'AM' : 'PM';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const label = `${h12}:${String(m).padStart(2,'0')} ${period}`;
+      opts.push(`<option value="${value}"${value === selectedValue ? ' selected' : ''}>${label}</option>`);
+    }
+  }
+  return opts.join('');
 }
 
 // ──────────────────────────────────────────────────────────
@@ -5413,7 +5432,8 @@ function renderTimesheet() {
   staffSel.innerHTML = STAFF.filter(s=>s.status==='Active').map(s=>`<option value="${s.id}">${s.last}, ${s.first} (${s.id})</option>`).join('');
   const locSel = document.getElementById('sf-location');
   locSel.innerHTML = LOCATIONS.map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
-  // sf-start and sf-end are now <input type="time"> — no population needed
+  document.getElementById('sf-start').innerHTML = buildTimeOptions('08:00');
+  document.getElementById('sf-end').innerHTML = buildTimeOptions('16:00');
   // Auto-fill location for the initially selected staff member
   onStaffSelect();
 
@@ -5864,9 +5884,8 @@ function editShift(id) {
     `<option value="${l.name}"${l.name === raw.location ? ' selected' : ''}>${l.name}</option>`
   ).join('');
 
-  // Set time inputs directly (they are now <input type="time">)
-  document.getElementById('edit-sf-start').value = raw.start;
-  document.getElementById('edit-sf-end').value = raw.end;
+  document.getElementById('edit-sf-start').innerHTML = buildTimeOptions(raw.start);
+  document.getElementById('edit-sf-end').innerHTML = buildTimeOptions(raw.end);
 
   document.getElementById('edit-sf-date').value = raw.date;
   document.getElementById('edit-modal-who').textContent = `Editing shift for ${name}`;
