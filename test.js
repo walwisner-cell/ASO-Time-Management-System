@@ -163,6 +163,10 @@ async function main() {
     const viewerDateResult = await request('POST', '/api/db/save', { body: viewerDateAttack, cookie: viewerCookie });
     check('viewer cannot fabricate a date-correction log entry', viewerDateResult.status === 403);
 
+    console.log('\nAudit log integrity (hash chain):');
+    const verifyBefore = await request('GET', '/api/audit-log/verify', { cookie: adminCookie });
+    check('chain reports intact after normal use', verifyBefore.status === 200 && verifyBefore.body.intact === true);
+
     console.log('\nShift data validation (content, not just who can submit):');
     const shiftBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     const negHours = { ...shiftBase.body, SHIFTS: [{ id: 'BADSHIFT1', staff: 'S900', date: '2026-05-10', start: '09:00', end: '17:00', location: 'Test House', hours: -999 }] };

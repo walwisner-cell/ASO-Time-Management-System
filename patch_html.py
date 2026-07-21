@@ -119,7 +119,15 @@ function dbSaveToFile() {
 function dbReset() {
   if (!confirm('\u26A0\uFE0F RESET DATABASE\n\nThis will permanently delete ALL data.\n\nThis cannot be undone. Continue?')) return;
   fetch('/api/db/reset', { method: 'POST' })
-    .then(() => location.reload())
+    .then(async res => {
+      if (res.ok) { location.reload(); return; }
+      // Without this check, a rejected reset (wrong permissions, expired session,
+      // server error) would still reload the page — the data is untouched, but
+      // there's nothing telling the admin the reset didn't actually happen.
+      let msg = 'Reset failed.';
+      try { const body = await res.json(); if (body.error) msg = 'Reset failed: ' + body.error; } catch(e) {}
+      showToast(msg, 'danger');
+    })
     .catch(e => showToast('Reset failed: ' + e.message, 'danger'));
 }
 

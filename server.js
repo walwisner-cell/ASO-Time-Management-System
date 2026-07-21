@@ -42,7 +42,8 @@ const DB_PATH   = path.join(DB_DIR, 'aso_ot.db');
 const BACKUP_DIR = path.join(DB_DIR, 'backups');
 const BACKUP_RETENTION = 14; // keep the last 14 automatic backups
 const HTML_FILE = path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html');
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — absolute session lifetime
+const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour — session dies early if unused this long, even within the 24hr window
 const SESSION_COOKIE = 'aso_session';
 
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
@@ -142,6 +143,30 @@ function persistDB() {
   fs.writeFileSync(DB_PATH, Buffer.from(data));
 }
 
+// ── Audit log hash chain (tamper-evidence) ──────────────────
+// Each entry's hash is computed from the previous entry's hash plus this
+// entry's own content — the same principle a blockchain uses. Changing or
+// deleting ANY past entry changes what its hash *should* be, which no longer
+// matches what every later entry was chained from — breaking the chain from
+// that point forward. This is deterministic and stateless: given the same
+// entries in the same order, /api/audit-log/verify can recompute the exact
+// same chain from scratch and prove nothing was altered, rather than just
+// making tampering harder through the normal app (which append-only merging
+// already handled, but couldn't detect direct database tampering).
+const AUDIT_CHAIN_GENESIS = 'GENESIS';
+function computeEntryHash(prevHash, entry) {
+  const payload = `${prevHash}|${entry.id}|${entry.type}|${entry.detail}|${entry.by}|${entry.byRole}|${entry.at}|${entry.ts}`;
+  return crypto.createHash('sha256').update(payload).digest('hex');
+}
+function computeHashChain(entriesOldestFirst) {
+  let prevHash = AUDIT_CHAIN_GENESIS;
+  return entriesOldestFirst.map(e => {
+    const hash = computeEntryHash(prevHash, e);
+    prevHash = hash;
+    return { ...e, hash };
+  });
+}
+
 // Writes directly to the audit_log table — used for actions that happen through
 // dedicated endpoints (like leave requests) rather than the generic bulk-save
 // path, so they're never silently missing from the tamper-resistant audit trail.
@@ -153,9 +178,17 @@ function writeAuditLog(type, detail, user, meta) {
   const at = new Date().toLocaleString();
   const by = (user && user.name) || 'System';
   const byRole = (user && user.role) || 'system';
-  run(`INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,action,user_id,created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, type, detail || '', meta ? JSON.stringify(meta) : '', by, byRole, at, ts,
+  const newEntry = { id, type, detail: detail || '', by, byRole, at, ts };
+
+  // Recompute the chain including this new entry, so its hash is guaranteed
+  // consistent with however saveDB() would compute it for the same data.
+  const existing = all('SELECT id,type,detail,by,by_role AS byRole,at,ts FROM audit_log ORDER BY ts ASC');
+  const chained = computeHashChain([...existing, newEntry]);
+  const hash = chained[chained.length - 1].hash;
+
+  run(`INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,hash,action,user_id,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, type, detail || '', meta ? JSON.stringify(meta) : '', by, byRole, at, ts, hash,
        type, (user && user.id) || '', new Date(ts).toISOString()]);
 }
 
@@ -213,8 +246,10 @@ function createSchema() {
   )`);
   try { db.run(`ALTER TABLE users ADD COLUMN staff_id TEXT DEFAULT NULL`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL,
+    last_activity INTEGER DEFAULT 0
   )`);
+  try { db.run(`ALTER TABLE sessions ADD COLUMN last_activity INTEGER DEFAULT 0`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE,
     rate REAL NOT NULL DEFAULT 0, mult REAL NOT NULL DEFAULT 1.5,
@@ -251,7 +286,8 @@ function createSchema() {
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL,
     type TEXT DEFAULT '', meta TEXT DEFAULT '', by TEXT DEFAULT '',
-    by_role TEXT DEFAULT '', at TEXT DEFAULT '', ts INTEGER DEFAULT 0
+    by_role TEXT DEFAULT '', at TEXT DEFAULT '', ts INTEGER DEFAULT 0,
+    hash TEXT DEFAULT ''
   )`);
   // Migration: the audit log was originally built around action/user_id/created_at
   // columns, but the client (and the Audit Trail page that renders it) has always
@@ -260,6 +296,21 @@ function createSchema() {
   ['type','meta','by','by_role','at'].forEach(col => {
     try { db.run(`ALTER TABLE audit_log ADD COLUMN ${col} TEXT DEFAULT ''`); } catch (e) { /* already exists */ }
   });
+  try { db.run(`ALTER TABLE audit_log ADD COLUMN hash TEXT DEFAULT ''`); } catch (e) { /* already exists */ }
+  // Backfill: anyone upgrading from before this feature existed has audit
+  // entries with no hash at all. Without this, /api/audit-log/verify would
+  // report every pre-existing entry as "tampered" — a false alarm, not a
+  // real detection — the moment they first check it. Recompute the whole
+  // chain from scratch once so historical entries get a real, valid hash.
+  try {
+    const needsBackfill = get(`SELECT COUNT(*) as c FROM audit_log WHERE hash = '' OR hash IS NULL`);
+    if (needsBackfill && needsBackfill.c > 0) {
+      const rows = all('SELECT id,type,detail,by,by_role AS byRole,at,ts FROM audit_log ORDER BY ts ASC');
+      const chained = computeHashChain(rows);
+      for (const r of chained) run('UPDATE audit_log SET hash = ? WHERE id = ?', [r.hash, r.id]);
+      console.log(`[ASO DB] Backfilled hash chain for ${chained.length} pre-existing audit log entries`);
+    }
+  } catch (e) { console.warn('[ASO DB] Audit hash backfill skipped:', e.message); }
   try { db.run(`ALTER TABLE audit_log ADD COLUMN ts INTEGER DEFAULT 0`); } catch (e) { /* already exists */ }
 }
 
@@ -394,12 +445,17 @@ function saveDB(data) {
     run('INSERT INTO payroll_records (id,data) VALUES (?,?)', [r.periodStart||('PR'+Date.now()+Math.random()), JSON.stringify(r)]);
 
   run('DELETE FROM audit_log');
-  for (const r of (AUDIT_LOG||[]))
-    run('INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,action,user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-        [r.id||('AL'+Date.now()+Math.random()), r.type||'', r.detail||'',
-         r.meta ? JSON.stringify(r.meta) : '', r.by||'System', r.byRole||'system',
-         r.at||new Date().toLocaleString(), r.ts||Date.now(),
-         r.type||'', r.by||'', new Date(r.ts||Date.now()).toISOString()]);
+  const sortedAudit = (AUDIT_LOG||[]).slice().sort((a,b) => (a.ts||0) - (b.ts||0));
+  const chainedAudit = computeHashChain(sortedAudit.map(r => ({
+    id: r.id||('AL'+Date.now()+Math.random()), type: r.type||'', detail: r.detail||'',
+    by: r.by||'System', byRole: r.byRole||'system', at: r.at||new Date().toLocaleString(),
+    ts: r.ts||Date.now(), meta: r.meta
+  })));
+  for (const r of chainedAudit)
+    run(`INSERT INTO audit_log (id,type,detail,meta,by,by_role,at,ts,hash,action,user_id,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [r.id, r.type, r.detail, r.meta ? JSON.stringify(r.meta) : '', r.by, r.byRole,
+         r.at, r.ts, r.hash, r.type, r.by, new Date(r.ts).toISOString()]);
 
   persistDB();
 }
@@ -459,6 +515,18 @@ function requireAuth(req, res, next) {
     if (session) { run('DELETE FROM sessions WHERE id = ?', [sessionId]); persistDB(); }
     return res.status(401).json({ error: 'Session expired — please log in again' });
   }
+  // Idle timeout: even within the 24hr absolute lifetime, a session that
+  // hasn't been used in a while (e.g. a device left unlocked and unattended)
+  // is killed early. Activity is tracked in memory and only flushed to disk
+  // on the next natural save (or the hourly cleanup job) — writing the whole
+  // database to disk on every single authenticated request would be far too
+  // expensive given how often this fires.
+  const lastActivity = session.last_activity || 0;
+  if (lastActivity && Date.now() - lastActivity > SESSION_IDLE_TIMEOUT_MS) {
+    run('DELETE FROM sessions WHERE id = ?', [sessionId]); persistDB();
+    return res.status(401).json({ error: 'Session timed out from inactivity — please log in again' });
+  }
+  run('UPDATE sessions SET last_activity = ? WHERE id = ?', [Date.now(), sessionId]);
   const user = get('SELECT id,username,name,role,staff_id FROM users WHERE id = ?', [session.user_id]);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
   req.user = { id: user.id, username: user.username, name: user.name, role: user.role, staffId: user.staff_id || null };
@@ -613,7 +681,8 @@ async function main() {
   // Periodic cleanup of expired sessions (every hour)
   setInterval(() => {
     try {
-      run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
+      run('DELETE FROM sessions WHERE expires_at < ? OR (last_activity > 0 AND ? - last_activity > ?)',
+          [Date.now(), Date.now(), SESSION_IDLE_TIMEOUT_MS]);
       persistDB();
     } catch (e) { /* ignore */ }
   }, 60 * 60 * 1000);
@@ -688,7 +757,7 @@ async function main() {
 
       const sessionId = crypto.randomBytes(32).toString('hex');
       const expiresAt = Date.now() + SESSION_TTL_MS;
-      run('INSERT INTO sessions (id, user_id, expires_at) VALUES (?,?,?)', [sessionId, user.id, expiresAt]);
+      run('INSERT INTO sessions (id, user_id, expires_at, last_activity) VALUES (?,?,?,?)', [sessionId, user.id, expiresAt, Date.now()]);
       persistDB();
 
       res.cookie(SESSION_COOKIE, sessionId, {
@@ -929,6 +998,30 @@ async function main() {
       );
       persistDB();
       res.json({ ok: true, newBalance: updated.pto_balance });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Walks the entire audit log hash chain and confirms every entry's stored
+  // hash matches what it should be, given its content and the entry before
+  // it. Any mismatch — an edited detail, a deleted entry, a reordered one —
+  // is detected here, pinpointing exactly where the chain breaks, rather
+  // than just trusting that append-only merging was never bypassed.
+  app.get('/api/audit-log/verify', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+    try {
+      const entries = all('SELECT id,type,detail,by,by_role AS byRole,at,ts,hash FROM audit_log ORDER BY ts ASC');
+      let prevHash = AUDIT_CHAIN_GENESIS;
+      let brokenAt = null;
+      for (const e of entries) {
+        const expectedHash = computeEntryHash(prevHash, e);
+        if (expectedHash !== e.hash) { brokenAt = e; break; }
+        prevHash = e.hash;
+      }
+      res.json({
+        ok: true,
+        totalEntries: entries.length,
+        intact: brokenAt === null,
+        brokenAt: brokenAt ? { id: brokenAt.id, type: brokenAt.type, at: brokenAt.at } : null
+      });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 

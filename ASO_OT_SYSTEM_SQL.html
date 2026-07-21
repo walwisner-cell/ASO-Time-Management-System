@@ -2533,8 +2533,12 @@
             <div class="page-title">🔍 Audit Trail</div>
             <div class="page-sub">Complete activity log — edits, deletions, deactivations, approvals, and all system changes</div>
           </div>
-          <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Audit Log</button>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" style="font-size:12px;padding:8px 16px" onclick="verifyAuditIntegrity()">🔒 Verify Integrity</button>
+            <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Audit Log</button>
+          </div>
         </div>
+        <div id="at-integrity-result"></div>
         <div class="card section-gap" style="margin-bottom:20px">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="card-title" style="margin-bottom:0">🔎 Filter Audit Log</div>
@@ -3475,7 +3479,15 @@ function dbSaveToFile() {
 function dbReset() {
   if (!confirm('\u26A0\uFE0F RESET DATABASE\n\nThis will permanently delete ALL data.\n\nThis cannot be undone. Continue?')) return;
   fetch('/api/db/reset', { method: 'POST' })
-    .then(() => location.reload())
+    .then(async res => {
+      if (res.ok) { location.reload(); return; }
+      // Without this check, a rejected reset (wrong permissions, expired session,
+      // server error) would still reload the page — the data is untouched, but
+      // there's nothing telling the admin the reset didn't actually happen.
+      let msg = 'Reset failed.';
+      try { const body = await res.json(); if (body.error) msg = 'Reset failed: ' + body.error; } catch(e) {}
+      showToast(msg, 'danger');
+    })
     .catch(e => showToast('Reset failed: ' + e.message, 'danger'));
 }
 
@@ -8142,6 +8154,29 @@ function auditLog(type, detail, meta) {
   if (AUDIT_LOG.length > 2000) AUDIT_LOG = AUDIT_LOG.slice(0, 2000);
   // Save silently to SQLite
   dbSave();
+}
+
+async function verifyAuditIntegrity() {
+  const el = document.getElementById('at-integrity-result');
+  el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:10px 0">Verifying\u2026</div>';
+  try {
+    const res = await fetch('/api/audit-log/verify');
+    const body = await res.json();
+    if (!res.ok) { el.innerHTML = `<div style="color:var(--danger2);font-size:13px;padding:10px 0">Could not verify: ${esc(body.error||'unknown error')}</div>`; return; }
+    if (body.intact) {
+      el.innerHTML = `<div style="background:rgba(10,112,73,0.1);border:1px solid var(--success);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px;align-items:center">
+        <span style="font-size:18px">\u2705</span>
+        <div style="font-size:13px;color:var(--text)"><b style="color:var(--success)">Chain intact.</b> All ${body.totalEntries} audit log entries verified \u2014 none have been altered, reordered, or removed since they were recorded.</div>
+      </div>`;
+    } else {
+      el.innerHTML = `<div style="background:rgba(179,49,47,0.1);border:1px solid var(--danger);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px;align-items:center">
+        <span style="font-size:18px">\u26A0\uFE0F</span>
+        <div style="font-size:13px;color:var(--text)"><b style="color:var(--danger2)">Tampering detected.</b> The chain breaks at entry "${esc(body.brokenAt.type)}" (${esc(body.brokenAt.at)}) \u2014 this entry or one before it was altered outside the normal application.</div>
+      </div>`;
+    }
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--danger2);font-size:13px;padding:10px 0">Verification failed \u2014 check your connection.</div>';
+  }
 }
 
 function renderAuditTrail() {
