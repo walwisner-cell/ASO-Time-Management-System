@@ -90,7 +90,23 @@ function dbSave() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
-  }).catch(e => console.warn('[ASO DB] Save failed:', e));
+  }).then(async res => {
+    if (res.ok) return;
+    let msg = '\u26A0\uFE0F Your changes were NOT saved.';
+    if (res.status === 401) {
+      msg = '\u26A0\uFE0F Your session has expired \u2014 nothing new is being saved. Export a backup from Data Manager if you have unsaved work, then log in again.';
+    } else {
+      try { const body = await res.json(); if (body.error) msg = '\u26A0\uFE0F Save failed: ' + body.error; } catch(e) {}
+    }
+    showToast(msg, 'danger');
+    _unsavedToFile = true;
+    updateSaveIndicator();
+  }).catch(e => {
+    console.warn('[ASO DB] Save failed:', e);
+    showToast('\u26A0\uFE0F Could not reach the server \u2014 your changes were NOT saved. Check your connection.', 'danger');
+    _unsavedToFile = true;
+    updateSaveIndicator();
+  });
   _unsavedToFile = false;
   updateSaveIndicator();
 }

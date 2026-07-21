@@ -780,7 +780,9 @@ async function main() {
   app.get('/api/db/export', requireAuth, requireAdmin, (req, res) => {
     try {
       const data = { ...loadDB(), exportedAt: new Date().toISOString(), version: 10 };
-      res.setHeader('Content-Disposition', `attachment; filename="ASO_backup_${new Date().toISOString().split('T')[0]}.json"`);
+      const now = new Date();
+      const dateLabel = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      res.setHeader('Content-Disposition', `attachment; filename="ASO_backup_${dateLabel}.json"`);
       res.json(data);
     } catch(e) { res.status(500).json({ error: e.message }); }
   });

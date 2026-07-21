@@ -150,6 +150,7 @@
   @media (max-width: 900px) {
     #login-screen { flex-direction:column; padding:20px 16px; }
     .login-about { width:100%; max-width:460px; order:2; }
+    .login-card { width:100%; max-width:460px; padding:40px 28px; }
   }
   .login-card {
     width:460px;
@@ -489,6 +490,13 @@
     .two-col { grid-template-columns:1fr !important; }
     .controls-row { flex-wrap:wrap; gap:8px; }
     .pr-steps { padding:14px 10px; }
+    .pay-stub { padding:20px 16px; }
+    .pay-stub-info-grid { grid-template-columns:1fr; gap:10px; }
+    .pay-stub-ytd { grid-template-columns:1fr; gap:8px; }
+    .pay-stub-header { flex-direction:column; gap:10px; }
+    .pay-stub-title { text-align:left !important; }
+    .pr-ded-row { grid-template-columns:1fr; gap:6px; }
+    .pr-ded-remove { width:100%; height:36px; }
     .pr-step-label { font-size:10px; }
   }
 
@@ -3438,7 +3446,23 @@ function dbSave() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
-  }).catch(e => console.warn('[ASO DB] Save failed:', e));
+  }).then(async res => {
+    if (res.ok) return;
+    let msg = '\u26A0\uFE0F Your changes were NOT saved.';
+    if (res.status === 401) {
+      msg = '\u26A0\uFE0F Your session has expired \u2014 nothing new is being saved. Export a backup from Data Manager if you have unsaved work, then log in again.';
+    } else {
+      try { const body = await res.json(); if (body.error) msg = '\u26A0\uFE0F Save failed: ' + body.error; } catch(e) {}
+    }
+    showToast(msg, 'danger');
+    _unsavedToFile = true;
+    updateSaveIndicator();
+  }).catch(e => {
+    console.warn('[ASO DB] Save failed:', e);
+    showToast('\u26A0\uFE0F Could not reach the server \u2014 your changes were NOT saved. Check your connection.', 'danger');
+    _unsavedToFile = true;
+    updateSaveIndicator();
+  });
   _unsavedToFile = false;
   updateSaveIndicator();
 }
@@ -3573,6 +3597,22 @@ function esc(str) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Returns today's date as YYYY-MM-DD in the browser's actual local timezone.
+// NEVER build "today" by taking new Date(), calling toISOString(), then
+// slicing the date portion — toISOString() always converts to UTC first, so
+// for any timezone behind UTC (all of the US, including Pennsylvania where
+// this app is based) that silently returns TOMORROW's date for several hours
+// every single evening. This bit real scheduling logic: default shift dates,
+// "today" comparisons, and which pay period counts as current would all have
+// been wrong in the evening.
+function todayLocalISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // Neutralizes CSV/spreadsheet formula injection: a field starting with
 // = + - or @ gets interpreted as a formula by Excel/Sheets when the file is
 // opened, which is a well-known real attack (e.g. a crafted name or note
@@ -3704,7 +3744,7 @@ function getPeriodLabel(dateStr) {
 }
 
 function currentPeriodLabel() {
-  return getPeriodLabel(new Date().toISOString().split('T')[0]);
+  return getPeriodLabel(todayLocalISO());
 }
 
 function calcHours(start, end) {
@@ -3969,7 +4009,7 @@ let _dismissedPeriods = [];
 
 function getPeriodDatesWithOffset(periodOffset) {
   const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
+  const today = new Date(todayLocalISO() + 'T00:00:00');
   const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
   const diff = Math.floor((today - anchor) / msPerPeriod);
   const start = new Date(anchor.getTime() + (diff + periodOffset) * msPerPeriod);
@@ -4075,7 +4115,7 @@ function goToTimesheetNewPeriod() {
   // Set date input to today
   setTimeout(() => {
     const dateEl = document.getElementById('sf-date');
-    if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+    if (dateEl) dateEl.value = todayLocalISO();
     renderTimesheetPeriodContext();
     showToast('New period active — enter today\'s date and add shifts ✅');
   }, 100);
@@ -4140,7 +4180,7 @@ function renderTimesheetPeriodContext() {
   }
   const all = computeShiftsWithOT();
   const shiftCount = all.filter(s => s.date >= start && s.date <= end).length;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
   const daysLeft = isCurrent ? Math.max(0, Math.ceil((new Date(end + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1) : null;
 
   bar.style.display = 'flex';
@@ -4254,7 +4294,7 @@ function renderPayConfigStatusBanner() {
   const banner = document.getElementById('payconfig-status-banner');
   if (!banner) return;
   const cp = getCurrentPeriodDates();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
   const isInCurrentPeriod = today >= cp.start && today <= cp.end;
   const shiftCount = getCurrentPeriodShiftCount();
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4298,7 +4338,7 @@ function renderPayConfigStatusBanner() {
 function autoAdvancePeriod() {
   // Keep the same anchor day-of-cycle but move forward so today falls in the current period
   const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
+  const today = new Date(todayLocalISO() + 'T00:00:00');
   const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
   const diff = Math.floor((today - anchor) / msPerPeriod);
   // The new anchor is the start of the current period
@@ -4448,7 +4488,7 @@ function renderDateCorrectionLog() {
 function updatePeriodPreview() {
   const anchor = document.getElementById('cfg-anchor-date').value || PAY_CONFIG.anchorDate;
   const days = parseInt(document.getElementById('cfg-period-type').value) || 14;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
   const anchorD = new Date(anchor + 'T00:00:00');
   const todayD = new Date(today + 'T00:00:00');
   const msPerPeriod = days * 86400000;
@@ -4508,7 +4548,7 @@ function renderWeeklyHoursTracker(selectedPeriod, isCurrentPeriod) {
   const week2End = periodEnd;
 
   // Get today for "current week" detection
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
 
   // Determine which week is current (only relevant for current period)
   const inWeek1 = isCurrentPeriod && today >= week1Start && today <= week1End;
@@ -5262,7 +5302,7 @@ function denyShift(pendingId) {
 // ──────────────────────────────────────────────────────────
 function getPeriodsAroundToday(pastCount, futureCount) {
   const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
+  const today = new Date(todayLocalISO() + 'T00:00:00');
   const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
   const diff = Math.floor((today - anchor) / msPerPeriod);
   const result = [];
@@ -5310,7 +5350,7 @@ function syncDateToSelectedPeriod() {
   if (!opt) return;
   const start = sel.value;
   const end = opt.getAttribute('data-end');
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
   // If today falls inside the selected period, use today; otherwise use start of period
   if (today >= start && today <= end) {
     dateEl.value = today;
@@ -6894,7 +6934,7 @@ function addStaff() {
     type: document.getElementById('st-type').value,
     loc: document.getElementById('st-loc').value,
     rate: parseFloat(document.getElementById('st-rate').value) || 0,
-    start: document.getElementById('st-start').value || new Date().toISOString().split('T')[0],
+    start: document.getElementById('st-start').value || todayLocalISO(),
     status: document.getElementById('st-status').value
   });
   ['st-first','st-last','st-rate','st-start'].forEach(id => document.getElementById(id).value='');
@@ -7041,7 +7081,7 @@ function addLocation() {
   const rate = parseFloat(document.getElementById('loc-rate-input').value);
   if (!name || !rate) { showToast('Name and rate required', 'danger'); return; }
   const mult = parseFloat(document.getElementById('loc-mult-input').value) || 1.5;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
   const maxLocNum = LOCATIONS.reduce((max, l) => { const n = parseInt(l.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   LOCATIONS.push({
     id: 'L' + String(maxLocNum+1).padStart(2,'0'),
@@ -7189,7 +7229,7 @@ function saveEditLocation() {
 
   const retro = document.querySelector('input[name="loc-retro"]:checked')?.value || 'forward';
   const oldName = l.name;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalISO();
 
   let effectiveFrom;
   if (retro === 'all') {
@@ -8037,7 +8077,7 @@ function rbExportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `ASO_${_rbLastReport.type}_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `ASO_${_rbLastReport.type}_${todayLocalISO()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('CSV exported ✅');
@@ -8222,7 +8262,7 @@ function atExportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `ASO_AuditTrail_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `ASO_AuditTrail_${todayLocalISO()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('Audit Trail exported ✅');
