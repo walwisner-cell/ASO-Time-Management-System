@@ -71,7 +71,7 @@ NEW_DB_LAYER = r"""<script>
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -79,13 +79,13 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: []
 };
 
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
+                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS };
   fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -202,6 +202,7 @@ async function loadAppData() {
   DELETION_LOG          = data.DELETION_LOG          || [];
   AUDIT_LOG             = data.AUDIT_LOG             || [];
   PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
+  LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)

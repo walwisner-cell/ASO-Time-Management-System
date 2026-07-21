@@ -13,9 +13,11 @@
 | `render.yaml` | Deployment config for hosting on [Render](https://render.com) |
 
 The app covers timesheets, overtime calculation, shift approvals, staff/location
-management, reporting, and a full **Payroll & Taxes** workflow (confirm
-timesheets → set tax rates → finalize payroll → generate printable **Pay
-Stubs** with year-to-date totals).
+management, reporting, and a full **Payroll** workflow: set your standard
+taxes and benefits once (Taxes & Benefits page), then for each pay period —
+review timesheets and confirm & run payroll in one step, with your saved
+taxes/benefits applied automatically. Generates printable **Pay Stubs** with
+year-to-date totals.
 
 ---
 
@@ -141,7 +143,7 @@ This produces a new `ASO_OT_SYSTEM_SQL.html` — copy it into the install folder
 Your data in the SQLite database is untouched.
 
 **Note:** this script only re-patches the small "database layer" script block
-(data loading/saving). Login, sessions, Payroll & Taxes, Pay Stubs, and other
+(data loading/saving). Login, sessions, Payroll, Taxes & Benefits, Pay Stubs, and other
 features live elsewhere in the file and are not affected either way — but if
 you've made deep custom changes to how login or data-loading works, read the
 warning comment at the top of `patch_html.py` before running it.

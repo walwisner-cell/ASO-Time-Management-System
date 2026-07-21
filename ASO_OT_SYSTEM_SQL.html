@@ -418,6 +418,38 @@
   .page.active { display:block; animation:fadeUp .3s cubic-bezier(.16,1,.3,1); }
 
   /* ─────────────────────────────────────────────────────
+     MOBILE RESPONSIVE
+  ───────────────────────────────────────────────────── */
+  #mobile-sidebar-backdrop {
+    display:none;
+    position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:199;
+  }
+  @media (max-width: 860px) {
+    #mobile-menu-btn { display:inline-block !important; }
+    .sidebar {
+      position:fixed;
+      top:60px;
+      left:0;
+      bottom:0;
+      z-index:200;
+      transform:translateX(-100%);
+      transition:transform .25s cubic-bezier(.16,1,.3,1);
+      box-shadow:8px 0 32px rgba(0,0,0,0.4);
+    }
+    .sidebar.mobile-open { transform:translateX(0); }
+    #mobile-sidebar-backdrop.mobile-open { display:block; }
+    .main { padding:18px 16px; }
+    .topbar { padding:0 14px; gap:10px; }
+    .page-header { flex-direction:column; align-items:flex-start !important; gap:10px; }
+    .stats-grid { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+    .report-summary { grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; }
+    .two-col { grid-template-columns:1fr !important; }
+    .controls-row { flex-wrap:wrap; gap:8px; }
+    .pr-steps { padding:14px 10px; }
+    .pr-step-label { font-size:10px; }
+  }
+
+  /* ─────────────────────────────────────────────────────
      COMMON PAGE ELEMENTS
   ───────────────────────────────────────────────────── */
   .page-header {
@@ -1026,7 +1058,7 @@
     body { background:#fff !important; color:#000 !important; }
     #login-screen { display:none !important; }
     .topbar, .sidebar, .print-btn, .btn, .controls-row select, .controls-row input,
-    #toast, .modal-overlay, .nav-section, .nav-item { display:none !important; }
+    #toast, .modal-overlay, .nav-section, .nav-item, .pr-steps, .pr-ded-row, .pr-ded-remove { display:none !important; }
     .layout { display:block !important; }
     .main { padding:0 !important; }
     .page { display:block !important; }
@@ -1481,6 +1513,7 @@
 <!-- APP -->
 <div id="app">
   <div class="topbar">
+    <button id="mobile-menu-btn" onclick="toggleMobileSidebar()" style="display:none;background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px 8px;margin-right:4px">☰</button>
     <!-- Mini ASO Seal in topbar -->
     <svg class="aso-topbar-seal" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
       <circle cx="100" cy="100" r="97" fill="#111827" stroke="#3b82f6" stroke-width="4"/>
@@ -1516,7 +1549,10 @@
     </div>
   </div>
   <div class="layout">
+    <div id="mobile-sidebar-backdrop" onclick="toggleMobileSidebar(false)"></div>
     <div class="sidebar">
+      <div class="nav-section">My Portal</div>
+      <div class="nav-item" data-page="myportal" onclick="nav('myportal',this)"><span class="nav-icon">👤</span>My Schedule &amp; Pay</div>
       <div class="nav-section">Main</div>
       <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
       <div class="nav-item" data-page="timesheet" onclick="nav('timesheet',this)"><span class="nav-icon">📋</span>Timesheet Log</div>
@@ -1541,6 +1577,59 @@
     <div class="main">
 
       <!-- DASHBOARD -->
+      <!-- MY PORTAL (employee self-service) -->
+      <div class="page" id="page-myportal">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">My Schedule &amp; Pay</div>
+            <div class="page-sub" id="mp-welcome">Your shifts, pay stubs, and time off — visible only to you</div>
+          </div>
+        </div>
+
+        <div class="report-summary" id="mp-summary"></div>
+
+        <div class="card section-gap">
+          <div class="card-title">📅 My Shifts</div>
+          <div class="table-wrap" id="mp-shifts-table"></div>
+        </div>
+
+        <div class="card section-gap">
+          <div class="card-title">🧾 My Pay Stubs</div>
+          <div class="controls-row" style="margin-bottom:14px">
+            <select id="mp-stub-select" onchange="renderMyPortalStub()" style="min-width:240px"></select>
+          </div>
+          <div id="mp-stub-preview"></div>
+        </div>
+
+        <div class="two-col section-gap" style="gap:20px">
+          <div class="card">
+            <div class="card-title">🌴 Time Off Balance</div>
+            <div class="report-summary" id="mp-pto-balance" style="margin-bottom:18px"></div>
+            <div style="font-family:var(--display);font-weight:700;font-size:14px;color:var(--text);margin-bottom:10px">Request Time Off</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div class="form-field"><label>Type</label>
+                <select id="mp-lv-type">
+                  <option value="vacation">Vacation</option>
+                  <option value="sick">Sick</option>
+                  <option value="personal">Personal</option>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="form-field"><label>Start Date</label><input type="date" id="mp-lv-start"></div>
+                <div class="form-field"><label>End Date</label><input type="date" id="mp-lv-end"></div>
+              </div>
+              <div class="form-field"><label>Total Hours</label><input type="number" id="mp-lv-hours" min="0.5" step="0.5" placeholder="e.g. 8"></div>
+              <div class="form-field"><label>Notes (optional)</label><input type="text" id="mp-lv-notes" placeholder="Optional note for your supervisor"></div>
+              <button class="btn btn-primary" style="font-size:13px;padding:10px 18px" onclick="submitMyLeaveRequest()">📨 Submit Request</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">📜 My Requests</div>
+            <div class="table-wrap" id="mp-leave-history"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="page active" id="page-dashboard">
         <div class="print-header" id="ph-dashboard">American Safety Options — Staff OT Dashboard &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
         <div class="print-aso-header">
@@ -1916,6 +2005,11 @@
             </div>
           </div>
         </div>
+
+        <div class="card section-gap">
+          <div class="card-title">🌴 Time Off Requests</div>
+          <div class="table-wrap" id="leave-requests-list"></div>
+        </div>
       </div>
 
       <!-- PAY PERIOD REPORT -->
@@ -2257,7 +2351,11 @@
             <div class="form-field" style="margin-bottom:14px"><label>Password</label><input type="password" id="pw-pass" placeholder="Min 6 characters" style="width:100%"></div>
             <div class="form-field" style="margin-bottom:14px"><label>Confirm Password</label><input type="password" id="pw-pass2" placeholder="Repeat password" style="width:100%"></div>
             <div class="form-field" style="margin-bottom:16px"><label>Role</label>
-              <select id="pw-role" style="width:100%"><option value="admin">Admin (full access)</option><option value="supervisor">Supervisor (can approve)</option><option value="viewer">Viewer (read-only)</option></select></div>
+              <select id="pw-role" onchange="onPwRoleChange()" style="width:100%"><option value="admin">Admin (full access)</option><option value="supervisor">Supervisor (can approve)</option><option value="viewer">Viewer (read-only)</option><option value="employee">Employee (self-service only)</option></select></div>
+            <div class="form-field" id="pw-staff-link-wrap" style="margin-bottom:16px;display:none"><label>Link to Staff Member</label>
+              <select id="pw-staff-link" style="width:100%"></select>
+              <div style="font-size:11px;color:var(--text3);margin-top:5px">This account will only ever see this person's own shifts, pay stubs, and time off — nothing else.</div>
+            </div>
             <button class="btn btn-primary" onclick="addUser()">+ Add User</button>
           </div>
           <div class="card">
@@ -2326,6 +2424,16 @@
             <div class="card-title">📊 Database Contents</div>
             <div id="dm-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"></div>
           </div>
+        </div>
+
+        <!-- Automatic Server Backups -->
+        <div class="card section-gap">
+          <div class="card-title">🗃️ Server Backups</div>
+          <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+            The server automatically snapshots the full database once a day (last 14 kept) — separate from the JSON export above, these are raw database files stored on the server itself. Useful for undoing an accidental import or bad data change. <b style="color:var(--warn)">Note:</b> these live on the same disk as your live data — they protect against mistakes, not disk failure. Still export a JSON backup periodically and keep it somewhere else too.
+          </p>
+          <button class="btn btn-primary" style="font-size:12px;padding:8px 16px;margin-bottom:16px" onclick="createServerBackupNow()">📦 Backup Now</button>
+          <div class="table-wrap" id="dm-backups-table"></div>
         </div>
 
         <!-- Danger Zone -->
@@ -2534,7 +2642,7 @@
             <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px">The Approvals page handles shifts where an employee's combined daily total exceeds 24 hours. These require a supervisor to review the stated reason and either approve or deny the entry before it counts toward payroll.</p>
             <div style="background:rgba(194,74,70,0.07);border:1px solid rgba(194,74,70,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
               <span style="font-size:16px">🔴</span>
-              <div><div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Why this matters</div><div style="font-size:12px;color:var(--text2)">Shifts over 24 hours on a single day are unusual and may indicate a data-entry error. This approval step prevents accidental overtime inflation and ensures a supervisor has reviewed every long shift.</div></div>
+              <div><div style="font-size:12px;font-weight:600;color:#F08883;margin-bottom:4px">Why this matters</div><div style="font-size:12px;color:var(--text2)">Shifts over 24 hours on a single day are unusual and may indicate a data-entry error. This approval step prevents accidental overtime inflation and ensures a supervisor has reviewed every long shift.</div></div>
             </div>
             <div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Approval Workflow</div>
             <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
@@ -2706,7 +2814,7 @@
             </div>
             <div style="background:rgba(194,74,70,0.07);border:1px solid rgba(194,74,70,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">🔒</span>
-              <div><div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Security reminder</div><div style="font-size:12px;color:var(--text2)">Passwords are stored within the application. Do not share login credentials between employees. Each person should have their own account.</div></div>
+              <div><div style="font-size:12px;font-weight:600;color:#F08883;margin-bottom:4px">Security reminder</div><div style="font-size:12px;color:var(--text2)">Passwords are stored within the application. Do not share login credentials between employees. Each person should have their own account.</div></div>
             </div>
           </div>
         </div>
@@ -2886,7 +2994,7 @@
             <div style="background:rgba(194,74,70,0.07);border:1px solid rgba(194,74,70,0.2);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
               <span style="font-size:16px">⛔</span>
               <div>
-                <div style="font-size:12px;font-weight:600;color:#C74B48;margin-bottom:4px">Factory Reset — use with extreme caution</div>
+                <div style="font-size:12px;font-weight:600;color:#F08883;margin-bottom:4px">Factory Reset — use with extreme caution</div>
                 <div style="font-size:12px;color:var(--text2)">The <b>Reset to Factory Defaults</b> button permanently deletes all data — shifts, staff, config, and users. This cannot be undone. Always export a backup before using this option.</div>
               </div>
             </div>
@@ -2944,7 +3052,7 @@
     <div class="modal-title" style="color:var(--danger)">🗑️ Delete Shift?</div>
     <div class="modal-sub">// this action cannot be undone</div>
     <div class="warn-box" style="border-color:rgba(194,74,70,0.35);background:rgba(194,74,70,0.07);margin-bottom:16px">
-      <div class="warn-box-title" style="color:#C74B48">⚠️ You are about to permanently delete this shift</div>
+      <div class="warn-box-title" style="color:#F08883">⚠️ You are about to permanently delete this shift</div>
       <p style="font-size:12px;color:var(--danger);margin-top:6px">All pay calculations for this shift will be removed. If this was an error, use ✏️ Edit to correct the times instead.</p>
     </div>
     <div id="del-modal-details" style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:20px"></div>
@@ -3100,7 +3208,7 @@
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -3108,13 +3216,13 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: []
 };
 
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
+                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS };
   fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3231,6 +3339,7 @@ async function loadAppData() {
   DELETION_LOG          = data.DELETION_LOG          || [];
   AUDIT_LOG             = data.AUDIT_LOG             || [];
   PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
+  LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
@@ -3271,6 +3380,7 @@ function updateSaveIndicator() {
 // ROLE-BASED ACCESS CONTROL
 // ──────────────────────────────────────────────────────────
 const PAGE_ROLES = {
+  myportal:      ['employee'],
   dashboard:     ['admin','supervisor','viewer'],
   timesheet:     ['admin','supervisor','viewer'],
   approvals:     ['admin','supervisor'],
@@ -3307,20 +3417,34 @@ function userCan(action) {
 
 function updateNavForRole() {
   const role = _currentUser ? _currentUser.role : 'viewer';
-  const restrictedPages = ['payconfig','staff','locations','passwords','datamanager'];
-  const supervisorOnly = ['approvals'];
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     const page = item.getAttribute('data-page');
     const allowed = PAGE_ROLES[page] || ['admin'];
-    if (!allowed.includes(role)) {
+    const canAccess = allowed.includes(role);
+    if (role === 'employee') {
+      // Employees get a purpose-built portal — hide everything that isn't theirs
+      item.style.display = canAccess ? '' : 'none';
+    } else if (!canAccess) {
+      item.style.display = '';
       item.style.opacity = '0.35';
       item.style.pointerEvents = 'none';
       item.title = 'Access restricted — Admin only';
     } else {
+      item.style.display = '';
       item.style.opacity = '';
       item.style.pointerEvents = '';
       item.title = '';
     }
+  });
+  document.querySelectorAll('.nav-section').forEach(sec => {
+    if (role !== 'employee') { sec.style.display = ''; return; }
+    // Hide section headers that have no visible items under them
+    let node = sec.nextElementSibling, hasVisible = false;
+    while (node && !node.classList.contains('nav-section')) {
+      if (node.classList.contains('nav-item') && node.style.display !== 'none') hasVisible = true;
+      node = node.nextElementSibling;
+    }
+    sec.style.display = hasVisible ? '' : 'none';
   });
 }// ── USER MANUAL SECTION SWITCHER ──
 function showSection(idx, btn) {
@@ -3381,27 +3505,18 @@ function getLocRate(locName, date) {
   }
   return l.rate;
 }
-function getLocOTRate(locName, date) {
+function getLocOTMult(locName, date) {
   const l = LOCATIONS.find(x => x.name === locName);
-  if (!l) return 0;
+  if (!l) return 1.5;
   if (date && l.rateHistory && l.rateHistory.length > 0) {
     const sorted = [...l.rateHistory].sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
     const entry = sorted.find(h => h.effectiveFrom <= date);
-    if (entry) return entry.rate * entry.mult;
+    if (entry) return entry.mult;
   }
-  return l.rate * l.mult;
+  return l.mult || 1.5;
 }
-
-function buildTimeOptions() {
-  const opts = [];
-  for (let h = 0; h < 24; h++) {
-    for (let m of [0, 30]) {
-      const hh = String(h).padStart(2,'0');
-      const mm = String(m).padStart(2,'0');
-      opts.push(`${hh}:${mm}`);
-    }
-  }
-  return opts;
+function getLocOTRate(locName, date) {
+  return getLocRate(locName, date) * getLocOTMult(locName, date);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -3430,16 +3545,7 @@ function computeShiftsWithOT() {
     const staffRate = (staffMember && staffMember.rate > 0) ? staffMember.rate : null;
     const locRate = staffRate !== null ? staffRate : getLocRate(sh.location, sh.date);
     // OT multiplier always comes from the location
-    const locOTMult = (function() {
-      const loc = LOCATIONS.find(x => x.name === sh.location);
-      if (!loc) return 1.5;
-      if (sh.date && loc.rateHistory && loc.rateHistory.length > 0) {
-        const sorted2 = [...loc.rateHistory].sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-        const entry = sorted2.find(h => h.effectiveFrom <= sh.date);
-        if (entry) return entry.mult;
-      }
-      return loc.mult || 1.5;
-    })();
+    const locOTMult = getLocOTMult(sh.location, sh.date);
     const otRate = locRate * locOTMult;
     let otHrs = 0, otPay = 0, regHrs = hrs, regPay = 0;
     if (runningAfter > threshold) {
@@ -3472,6 +3578,22 @@ function getDailyHoursForStaff(staffId, date, excludeId) {
 
 function getDailyShiftsForStaff(staffId, date) {
   return SHIFTS.filter(s => s.staff === staffId && s.date === date);
+}
+
+// Two time ranges overlap if one starts before the other ends (handles overnight
+// shifts the same way calcHours() does — an end time <= start time means it
+// crosses midnight into the next day).
+function shiftsOverlap(startA, endA, startB, endB) {
+  const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  let sA = toMin(startA), eA = toMin(endA); if (eA <= sA) eA += 1440;
+  let sB = toMin(startB), eB = toMin(endB); if (eB <= sB) eB += 1440;
+  return sA < eB && sB < eA;
+}
+
+function findOverlappingShift(staffId, date, start, end, excludeId) {
+  return getDailyShiftsForStaff(staffId, date)
+    .filter(s => s.id !== excludeId)
+    .find(s => shiftsOverlap(start, end, s.start, s.end));
 }
 
 function checkDailyHoursViolation(staffId, date, newHours, excludeId) {
@@ -3555,6 +3677,14 @@ async function doLogout() {
 // ──────────────────────────────────────────────────────────
 // NAVIGATION
 // ──────────────────────────────────────────────────────────
+function toggleMobileSidebar(forceState) {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('mobile-sidebar-backdrop');
+  const shouldOpen = forceState !== undefined ? forceState : !sidebar.classList.contains('mobile-open');
+  sidebar.classList.toggle('mobile-open', shouldOpen);
+  backdrop.classList.toggle('mobile-open', shouldOpen);
+}
+
 function nav(page, el) {
   const role = _currentUser ? _currentUser.role : 'viewer';
   const allowed = PAGE_ROLES[page] || ['admin'];
@@ -3562,6 +3692,7 @@ function nav(page, el) {
     showToast('🚫 Access restricted — ' + role + ' role cannot access this section', 'danger');
     return;
   }
+  toggleMobileSidebar(false); // auto-close the drawer on mobile after picking a page
   document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
@@ -3572,6 +3703,7 @@ function nav(page, el) {
     try { localStorage.setItem('aso_payroll_seen', '1'); } catch(e) {}
   }
   const renders = {
+    myportal: renderMyPortal,
     dashboard: renderDashboard,
     timesheet: renderTimesheet,
     approvals: renderApprovalsPage,
@@ -3595,6 +3727,12 @@ function nav(page, el) {
 // INIT
 // ──────────────────────────────────────────────────────────
 function initApp() {
+  if (_currentUser && _currentUser.role === 'employee') {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-myportal').classList.add('active');
+    renderMyPortal();
+    return;
+  }
   updateTopbarPeriod();
   updatePrintDates();
   updateSaveIndicator();
@@ -3608,13 +3746,18 @@ function initApp() {
 // ──────────────────────────────────────────────────────────
 let _dismissedPeriods = [];
 
-function getCurrentPeriodDates() {
+function getPeriodDatesWithOffset(periodOffset) {
   const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
   const today = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
   const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
   const diff = Math.floor((today - anchor) / msPerPeriod);
-  const start = new Date(anchor.getTime() + diff * msPerPeriod);
+  const start = new Date(anchor.getTime() + (diff + periodOffset) * msPerPeriod);
   const end = new Date(start.getTime() + (PAY_CONFIG.periodDays - 1) * 86400000);
+  return { start, end };
+}
+
+function getCurrentPeriodDates() {
+  const { start, end } = getPeriodDatesWithOffset(0);
   return {
     start: start.toISOString().split('T')[0],
     end: end.toISOString().split('T')[0],
@@ -3623,12 +3766,7 @@ function getCurrentPeriodDates() {
 }
 
 function getPrevPeriodDates() {
-  const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
-  const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
-  const diff = Math.floor((today - anchor) / msPerPeriod);
-  const start = new Date(anchor.getTime() + (diff - 1) * msPerPeriod);
-  const end = new Date(start.getTime() + (PAY_CONFIG.periodDays - 1) * 86400000);
+  const { start, end } = getPeriodDatesWithOffset(-1);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const label = `${months[start.getMonth()]} ${start.getDate()} – ${months[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
   return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0], label };
@@ -4392,6 +4530,117 @@ function renderDashboardTrendChart() {
   });
 }
 
+function renderMyPortal() {
+  const staffId = _currentUser.staffId;
+  const myStaff = STAFF.find(s => s.id === staffId);
+  document.getElementById('mp-welcome').textContent = myStaff
+    ? `Welcome, ${myStaff.first} ${myStaff.last} — your shifts, pay stubs, and time off, visible only to you`
+    : 'No staff record is linked to this account yet — contact your admin.';
+
+  if (!myStaff) {
+    ['mp-summary','mp-shifts-table','mp-stub-preview','mp-pto-balance','mp-leave-history'].forEach(id => document.getElementById(id).innerHTML = '');
+    return;
+  }
+
+  const cp = currentPeriodLabel();
+  const allMyShifts = computeShiftsWithOT();
+  const thisPeriod = allMyShifts.filter(s => s.period === cp);
+  let totHrs=0, totOT=0, totGross=0;
+  thisPeriod.forEach(s => { totHrs += s.regHrs+s.otHrs; totOT += s.otHrs; totGross += s.regPay+s.otPay; });
+  document.getElementById('mp-summary').innerHTML = `
+    <div class="rs-card"><div class="rs-label">This Period Hours</div><div class="rs-val count-up" data-target="${totHrs}">0</div></div>
+    <div class="rs-card"><div class="rs-label">OT Hours</div><div class="rs-val count-up" data-target="${totOT}" style="color:var(--warn)">0</div></div>
+    <div class="rs-card"><div class="rs-label">Est. Gross Pay</div><div class="rs-val count-up" data-target="${totGross}" data-money style="color:var(--success)">$0.00</div></div>
+  `;
+  animateStatsIn('#mp-summary');
+
+  const sorted = allMyShifts.slice().sort((a,b) => b.date.localeCompare(a.date));
+  let html = '<table><thead><tr><th>Date</th><th>Location</th><th>Time</th><th>Hours</th><th>OT</th></tr></thead><tbody>';
+  if (!sorted.length) html += '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px">No shifts recorded yet.</td></tr>';
+  sorted.slice(0, 60).forEach(s => {
+    html += `<tr>
+      <td class="mono">${s.date}</td>
+      <td>${esc(s.location)}</td>
+      <td class="mono">${s.start}\u2013${s.end}</td>
+      <td class="mono">${numFmt(s.regHrs+s.otHrs)}</td>
+      <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${s.otHrs>0?numFmt(s.otHrs):'\u2014'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('mp-shifts-table').innerHTML = html;
+
+  const stubSel = document.getElementById('mp-stub-select');
+  const myRecords = (PAYROLL_RECORDS||[]).filter(r => r.finalized && (r.employeeRows||[]).some(e => e.staffId === staffId));
+  myRecords.sort((a,b) => b.periodStart.localeCompare(a.periodStart));
+  stubSel.innerHTML = myRecords.length
+    ? myRecords.map(r => `<option value="${r.periodStart}">${esc(r.periodLabel)}</option>`).join('')
+    : '<option value="">No pay stubs available yet</option>';
+  renderMyPortalStub();
+
+  const balance = myStaff.ptoBalance || 0;
+  document.getElementById('mp-pto-balance').innerHTML =
+    `<div class="rs-card"><div class="rs-label">Available Balance</div><div class="rs-val" style="color:${balance<0?'var(--danger)':'var(--success)'}">${numFmt(balance)} hrs</div></div>`;
+
+  renderMyLeaveHistory();
+}
+
+function renderMyPortalStub() {
+  const sel = document.getElementById('mp-stub-select');
+  const preview = document.getElementById('mp-stub-preview');
+  if (!sel || !sel.value) { preview.innerHTML = '<div class="pay-stub-empty">No pay stub available yet.</div>'; return; }
+  const rec = (PAYROLL_RECORDS||[]).find(r => r.periodStart === sel.value);
+  const html = rec ? buildPayStubHTML(rec, _currentUser.staffId) : null;
+  preview.innerHTML = html || '<div class="pay-stub-empty">Could not load this pay stub.</div>';
+}
+
+function renderMyLeaveHistory() {
+  const el = document.getElementById('mp-leave-history');
+  const mine = (LEAVE_REQUESTS||[]).slice().sort((a,b) => (b.requestedAt||'').localeCompare(a.requestedAt||''));
+  if (!mine.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">No requests yet.</div>'; return; }
+  let html = '<table><thead><tr><th>Type</th><th>Dates</th><th>Hours</th><th>Status</th></tr></thead><tbody>';
+  mine.forEach(r => {
+    const badgeClass = r.status === 'approved' ? 'badge-success' : r.status === 'denied' ? 'badge-danger' : 'badge-warn';
+    html += `<tr>
+      <td style="text-transform:capitalize">${esc(r.type)}</td>
+      <td class="mono">${r.startDate} \u2192 ${r.endDate}</td>
+      <td class="mono">${numFmt(r.hours)}</td>
+      <td><span class="badge ${badgeClass}">${esc(r.status)}</span></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+async function submitMyLeaveRequest() {
+  const type = document.getElementById('mp-lv-type').value;
+  const startDate = document.getElementById('mp-lv-start').value;
+  const endDate = document.getElementById('mp-lv-end').value;
+  const hours = parseFloat(document.getElementById('mp-lv-hours').value);
+  const notes = document.getElementById('mp-lv-notes').value.trim();
+  if (!startDate || !endDate) { showToast('Start and end dates are required', 'danger'); return; }
+  if (!hours || hours <= 0) { showToast('Enter the number of hours requested', 'danger'); return; }
+  if (endDate < startDate) { showToast('End date must be on or after the start date', 'danger'); return; }
+
+  try {
+    const res = await fetch('/api/leave-requests', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type, startDate, endDate, hours, notes })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Request failed', 'danger'); return; }
+    LEAVE_REQUESTS.push({
+      id: body.id, staffId: _currentUser.staffId, type, startDate, endDate, hours, notes,
+      status: body.status, requestedBy: _currentUser.name, requestedAt: new Date().toLocaleString(),
+      reviewedBy: '', reviewedAt: ''
+    });
+    showToast('✅ Time off request submitted');
+    ['mp-lv-start','mp-lv-end','mp-lv-hours','mp-lv-notes'].forEach(id => document.getElementById(id).value = '');
+    renderMyLeaveHistory();
+  } catch (e) {
+    showToast('Request failed — check your connection', 'danger');
+  }
+}
+
 function renderDashboard() {
   const selectedPeriod = populateDashPeriodDropdown();
   const all = computeShiftsWithOT();
@@ -4627,7 +4876,68 @@ function renderDashboard() {
 // ──────────────────────────────────────────────────────────
 // APPROVALS PAGE
 // ──────────────────────────────────────────────────────────
+function renderLeaveRequestsAdmin() {
+  const el = document.getElementById('leave-requests-list');
+  if (!el) return;
+  const requests = (LEAVE_REQUESTS || []).slice().sort((a,b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (b.status === 'pending' && a.status !== 'pending') return 1;
+    return (b.requestedAt||'').localeCompare(a.requestedAt||'');
+  });
+  if (!requests.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0">No time off requests yet.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Staff</th><th>Type</th><th>Dates</th><th>Hours</th><th>Requested</th><th>Status</th><th></th></tr></thead><tbody>';
+  requests.forEach(r => {
+    const st = STAFF.find(s => s.id === r.staffId);
+    const name = st ? `${st.last}, ${st.first}` : r.staffId;
+    const badgeClass = r.status === 'approved' ? 'badge-success' : r.status === 'denied' ? 'badge-danger' : 'badge-warn';
+    const actions = r.status === 'pending'
+      ? `<button class="btn btn-success" style="font-size:11px;padding:5px 10px" onclick="reviewLeaveRequest('${r.id}','approve')">✅ Approve</button>
+         <button class="btn btn-danger" style="font-size:11px;padding:5px 10px" onclick="reviewLeaveRequest('${r.id}','deny')">✕ Deny</button>`
+      : `<span style="font-size:11px;color:var(--text3)">${esc(r.reviewedBy||'')}</span>`;
+    html += `<tr>
+      <td style="color:var(--text);font-weight:500">${esc(name)}</td>
+      <td style="text-transform:capitalize">${esc(r.type)}</td>
+      <td class="mono">${r.startDate} \u2192 ${r.endDate}</td>
+      <td class="mono">${numFmt(r.hours)}</td>
+      <td class="mono" style="color:var(--text3);font-size:11px">${esc(r.requestedAt)}</td>
+      <td><span class="badge ${badgeClass}">${esc(r.status)}</span></td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+async function reviewLeaveRequest(id, action) {
+  try {
+    const res = await fetch(`/api/leave-requests/${encodeURIComponent(id)}/review`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Review failed', 'danger'); return; }
+
+    const reqRow = LEAVE_REQUESTS.find(r => r.id === id);
+    if (reqRow) {
+      reqRow.status = action === 'approve' ? 'approved' : 'denied';
+      reqRow.reviewedBy = _currentUser.name;
+      reqRow.reviewedAt = new Date().toLocaleString();
+      if (action === 'approve') {
+        const st = STAFF.find(s => s.id === reqRow.staffId);
+        if (st) st.ptoBalance = (st.ptoBalance || 0) - reqRow.hours;
+      }
+    }
+    showToast(action === 'approve' ? '✅ Time off approved' : 'Time off request denied');
+    renderLeaveRequestsAdmin();
+  } catch (e) {
+    showToast('Review failed — check your connection', 'danger');
+  }
+}
+
 function renderApprovalsPage() {
+  renderLeaveRequestsAdmin();
   // Pending
   const pendingEl = document.getElementById('pending-approvals-list');
   if (PENDING_APPROVALS.length === 0) {
@@ -4893,14 +5203,15 @@ function renderTimesheet() {
   updateShiftPreview();
 }
 
-function updateShiftPreview() {
-  const start = document.getElementById('sf-start').value;
-  const end = document.getElementById('sf-end').value;
+function updateHoursPreview(startId, endId, previewId) {
+  const start = document.getElementById(startId).value;
+  const end = document.getElementById(endId).value;
   if (start && end) {
     const hrs = calcHours(start, end);
-    document.getElementById('shift-calc-preview').textContent = `= ${numFmt(hrs)} hrs`;
+    document.getElementById(previewId).textContent = `= ${numFmt(hrs)} hrs`;
   }
 }
+function updateShiftPreview() { updateHoursPreview('sf-start', 'sf-end', 'shift-calc-preview'); }
 
 function onStaffSelect() {
   const staffId = document.getElementById('sf-staff').value;
@@ -4924,14 +5235,15 @@ function onStaffSelect() {
   confirm.style.display = 'flex';
 }
 
-function onLocationChange() {
-  const staffId = document.getElementById('sf-staff').value;
+function onLocationChangeCheck(prefix) {
+  const staffId = document.getElementById(prefix + 'staff').value;
   const st = STAFF.find(x => x.id === staffId);
   if (!st) return;
-  const locSel = document.getElementById('sf-location');
-  const warn = document.getElementById('sf-loc-warn');
+  const locSel = document.getElementById(prefix + 'location');
+  const warn = document.getElementById(prefix + 'loc-warn');
   warn.style.display = (locSel.value !== st.loc) ? 'block' : 'none';
 }
+function onLocationChange() { onLocationChangeCheck('sf-'); }
 
 function renderTimesheetTable() {
   const all = computeShiftsWithOT();
@@ -5088,6 +5400,13 @@ function addShift() {
   // Check for daily 24hr violation
   const check = checkDailyHoursViolation(staff, date, hours, null);
 
+  // Block genuinely overlapping shift times for the same staff member on the same day
+  const overlap = findOverlappingShift(staff, date, start, end, null);
+  if (overlap) {
+    showToast(`⚠ This overlaps with an existing shift for this staff member: ${overlap.location} ${overlap.start}–${overlap.end} on ${date}. Fix the times or edit the existing shift instead.`, 'danger');
+    return;
+  }
+
   if (check.exceeds) {
     // Show modal warning
     const st = STAFF.find(x=>x.id===staff);
@@ -5097,7 +5416,7 @@ function addShift() {
     document.getElementById('modal-24hr-msg').innerHTML =
       `<b>${name}</b> already has <b>${numFmt(check.existing)} hrs</b> recorded on <b>${date}</b>. ` +
       `Adding this <b>${numFmt(hours)}-hr shift</b> would bring the daily total to ` +
-      `<b style="color:#C74B48">${numFmt(check.total)} hours</b> — exceeding the 24-hour daily maximum.<br><br>` +
+      `<b style="color:#F08883">${numFmt(check.total)} hours</b> — exceeding the 24-hour daily maximum.<br><br>` +
       `Staff may work multiple shifts across different locations on the same day, but combined hours cannot exceed 24 without approval.`;
 
     // Build details table
@@ -5289,14 +5608,7 @@ function editShift(id) {
   updateEditPreview();
   document.getElementById('modal-edit-shift').classList.remove('hidden');
 }
-function updateEditPreview() {
-  const s = document.getElementById('edit-sf-start').value;
-  const e = document.getElementById('edit-sf-end').value;
-  if (s && e) {
-    const hrs = calcHours(s, e);
-    document.getElementById('edit-shift-preview').textContent = `= ${numFmt(hrs)} hrs`;
-  }
-}
+function updateEditPreview() { updateHoursPreview('edit-sf-start', 'edit-sf-end', 'edit-shift-preview'); }
 
 function onEditDateChange() {
   const dateEl = document.getElementById('edit-sf-date');
@@ -5333,14 +5645,7 @@ function onEditStaffSelect(overrideLocation) {
   warn.style.display = (locVal && locVal !== st.loc) ? 'block' : 'none';
 }
 
-function onEditLocationChange() {
-  const staffId = document.getElementById('edit-sf-staff').value;
-  const st = STAFF.find(x => x.id === staffId);
-  if (!st) return;
-  const locSel = document.getElementById('edit-sf-location');
-  const warn = document.getElementById('edit-sf-loc-warn');
-  warn.style.display = (locSel.value !== st.loc) ? 'block' : 'none';
-}
+function onEditLocationChange() { onLocationChangeCheck('edit-sf-'); }
 
 function cancelEditShift() {
   _editShiftId = null;
@@ -5370,6 +5675,12 @@ function saveEditShift() {
 
   const idx = SHIFTS.findIndex(s => s.id === _editShiftId);
   if (idx < 0) { showToast('Shift not found', 'danger'); return; }
+
+  const overlap = findOverlappingShift(staff, date, start, end, _editShiftId);
+  if (overlap) {
+    showToast(`⚠ This overlaps with another shift for this staff member: ${overlap.location} ${overlap.start}–${overlap.end} on ${date}.`, 'danger');
+    return;
+  }
 
   const lockRec = isPeriodLockedForDate(SHIFTS[idx].date) || isPeriodLockedForDate(date);
   if (lockRec) {
@@ -5401,17 +5712,19 @@ function saveEditShift() {
 // ──────────────────────────────────────────────────────────
 // PAY PERIOD REPORT
 // ──────────────────────────────────────────────────────────
-function renderPayPeriodSetup() {
+// Shared by any page with a "pick a pay period" dropdown (Pay Period Report,
+// Payroll) — resolves the chronologically-sorted list of periods with data,
+// plus the currently-selected/target value, leaving each caller to render
+// its own <option> markup (which differs slightly per page).
+function buildPeriodDropdownData(selectId) {
   const all = computeShiftsWithOT();
   const cp = currentPeriodLabel();
-  const sel = document.getElementById('pp-select');
+  const sel = document.getElementById(selectId);
 
-  // Build label -> startStr map for chronological sorting
   const around = getPeriodsAroundToday(24, 1);
   const dateMap = {};
   around.forEach(p => { dateMap[p.label] = p.startStr; });
 
-  // Periods with data — resolve start dates for any outside the window
   const periodsWithData = [...new Set(all.map(s => s.period))];
   periodsWithData.forEach(label => {
     if (!dateMap[label]) {
@@ -5423,7 +5736,6 @@ function renderPayPeriodSetup() {
     }
   });
 
-  // Always include current period + all periods with data, sorted newest first
   const allLabels = [...new Set([cp, ...periodsWithData])];
   allLabels.sort((a, b) => {
     const da = dateMap[a] || '0000-00-00';
@@ -5431,9 +5743,14 @@ function renderPayPeriodSetup() {
     return db.localeCompare(da);
   });
 
-  // Preserve previously selected value; default to current period
   const prevVal = sel.value;
   const targetVal = prevVal && allLabels.includes(prevVal) ? prevVal : cp;
+
+  return { all, cp, sel, dateMap, allLabels, targetVal };
+}
+
+function renderPayPeriodSetup() {
+  const { all, cp, sel, allLabels, targetVal } = buildPeriodDropdownData('pp-select');
 
   sel.innerHTML = allLabels.map(p => {
     const count = all.filter(s => s.period === p).length;
@@ -5543,34 +5860,7 @@ function getPrSelectedLabel() {
 }
 
 function renderPayrollSetup() {
-  const all = computeShiftsWithOT();
-  const cp = currentPeriodLabel();
-  const sel = document.getElementById('pr-select');
-
-  const around = getPeriodsAroundToday(24, 1);
-  const dateMap = {};
-  around.forEach(p => { dateMap[p.label] = p.startStr; });
-
-  const periodsWithData = [...new Set(all.map(s => s.period))];
-  periodsWithData.forEach(label => {
-    if (!dateMap[label]) {
-      const sample = all.find(s => s.period === label);
-      if (sample) {
-        const { start } = getPeriodForDate(sample.date);
-        dateMap[label] = start.toISOString().split('T')[0];
-      }
-    }
-  });
-
-  const allLabels = [...new Set([cp, ...periodsWithData])];
-  allLabels.sort((a, b) => {
-    const da = dateMap[a] || '0000-00-00';
-    const db = dateMap[b] || '0000-00-00';
-    return db.localeCompare(da);
-  });
-
-  const prevVal = sel.value;
-  const targetVal = prevVal && allLabels.includes(prevVal) ? prevVal : cp;
+  const { all, cp, sel, dateMap, allLabels, targetVal } = buildPeriodDropdownData('pr-select');
 
   sel.innerHTML = allLabels.map(p => {
     const count = all.filter(s => s.period === p).length;
@@ -5584,21 +5874,6 @@ function renderPayrollSetup() {
 
   if (!sel.value) sel.value = allLabels[0];
   renderPayrollPage();
-}
-
-function buildPayrollByStaff(label) {
-  const rows = computeShiftsWithOT().filter(s => s.period === label);
-  const byStaff = {};
-  STAFF.forEach(s => byStaff[s.id] = {staff:s, regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0});
-  rows.forEach(s => {
-    if (!byStaff[s.staff]) byStaff[s.staff] = {staff:null, regHrs:0, otHrs:0, regPay:0, otPay:0, shifts:0};
-    byStaff[s.staff].regHrs += s.regHrs;
-    byStaff[s.staff].otHrs += s.otHrs;
-    byStaff[s.staff].regPay += s.regPay;
-    byStaff[s.staff].otPay += s.otPay;
-    byStaff[s.staff].shifts++;
-  });
-  return byStaff;
 }
 
 // Groups shifts by staff + location ("House"), and splits regular/OT hours into
@@ -5645,7 +5920,7 @@ function renderPayrollPage() {
   const periodStart = getPrSelectedStart();
   if (!label) return;
 
-  const byStaff = buildPayrollByStaff(label);
+  const detailRows = buildPayrollDetailRows(label);
   const rec = periodStart ? findPayrollRecord(periodStart) : null;
 
   const banner = document.getElementById('pr-status-banner');
@@ -5656,10 +5931,8 @@ function renderPayrollPage() {
   }
 
   let totShifts=0, totReg=0, totOT=0, totRegP=0, totOTP=0;
-  STAFF.forEach(st => {
-    const d = byStaff[st.id];
-    if (!d) return;
-    totShifts += d.shifts; totReg += d.regHrs; totOT += d.otHrs; totRegP += d.regPay; totOTP += d.otPay;
+  detailRows.forEach(d => {
+    totShifts += d.shifts; totReg += d.wk1Reg+d.wk2Reg; totOT += d.wk1OT+d.wk2OT; totRegP += d.regPay; totOTP += d.otPay;
   });
   document.getElementById('pr-summary').innerHTML = `
     <div class="rs-card"><div class="rs-label">Shifts</div><div class="rs-val count-up" data-target="${totShifts}">0</div></div>
@@ -5670,9 +5943,7 @@ function renderPayrollPage() {
   animateStatsIn('#pr-summary');
 
   let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
-  const detailRows = buildPayrollDetailRows(label);
   detailRows.forEach(d => {
-    const hasOT = (d.wk1OT + d.wk2OT) > 0;
     html += `<tr>
       <td style="color:var(--text3)">${esc(d.location)}</td>
       <td style="color:var(--text);font-weight:500">${esc(d.name)}</td>
@@ -5732,82 +6003,59 @@ function defaultPrDeductionItems() {
   ];
 }
 
-function renderPrDeductionsList() {
-  const el = document.getElementById('pr-deductions-list');
+// Shared controller for both deduction lists (per-period "pr" and global default "cfg").
+// A 'kind' string picks which state array / DOM container to operate on, since onclick
+// attributes in the generated HTML must call a named global function either way.
+function _dedItems(kind) { return kind === 'pr' ? _prDeductionItems : _cfgDeductionItems; }
+function _dedSetItems(kind, arr) { if (kind === 'pr') _prDeductionItems = arr; else _cfgDeductionItems = arr; }
+function _dedContainerId(kind) { return kind === 'pr' ? 'pr-deductions-list' : 'cfg-deductions-list'; }
+
+function renderDeductionsList(kind) {
+  const el = document.getElementById(_dedContainerId(kind));
   if (!el) return;
-  if (!_prDeductionItems.length) {
-    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No taxes or benefits configured — click "Add Tax or Benefit" below.</div>';
+  const items = _dedItems(kind);
+  if (!items.length) {
+    const msg = kind === 'pr' ? 'No taxes or benefits configured — click "Add Tax or Benefit" below.' : 'No defaults configured — click "Add Tax or Benefit" below.';
+    el.innerHTML = `<div style="color:var(--text3);font-size:12px;padding:8px 0">${msg}</div>`;
     return;
   }
-  el.innerHTML = _prDeductionItems.map(it => `
+  el.innerHTML = items.map(it => `
     <div class="pr-ded-row">
       <input type="text" value="${esc(it.label)}" placeholder="e.g. 401(k), Health Insurance"
-        onchange="updatePrDeductionField('${it.id}','label',this.value)">
-      <select onchange="updatePrDeductionField('${it.id}','type',this.value)">
+        onchange="updateDeductionField('${kind}','${it.id}','label',this.value)">
+      <select onchange="updateDeductionField('${kind}','${it.id}','type',this.value)">
         <option value="percent" ${it.type==='percent'?'selected':''}>% of Gross</option>
         <option value="flat" ${it.type==='flat'?'selected':''}>Flat $ Amount</option>
       </select>
       <input type="number" step="0.01" min="0" value="${it.value}"
-        onchange="updatePrDeductionField('${it.id}','value',parseFloat(this.value)||0)">
-      <button class="pr-ded-remove" onclick="removePrDeductionRow('${it.id}')" title="Remove">✕</button>
+        onchange="updateDeductionField('${kind}','${it.id}','value',parseFloat(this.value)||0)">
+      <button class="pr-ded-remove" onclick="removeDeductionRow('${kind}','${it.id}')" title="Remove">✕</button>
     </div>
   `).join('');
 }
 
-function updatePrDeductionField(id, field, value) {
-  const item = _prDeductionItems.find(i => i.id === id);
+function updateDeductionField(kind, id, field, value) {
+  const item = _dedItems(kind).find(i => i.id === id);
   if (item) item[field] = value;
 }
 
-function addPrDeductionRow() {
-  _prDeductionItems.push({ id: genDedId(), label: '', type: 'percent', value: 0 });
-  renderPrDeductionsList();
+function addDeductionRow(kind) {
+  _dedItems(kind).push({ id: genDedId(), label: '', type: 'percent', value: 0 });
+  renderDeductionsList(kind);
 }
 
-function removePrDeductionRow(id) {
-  _prDeductionItems = _prDeductionItems.filter(i => i.id !== id);
-  renderPrDeductionsList();
+function removeDeductionRow(kind, id) {
+  _dedSetItems(kind, _dedItems(kind).filter(i => i.id !== id));
+  renderDeductionsList(kind);
 }
 
-// ── Default Taxes & Benefits (Pay Period Setup page) ────
+// Thin wrappers preserving the original public names used elsewhere in the app
+function renderPrDeductionsList() { renderDeductionsList('pr'); }
+function addPrDeductionRow() { addDeductionRow('pr'); }
+
 let _cfgDeductionItems = [];
-
-function renderCfgDeductionsList() {
-  const el = document.getElementById('cfg-deductions-list');
-  if (!el) return;
-  if (!_cfgDeductionItems.length) {
-    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0">No defaults configured — click "Add Tax or Benefit" below.</div>';
-    return;
-  }
-  el.innerHTML = _cfgDeductionItems.map(it => `
-    <div class="pr-ded-row">
-      <input type="text" value="${esc(it.label)}" placeholder="e.g. 401(k), Health Insurance"
-        onchange="updateCfgDeductionField('${it.id}','label',this.value)">
-      <select onchange="updateCfgDeductionField('${it.id}','type',this.value)">
-        <option value="percent" ${it.type==='percent'?'selected':''}>% of Gross</option>
-        <option value="flat" ${it.type==='flat'?'selected':''}>Flat $ Amount</option>
-      </select>
-      <input type="number" step="0.01" min="0" value="${it.value}"
-        onchange="updateCfgDeductionField('${it.id}','value',parseFloat(this.value)||0)">
-      <button class="pr-ded-remove" onclick="removeCfgDeductionRow('${it.id}')" title="Remove">✕</button>
-    </div>
-  `).join('');
-}
-
-function updateCfgDeductionField(id, field, value) {
-  const item = _cfgDeductionItems.find(i => i.id === id);
-  if (item) item[field] = value;
-}
-
-function addCfgDeductionRow() {
-  _cfgDeductionItems.push({ id: genDedId(), label: '', type: 'percent', value: 0 });
-  renderCfgDeductionsList();
-}
-
-function removeCfgDeductionRow(id) {
-  _cfgDeductionItems = _cfgDeductionItems.filter(i => i.id !== id);
-  renderCfgDeductionsList();
-}
+function renderCfgDeductionsList() { renderDeductionsList('cfg'); }
+function addCfgDeductionRow() { addDeductionRow('cfg'); }
 
 function saveCfgDeductionDefaults() {
   const items = _cfgDeductionItems.map(it => ({ ...it, label: (it.label||'').trim() }));
@@ -5995,9 +6243,8 @@ function confirmAndRunPayroll() {
   const periodStart = getPrSelectedStart();
   if (!periodStart) { showToast('Cannot determine this period\'s date range', 'danger'); return; }
 
-  const byStaff = buildPayrollByStaff(label);
-  const hasShifts = Object.values(byStaff).some(d => d.shifts > 0);
-  if (!hasShifts) { showToast('No shifts recorded for this period yet', 'warn'); return; }
+  const detailRows = buildPayrollDetailRows(label);
+  if (!detailRows.length) { showToast('No shifts recorded for this period yet', 'warn'); return; }
 
   const payDate = document.getElementById('pr-pay-date').value;
   if (!payDate) { showToast('Enter a pay date before running payroll', 'danger'); return; }
@@ -6010,8 +6257,6 @@ function confirmAndRunPayroll() {
 
   const itemSummary = items.map(it => `${it.label} ${it.type==='percent'?it.value+'%':'$'+it.value}`).join(', ') || 'none';
   if (!confirm(`Confirm and run payroll for ${label}?\n\nTaxes & benefits applied: ${itemSummary}\n\nThis locks the period's timesheets. You can unlock it later if corrections are needed.`)) return;
-
-  const detailRows = buildPayrollDetailRows(label);
 
   // Aggregate hours/gross by employee (a staff member may have rows at multiple houses)
   const byEmployee = {};
@@ -6268,26 +6513,7 @@ function renderMonthlyReport() {
 // LEADERBOARD
 // ──────────────────────────────────────────────────────────
 function renderLeaderboardSetup() {
-  const all = computeShiftsWithOT();
-  const cp = currentPeriodLabel();
-  const sel = document.getElementById('lb-select');
-
-  // Build date map for chronological sorting
-  const around = getPeriodsAroundToday(24, 1);
-  const dateMap = {};
-  around.forEach(p => { dateMap[p.label] = p.startStr; });
-  const periodsWithData = [...new Set(all.map(s => s.period))];
-  periodsWithData.forEach(label => {
-    if (!dateMap[label]) {
-      const sample = all.find(s => s.period === label);
-      if (sample) { const { start } = getPeriodForDate(sample.date); dateMap[label] = start.toISOString().split('T')[0]; }
-    }
-  });
-  const allLabels = [...new Set([cp, ...periodsWithData])];
-  allLabels.sort((a, b) => (dateMap[b]||'0000-00-00').localeCompare(dateMap[a]||'0000-00-00'));
-
-  const prevVal = sel.value;
-  const targetVal = prevVal && allLabels.includes(prevVal) ? prevVal : cp;
+  const { cp, sel, allLabels, targetVal } = buildPeriodDropdownData('lb-select');
   sel.innerHTML = allLabels.map(p => `<option value="${p}" ${p===targetVal?'selected':''}>${p}${p===cp?' \u2190 CURRENT':''}</option>`).join('');
   if (!sel.value && allLabels.length) sel.value = allLabels[0];
   renderLeaderboard();
@@ -6772,6 +6998,17 @@ function saveEditLocation() {
 function renderPasswordsPage() {
   renderUserList();
   renderChangePasswordDropdown();
+  const linkSel = document.getElementById('pw-staff-link');
+  if (linkSel) {
+    linkSel.innerHTML = STAFF.filter(s => s.status === 'Active')
+      .map(s => `<option value="${s.id}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})</option>`).join('');
+  }
+  onPwRoleChange();
+}
+
+function onPwRoleChange() {
+  const role = document.getElementById('pw-role').value;
+  document.getElementById('pw-staff-link-wrap').style.display = role === 'employee' ? '' : 'none';
 }
 
 function renderUserList() {
@@ -6779,13 +7016,15 @@ function renderUserList() {
   if (USERS.length === 0) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No users found</div>'; return; }
   let html = '';
   USERS.forEach(u => {
-    const roleColor = u.role==='admin' ? 'var(--accent2)' : u.role==='supervisor' ? 'var(--warn)' : 'var(--text3)';
-    const roleIcon = u.role==='admin' ? '👑' : u.role==='supervisor' ? '🔍' : '👁️';
+    const roleColor = u.role==='admin' ? 'var(--accent2)' : u.role==='supervisor' ? 'var(--warn)' : u.role==='employee' ? 'var(--success2)' : 'var(--text3)';
+    const roleIcon = u.role==='admin' ? '👑' : u.role==='supervisor' ? '🔍' : u.role==='employee' ? '👤' : '👁️';
+    const linkedStaff = u.staffId ? STAFF.find(s => s.id === u.staffId) : null;
+    const linkNote = u.role === 'employee' ? (linkedStaff ? ` &nbsp;·&nbsp; linked to ${esc(linkedStaff.first)} ${esc(linkedStaff.last)}` : ' &nbsp;·&nbsp; <span style="color:var(--danger2)">not linked to a staff record</span>') : '';
     html += `<div class="user-row">
       <div class="user-avatar-sm">${u.name[0].toUpperCase()}</div>
       <div class="user-info">
         <div class="user-name">${u.name}</div>
-        <div class="user-meta">@${u.username} &nbsp;·&nbsp; <span style="color:${roleColor}">${roleIcon} ${u.role}</span></div>
+        <div class="user-meta">@${u.username} &nbsp;·&nbsp; <span style="color:${roleColor}">${roleIcon} ${u.role}</span>${linkNote}</div>
       </div>
       ${USERS.length > 1 ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteUser('${u.id}')">✕</button>` : ''}
     </div>`;
@@ -6808,9 +7047,19 @@ function addUser() {
   if (pass.length < 6) { showToast('Password must be at least 6 characters', 'danger'); return; }
   if (pass !== pass2) { showToast('Passwords do not match', 'danger'); return; }
   if (USERS.find(u=>u.username===username)) { showToast('Username already exists', 'danger'); return; }
+
+  let staffId = null;
+  if (role === 'employee') {
+    staffId = document.getElementById('pw-staff-link').value;
+    if (!staffId) { showToast('Select which staff member this login belongs to', 'danger'); return; }
+    if (USERS.find(u => u.role === 'employee' && u.staffId === staffId)) {
+      showToast('This staff member already has a login account', 'danger'); return;
+    }
+  }
+
   const maxUNum = USERS.reduce((max, u) => { const n = parseInt(u.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   const id = 'U' + String(maxUNum + 1).padStart(3,'0');
-  USERS.push({ id, username, password: pass, name, role });
+  USERS.push({ id, username, password: pass, name, role, staffId });
   ['pw-name','pw-user','pw-pass','pw-pass2'].forEach(id=>document.getElementById(id).value='');
   auditLog('ADD_USER', `User created: ${name} (@${username})`, `Role: ${role}`);
   dbSave();
@@ -6899,6 +7148,49 @@ function renderDataManager() {
       <div style="font-family:var(--display);font-size:20px;font-weight:700;color:${s.color};margin-top:4px">${s.val}</div>
     </div>`
   ).join('');
+
+  renderServerBackupsTable();
+}
+
+async function renderServerBackupsTable() {
+  const el = document.getElementById('dm-backups-table');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">Loading…</div>';
+  try {
+    const res = await fetch('/api/backups');
+    if (!res.ok) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">Could not load backups.</div>'; return; }
+    const data = await res.json();
+    if (!data.backups.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">No backups yet — one is created automatically once a day, or click "Backup Now" above.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>Created</th><th>Type</th><th>Size</th><th></th></tr></thead><tbody>';
+    data.backups.forEach(b => {
+      const dt = new Date(b.createdAt).toLocaleString();
+      html += `<tr>
+        <td class="mono">${esc(dt)}</td>
+        <td>${b.manual ? '<span class="badge badge-info">Manual</span>' : '<span class="badge badge-muted">Automatic</span>'}</td>
+        <td class="mono">${b.sizeKB} KB</td>
+        <td><a href="/api/backups/${encodeURIComponent(b.name)}" class="btn btn-ghost" style="font-size:11px;padding:5px 12px">⬇️ Download</a></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">Could not load backups.</div>';
+  }
+}
+
+async function createServerBackupNow() {
+  try {
+    const res = await fetch('/api/backups', { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Backup failed', 'danger'); return; }
+    showToast('✅ Backup created');
+    renderServerBackupsTable();
+  } catch (e) {
+    showToast('Backup failed — check your connection', 'danger');
+  }
 }
 
 // ──────────────────────────────────────────────────────────
@@ -6991,25 +7283,7 @@ function rbSelectAllLocs() { LOCATIONS.forEach(l => _rbSelectedLocs.add(l.name))
 function rbClearLocs() { _rbSelectedLocs.clear(); rbRebuildLocChips(); }
 
 function rbBuildPeriodDropdown() {
-  const all = computeShiftsWithOT();
-  const cp = currentPeriodLabel();
-  const sel = document.getElementById('rb-period-sel');
-
-  const around = getPeriodsAroundToday(24, 1);
-  const dateMap = {};
-  around.forEach(p => { dateMap[p.label] = p.startStr; });
-  const periodsWithData = [...new Set(all.map(s => s.period))];
-  periodsWithData.forEach(label => {
-    if (!dateMap[label]) {
-      const sample = all.find(s => s.period === label);
-      if (sample) { const { start } = getPeriodForDate(sample.date); dateMap[label] = start.toISOString().split('T')[0]; }
-    }
-  });
-  const allLabels = [...new Set([cp, ...periodsWithData])];
-  allLabels.sort((a, b) => (dateMap[b]||'0000-00-00').localeCompare(dateMap[a]||'0000-00-00'));
-
-  const prevVal = sel.value;
-  const targetVal = prevVal && allLabels.includes(prevVal) ? prevVal : cp;
+  const { cp, sel, allLabels, targetVal } = buildPeriodDropdownData('rb-period-sel');
   sel.innerHTML = allLabels.map(p => `<option value="${p}" ${p===targetVal?'selected':''}>${p}${p===cp?' \u2190 CURRENT':''}</option>`).join('');
 }
 
@@ -7037,16 +7311,6 @@ function rbSetDatePreset(preset) {
 function rbGetOTThreshold() {
   const v = parseFloat(document.getElementById('rb-ot-threshold').value);
   return isNaN(v) ? PAY_CONFIG.otThreshold : v;
-}
-
-function rbFilterByDate(shifts) {
-  const from = document.getElementById('rb-date-from').value;
-  const to = document.getElementById('rb-date-to').value;
-  return shifts.filter(s => {
-    if (from && s.date < from) return false;
-    if (to && s.date > to) return false;
-    return true;
-  });
 }
 
 // ── MAIN GENERATE ──

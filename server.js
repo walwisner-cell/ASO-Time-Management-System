@@ -23,11 +23,14 @@ const IS_PROD   = !!process.env.PORT; // Render (and most hosts) set PORT for us
 // via an environment variable, otherwise falls back to local behavior.
 const DB_DIR    = process.env.DB_DIR || path.join(os.homedir(), 'ASO_OT_Data');
 const DB_PATH   = path.join(DB_DIR, 'aso_ot.db');
+const BACKUP_DIR = path.join(DB_DIR, 'backups');
+const BACKUP_RETENTION = 14; // keep the last 14 automatic backups
 const HTML_FILE = path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html');
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const SESSION_COOKIE = 'aso_session';
 
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 // ── Load sql.js ────────────────────────────────────────────
 const initSqlJs = require('sql.js');
@@ -123,6 +126,42 @@ function persistDB() {
   fs.writeFileSync(DB_PATH, Buffer.from(data));
 }
 
+// ── Backups ────────────────────────────────────────────────
+// Snapshots the current DB file into BACKUP_DIR with a timestamped name, then
+// prunes older automatic backups beyond BACKUP_RETENTION. Manual backups
+// (triggered by an admin) are marked in the filename and are never pruned
+// automatically — only automatic ones are rotated.
+function createBackup(kind) {
+  persistDB(); // make sure the on-disk file reflects the latest in-memory state first
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `aso_ot_${kind || 'auto'}_${ts}.db`;
+  const dest = path.join(BACKUP_DIR, filename);
+  fs.copyFileSync(DB_PATH, dest);
+  if (!kind || kind === 'auto') pruneOldBackups();
+  return filename;
+}
+
+function pruneOldBackups() {
+  const files = fs.readdirSync(BACKUP_DIR)
+    .filter(f => f.startsWith('aso_ot_auto_') && f.endsWith('.db'))
+    .map(f => ({ name: f, time: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.time - a.time);
+  files.slice(BACKUP_RETENTION).forEach(f => {
+    try { fs.unlinkSync(path.join(BACKUP_DIR, f.name)); } catch (e) { /* ignore */ }
+  });
+}
+
+function listBackups() {
+  return fs.readdirSync(BACKUP_DIR)
+    .filter(f => f.endsWith('.db'))
+    .map(f => {
+      const stat = fs.statSync(path.join(BACKUP_DIR, f));
+      return { name: f, sizeKB: Math.round(stat.size / 1024), createdAt: stat.mtime.toISOString(),
+               manual: f.startsWith('aso_ot_manual_') };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 // ── Schema ─────────────────────────────────────────────────
 function createSchema() {
   db.run(`CREATE TABLE IF NOT EXISTS pay_config (
@@ -136,8 +175,10 @@ function createSchema() {
   try { db.run(`ALTER TABLE pay_config ADD COLUMN default_deductions TEXT DEFAULT '[]'`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer'
+    password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer',
+    staff_id TEXT DEFAULT NULL
   )`);
+  try { db.run(`ALTER TABLE users ADD COLUMN staff_id TEXT DEFAULT NULL`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL
   )`);
@@ -150,8 +191,10 @@ function createSchema() {
     id TEXT PRIMARY KEY, first TEXT NOT NULL, last TEXT NOT NULL,
     title TEXT DEFAULT 'DSP', type TEXT DEFAULT 'Full-Time',
     loc TEXT DEFAULT '', rate REAL NOT NULL DEFAULT 0,
-    start TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'Active'
+    start TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'Active',
+    pto_balance REAL DEFAULT 0
   )`);
+  try { db.run(`ALTER TABLE staff ADD COLUMN pto_balance REAL DEFAULT 0`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS shifts (
     id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, date TEXT NOT NULL,
     time_in TEXT NOT NULL, time_out TEXT NOT NULL, loc TEXT DEFAULT '',
@@ -164,6 +207,13 @@ function createSchema() {
   db.run(`CREATE TABLE IF NOT EXISTS date_correction_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS deletion_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS payroll_records (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
+  db.run(`CREATE TABLE IF NOT EXISTS leave_requests (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, type TEXT NOT NULL,
+    start_date TEXT NOT NULL, end_date TEXT NOT NULL, hours REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending', notes TEXT DEFAULT '',
+    requested_by TEXT DEFAULT '', requested_at TEXT NOT NULL,
+    reviewed_by TEXT DEFAULT '', reviewed_at TEXT DEFAULT ''
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL
@@ -178,14 +228,17 @@ function loadDB() {
     : DEFAULT_SEED.PAY_CONFIG;
 
   // Password hashes never leave the server — the client has no legitimate use for them.
-  const USERS     = all('SELECT id,username,name,role FROM users');
+  const USERS     = all('SELECT id,username,name,role,staff_id FROM users').map(r => ({
+    id: r.id, username: r.username, name: r.name, role: r.role, staffId: r.staff_id || null
+  }));
   const LOCATIONS = all('SELECT * FROM locations').map(r => ({
     id: r.id, name: r.name, rate: r.rate, mult: r.mult, notes: r.notes,
     rateHistory: JSON.parse(r.rate_history || '[]')
   }));
   const STAFF = all('SELECT * FROM staff').map(r => ({
     id: r.id, first: r.first, last: r.last, title: r.title,
-    type: r.type, loc: r.loc, rate: r.rate, start: r.start, status: r.status
+    type: r.type, loc: r.loc, rate: r.rate, start: r.start, status: r.status,
+    ptoBalance: r.pto_balance || 0
   }));
   const SHIFTS = all('SELECT * FROM shifts').map(r => {
     const extra = JSON.parse(r.extra_data || '{}');
@@ -200,16 +253,21 @@ function loadDB() {
   const PAYROLL_RECORDS     = all('SELECT data FROM payroll_records').map(r => JSON.parse(r.data));
   const AUDIT_LOG = all('SELECT id,action,detail,user_id,created_at FROM audit_log')
     .map(r => ({ id: r.id, action: r.action, detail: r.detail, userId: r.user_id, ts: r.created_at }));
+  const LEAVE_REQUESTS = all('SELECT * FROM leave_requests').map(r => ({
+    id: r.id, staffId: r.staff_id, type: r.type, startDate: r.start_date, endDate: r.end_date,
+    hours: r.hours, status: r.status, notes: r.notes, requestedBy: r.requested_by,
+    requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at
+  }));
 
   return { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
            PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS };
+           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS };
 }
 
 function saveDB(data) {
   const { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
           PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-          DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS } = data;
+          DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS } = data;
 
   // PAY_CONFIG
   run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions) VALUES (1,?,?,?,?)
@@ -233,8 +291,8 @@ function saveDB(data) {
       // password if none was given, so a malformed row can never create a blank-password account)
       pw = u.password ? bcrypt.hashSync(String(u.password), 10) : bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
     }
-    run('INSERT INTO users (id,username,password,name,role) VALUES (?,?,?,?,?)',
-        [u.id, u.username, pw, u.name, u.role]);
+    run('INSERT INTO users (id,username,password,name,role,staff_id) VALUES (?,?,?,?,?,?)',
+        [u.id, u.username, pw, u.name, u.role, u.staffId || null]);
   }
 
   // LOCATIONS
@@ -246,8 +304,8 @@ function saveDB(data) {
   // STAFF
   run('DELETE FROM staff');
   for (const s of (STAFF || []))
-    run('INSERT INTO staff (id,first,last,title,type,loc,rate,start,status) VALUES (?,?,?,?,?,?,?,?,?)',
-        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active']);
+    run('INSERT INTO staff (id,first,last,title,type,loc,rate,start,status,pto_balance) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active', s.ptoBalance||0]);
 
   // SHIFTS
   run('DELETE FROM shifts');
@@ -290,6 +348,52 @@ function saveDB(data) {
   persistDB();
 }
 
+// ── Employee self-service data scoping ──────────────────────
+// An 'employee' role account must NEVER receive another employee's shifts,
+// pay data, or PII. Rather than trust the client to hide what it's given
+// (which is not real security), this filters the full dataset down to just
+// what belongs to the requesting employee's linked staff record BEFORE it
+// ever leaves the server. Returned in the same shape as loadDB() so the
+// existing client bootstrapping code needs no special-casing.
+function scopeDataForEmployee(fullData, staffId) {
+  const empty = {
+    PAY_CONFIG: fullData.PAY_CONFIG, USERS: [], LOCATIONS: [], STAFF: [], SHIFTS: [],
+    PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [], DATE_CORRECTION_LOG: [],
+    DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: []
+  };
+  if (!staffId) return empty; // employee account not linked to a staff record — safest is to show nothing
+
+  const myStaff = fullData.STAFF.filter(s => s.id === staffId);
+  if (!myStaff.length) return empty;
+
+  const myShifts = fullData.SHIFTS.filter(s => s.staff === staffId);
+  const myLocationNames = new Set(myShifts.map(s => s.loc).concat(myStaff.map(s => s.loc)));
+  const myLocations = fullData.LOCATIONS.filter(l => myLocationNames.has(l.name));
+
+  const myPayrollRecords = fullData.PAYROLL_RECORDS.map(rec => ({
+    ...rec,
+    rows: (rec.rows || []).filter(r => r.staffId === staffId),
+    employeeRows: (rec.employeeRows || []).filter(r => r.staffId === staffId)
+  })).filter(rec => rec.employeeRows.length > 0 || rec.rows.length > 0 || !rec.finalized);
+
+  const myLeaveRequests = fullData.LEAVE_REQUESTS.filter(r => r.staffId === staffId);
+
+  return {
+    PAY_CONFIG: fullData.PAY_CONFIG,
+    USERS: [], // employees don't need account info beyond their own session, already known client-side
+    LOCATIONS: myLocations,
+    STAFF: myStaff,
+    SHIFTS: myShifts,
+    PENDING_APPROVALS: fullData.PENDING_APPROVALS.filter(p => p.staffId === staffId),
+    APPROVED_EXCEPTIONS: fullData.APPROVED_EXCEPTIONS.filter(a => a.staffId === staffId),
+    DATE_CORRECTION_LOG: [], // internal admin audit detail, not needed for self-service
+    DELETION_LOG: [],
+    AUDIT_LOG: [],
+    PAYROLL_RECORDS: myPayrollRecords,
+    LEAVE_REQUESTS: myLeaveRequests
+  };
+}
+
 // ── Auth middleware ────────────────────────────────────────
 function requireAuth(req, res, next) {
   const sessionId = req.cookies && req.cookies[SESSION_COOKIE];
@@ -299,9 +403,9 @@ function requireAuth(req, res, next) {
     if (session) { run('DELETE FROM sessions WHERE id = ?', [sessionId]); persistDB(); }
     return res.status(401).json({ error: 'Session expired — please log in again' });
   }
-  const user = get('SELECT id,username,name,role FROM users WHERE id = ?', [session.user_id]);
+  const user = get('SELECT id,username,name,role,staff_id FROM users WHERE id = ?', [session.user_id]);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
-  req.user = user;
+  req.user = { id: user.id, username: user.username, name: user.name, role: user.role, staffId: user.staff_id || null };
   next();
 }
 
@@ -417,6 +521,15 @@ async function main() {
     } catch (e) { /* ignore */ }
   }, 60 * 60 * 1000);
 
+  // Automatic daily backup, plus one at startup so a fresh deploy always has
+  // at least one snapshot without waiting a full day.
+  try { createBackup('auto'); console.log('[ASO Backup] Startup snapshot created'); }
+  catch (e) { console.warn('[ASO Backup] Startup snapshot failed:', e.message); }
+  setInterval(() => {
+    try { createBackup('auto'); console.log('[ASO Backup] Daily snapshot created'); }
+    catch (e) { console.warn('[ASO Backup] Daily snapshot failed:', e.message); }
+  }, 24 * 60 * 60 * 1000);
+
   // ── Express App ──────────────────────────────────────────
   const app = express();
   app.set('trust proxy', 1); // Render sits behind a proxy — needed for correct secure-cookie/IP detection
@@ -470,7 +583,7 @@ async function main() {
       res.cookie(SESSION_COOKIE, sessionId, {
         httpOnly: true, sameSite: 'lax', secure: IS_PROD, maxAge: SESSION_TTL_MS, path: '/'
       });
-      res.json({ ok: true, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+      res.json({ ok: true, user: { id: user.id, username: user.username, name: user.name, role: user.role, staffId: user.staff_id || null } });
     } catch (e) {
       console.error('Login error:', e);
       res.status(500).json({ error: 'Login failed' });
@@ -511,12 +624,21 @@ async function main() {
 
   // ── Data routes (all require a valid session) ───────────
   app.get('/api/db/load', requireAuth, (req, res) => {
-    try { res.json(loadDB()); }
+    try {
+      const data = loadDB();
+      if (req.user.role === 'employee') {
+        return res.json(scopeDataForEmployee(data, req.user.staffId));
+      }
+      res.json(data);
+    }
     catch(e) { console.error('Load error:', e); res.status(500).json({ error: e.message }); }
   });
 
   app.post('/api/db/save', requireAuth, (req, res) => {
     try {
+      if (req.user.role === 'employee') {
+        return res.status(403).json({ error: 'Employee accounts cannot modify shared data directly' });
+      }
       const existing = loadDB();
       const denyReason = authorizeSave(existing, req.body, req.user);
       if (denyReason) return res.status(403).json({ error: denyReason });
@@ -559,6 +681,108 @@ async function main() {
       saveDB(data);
       res.json({ ok: true, shifts: data.SHIFTS.length, staff: data.STAFF.length });
     } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Automatic + manual database backups (separate from the JSON export
+  //    above — these are raw SQLite snapshots stored on the server's disk) ──
+  // ── Leave requests (PTO) ─────────────────────────────────
+  // Full list — admin/supervisor only, for reviewing requests.
+  app.get('/api/leave-requests', requireAuth, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized to view all leave requests' });
+    }
+    try {
+      const rows = all('SELECT * FROM leave_requests ORDER BY requested_at DESC');
+      res.json({ leaveRequests: rows.map(r => ({
+        id: r.id, staffId: r.staff_id, type: r.type, startDate: r.start_date, endDate: r.end_date,
+        hours: r.hours, status: r.status, notes: r.notes, requestedBy: r.requested_by,
+        requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Create a request. Employees can only ever create one for themselves — the
+  // staffId in the request body is ignored for employee accounts and forced
+  // to their own linked staff record server-side. Admin/supervisor can log
+  // PTO on behalf of anyone, and their entries are auto-approved immediately
+  // (they already have the authority to grant it) with the balance deducted.
+  app.post('/api/leave-requests', requireAuth, (req, res) => {
+    try {
+      const isStaffAction = req.user.role === 'admin' || req.user.role === 'supervisor';
+      const staffId = isStaffAction ? (req.body.staffId || req.user.staffId) : req.user.staffId;
+      if (!staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+
+      const { type, startDate, endDate, hours, notes } = req.body || {};
+      if (!type || !startDate || !endDate || !hours || hours <= 0) {
+        return res.status(400).json({ error: 'Type, dates, and hours are required' });
+      }
+      const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
+      if (!staff) return res.status(404).json({ error: 'Staff record not found' });
+
+      const id = 'LV' + Date.now() + Math.random().toString(36).slice(2,6);
+      const status = isStaffAction ? 'approved' : 'pending';
+      const now = new Date().toLocaleString();
+      run(`INSERT INTO leave_requests (id,staff_id,type,start_date,end_date,hours,status,notes,requested_by,requested_at,reviewed_by,reviewed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, staffId, type, startDate, endDate, hours, status, notes || '', req.user.name, now,
+         isStaffAction ? req.user.name : '', isStaffAction ? now : '']);
+
+      if (isStaffAction) {
+        run('UPDATE staff SET pto_balance = pto_balance - ? WHERE id = ?', [hours, staffId]);
+      }
+      persistDB();
+      res.json({ ok: true, id, status });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Approve/deny a pending request — admin/supervisor only. Approving deducts
+  // the hours from the employee's PTO balance at review time (not request time),
+  // since a denied request should never have touched the balance.
+  app.post('/api/leave-requests/:id/review', requireAuth, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized to review leave requests' });
+    }
+    try {
+      const { action } = req.body || {};
+      if (action !== 'approve' && action !== 'deny') return res.status(400).json({ error: 'Invalid action' });
+      const reqRow = get('SELECT * FROM leave_requests WHERE id = ?', [req.params.id]);
+      if (!reqRow) return res.status(404).json({ error: 'Request not found' });
+      if (reqRow.status !== 'pending') return res.status(400).json({ error: 'This request has already been reviewed' });
+
+      const now = new Date().toLocaleString();
+      run('UPDATE leave_requests SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?',
+        [action === 'approve' ? 'approved' : 'denied', req.user.name, now, req.params.id]);
+
+      if (action === 'approve') {
+        run('UPDATE staff SET pto_balance = pto_balance - ? WHERE id = ?', [reqRow.hours, reqRow.staff_id]);
+      }
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/backups', requireAuth, requireAdmin, (req, res) => {
+    try { res.json({ backups: listBackups(), retention: BACKUP_RETENTION }); }
+    catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/backups', requireAuth, requireAdmin, (req, res) => {
+    try {
+      const filename = createBackup('manual');
+      res.json({ ok: true, filename });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/backups/:filename', requireAuth, requireAdmin, (req, res) => {
+    const filename = req.params.filename;
+    // Only allow filenames we actually generated ourselves — never accept a
+    // path from the client verbatim for a filesystem read.
+    if (!/^aso_ot_(auto|manual)_[\w-]+\.db$/.test(filename)) {
+      return res.status(400).json({ error: 'Invalid backup filename' });
+    }
+    const filePath = path.join(BACKUP_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Backup not found' });
+    res.download(filePath, filename);
   });
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
