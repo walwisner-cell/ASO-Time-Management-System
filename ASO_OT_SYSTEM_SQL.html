@@ -731,6 +731,10 @@
     margin-bottom:7px;
   }
   .form-field input, .form-field select { width:100%; }
+  .time-parts { display:flex; gap:6px; align-items:center; }
+  .time-parts select { width:auto; flex:1; min-width:0; text-align:center; }
+  .time-parts select:first-child { flex:0.8; }
+  .time-parts select:last-child { flex:0.9; }
 
   /* ─────────────────────────────────────────────────────
      LOCATION CARDS
@@ -2002,8 +2006,14 @@
               <select id="sf-location" onchange="onLocationChange()"></select>
               <div id="sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
             </div>
-            <div class="form-field"><label>Shift Start</label><input type="text" id="sf-start" list="time-suggestions" onblur="normalizeTimeField('sf-start')" onchange="updateShiftPreview()"></div>
-            <div class="form-field"><label>Shift End</label><input type="text" id="sf-end" list="time-suggestions" onblur="normalizeTimeField('sf-end')" onchange="updateShiftPreview()"></div>
+            <div class="form-field"><label>Shift Start</label><div class="time-parts">
+              <select id="sf-start-h" onchange="updateShiftPreview()"></select>:<select id="sf-start-m" onchange="updateShiftPreview()"></select>
+              <select id="sf-start-p" onchange="updateShiftPreview()"></select>
+            </div></div>
+            <div class="form-field"><label>Shift End</label><div class="time-parts">
+              <select id="sf-end-h" onchange="updateShiftPreview()"></select>:<select id="sf-end-m" onchange="updateShiftPreview()"></select>
+              <select id="sf-end-p" onchange="updateShiftPreview()"></select>
+            </div></div>
           </div>
           <!-- Staff confirmation banner -->
           <div id="sf-staff-confirm" style="display:none;margin-top:12px;background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:10px;padding:10px 14px;align-items:center;gap:12px;">
@@ -3231,7 +3241,6 @@
 </div>
 
 <div id="toast"></div>
-<datalist id="time-suggestions"></datalist>
 
 <!-- NEW PAY PERIOD MODAL -->
 <div class="modal-overlay hidden" id="modal-new-period">
@@ -3313,8 +3322,14 @@
         <select id="edit-sf-location" onchange="onEditLocationChange()"></select>
         <div id="edit-sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
       </div>
-      <div class="form-field"><label>Shift Start</label><input type="text" id="edit-sf-start" list="time-suggestions" onblur="normalizeTimeField('edit-sf-start')" onchange="updateEditPreview()"></div>
-      <div class="form-field"><label>Shift End</label><input type="text" id="edit-sf-end" list="time-suggestions" onblur="normalizeTimeField('edit-sf-end')" onchange="updateEditPreview()"></div>
+      <div class="form-field"><label>Shift Start</label><div class="time-parts">
+        <select id="edit-sf-start-h" onchange="updateEditPreview()"></select>:<select id="edit-sf-start-m" onchange="updateEditPreview()"></select>
+        <select id="edit-sf-start-p" onchange="updateEditPreview()"></select>
+      </div></div>
+      <div class="form-field"><label>Shift End</label><div class="time-parts">
+        <select id="edit-sf-end-h" onchange="updateEditPreview()"></select>:<select id="edit-sf-end-m" onchange="updateEditPreview()"></select>
+        <select id="edit-sf-end-p" onchange="updateEditPreview()"></select>
+      </div></div>
       <div class="form-field" style="display:flex;align-items:flex-end">
         <span id="edit-shift-preview" style="font-family:var(--mono);font-size:13px;color:var(--accent2);padding-bottom:10px"></span>
       </div>
@@ -3798,63 +3813,46 @@ function getLocOTRate(locName, date) {
 // used to produce), so every existing calculation — calcHours(), shift
 // storage, overlap detection — keeps working completely unchanged. Only the
 // visible LABEL is friendlier: 12-hour with AM/PM.
-// Accepts many natural ways of typing a time and normalizes to 24-hour
-// "HH:MM" — the exact format every existing calculation (calcHours, overlap
-// detection, shift storage) already expects, so nothing downstream needed to
-// change. Returns null for anything that doesn't look like a real time.
-function parseTimeInput(str) {
-  if (!str) return null;
-  const s = String(str).trim().toLowerCase().replace(/\s+/g, ' ');
-
-  let m = s.match(/^(\d{1,2}):(\d{2})$/); // 24-hour: "15:52", "8:00"
-  if (m) {
-    const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
-    if (h >= 0 && h <= 23 && min >= 0 && min <= 59) return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
-    return null;
-  }
-
-  m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/); // 12-hour: "3:52pm", "3 pm", "12am"
-  if (m) {
-    let h = parseInt(m[1], 10);
-    const min = m[2] ? parseInt(m[2], 10) : 0;
-    if (h < 1 || h > 12 || min < 0 || min > 59) return null;
-    h = m[3] === 'am' ? (h === 12 ? 0 : h) : (h === 12 ? 12 : h + 12);
-    return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
-  }
-  return null;
-}
-
-// The reverse — 24-hour "HH:MM" back to a friendly "H:MM AM/PM" for display.
-function formatTimeDisplay(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  const period = h < 12 ? 'AM' : 'PM';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2,'0')} ${period}`;
-}
-
-// Re-parses and re-normalizes a time text input on blur, so "3pm" becomes
-// the clean "3:00 PM", and genuinely invalid text gets caught immediately
-// with a clear error rather than silently breaking a save down the line.
-function normalizeTimeField(inputId) {
-  const el = document.getElementById(inputId);
-  const parsed = parseTimeInput(el.value);
-  if (parsed) { el.value = formatTimeDisplay(parsed); el.dataset.invalid = ''; }
-  else if (el.value.trim() !== '') { el.dataset.invalid = '1'; showToast(`"${el.value}" isn't a time we recognize \u2014 try e.g. 3:30 PM or 15:30`, 'danger'); }
-}
-
-// Builds the shared <option> list for the time-suggestions datalist —
-// quarter-hour quick-picks. The input still accepts any exact time typed,
-// this is just for fast common-case selection.
-function buildTimeSuggestions() {
+function buildHourOptions(sel12) {
   const opts = [];
-  for (let h = 0; h < 24; h++) {
-    for (const m of [0, 15, 30, 45]) {
-      const period = h < 12 ? 'AM' : 'PM';
-      const h12 = h % 12 === 0 ? 12 : h % 12;
-      opts.push(`<option value="${h12}:${String(m).padStart(2,'0')} ${period}">`);
-    }
+  for (let h = 1; h <= 12; h++) opts.push(`<option value="${h}"${h === sel12 ? ' selected' : ''}>${h}</option>`);
+  return opts.join('');
+}
+function buildMinuteOptions(selMin) {
+  const opts = [];
+  for (let m = 0; m < 60; m++) {
+    const mm = String(m).padStart(2,'0');
+    opts.push(`<option value="${mm}"${m === selMin ? ' selected' : ''}>${mm}</option>`);
   }
   return opts.join('');
+}
+function buildAmPmOptions(selPeriod) {
+  return ['AM','PM'].map(p => `<option value="${p}"${p === selPeriod ? ' selected' : ''}>${p}</option>`).join('');
+}
+
+// Reads the three dropdowns for a given field prefix (e.g. "sf-start") and
+// combines them into 24-hour "HH:MM" — exactly what calcHours(), overlap
+// detection, and shift storage already expect, so nothing downstream needed
+// to change. Splitting hour/minute/AM-PM into separate small dropdowns (only
+// 60 options in the minute one, not 1440) means typing "52" while it's
+// focused reliably jumps straight to it, the way a combined list couldn't.
+function getTimeParts(prefix) {
+  const hEl = document.getElementById(prefix + '-h'), mEl = document.getElementById(prefix + '-m'), pEl = document.getElementById(prefix + '-p');
+  if (!hEl || !mEl || !pEl || !hEl.value || mEl.value === '') return null;
+  const h12 = parseInt(hEl.value, 10), min = parseInt(mEl.value, 10), period = pEl.value;
+  const h24 = period === 'AM' ? (h12 === 12 ? 0 : h12) : (h12 === 12 ? 12 : h12 + 12);
+  return `${String(h24).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+}
+
+// Populates and pre-selects all three dropdowns for a prefix from a 24-hour
+// "HH:MM" value — used both for defaults and when opening Edit Shift.
+function setTimeParts(prefix, hhmm) {
+  const [h24, min] = hhmm.split(':').map(Number);
+  const period = h24 < 12 ? 'AM' : 'PM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  document.getElementById(prefix + '-h').innerHTML = buildHourOptions(h12);
+  document.getElementById(prefix + '-m').innerHTML = buildMinuteOptions(min);
+  document.getElementById(prefix + '-p').innerHTML = buildAmPmOptions(period);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -4065,7 +4063,6 @@ function nav(page, el) {
 // INIT
 // ──────────────────────────────────────────────────────────
 function initApp() {
-  document.getElementById('time-suggestions').innerHTML = buildTimeSuggestions();
   if (_currentUser && _currentUser.role === 'employee') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-myportal').classList.add('active');
@@ -5479,8 +5476,8 @@ function renderTimesheet() {
   staffSel.innerHTML = STAFF.filter(s=>s.status==='Active').map(s=>`<option value="${s.id}">${s.last}, ${s.first} (${s.id})</option>`).join('');
   const locSel = document.getElementById('sf-location');
   locSel.innerHTML = LOCATIONS.map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
-  document.getElementById('sf-start').value = '8:00 AM';
-  document.getElementById('sf-end').value = '4:00 PM';
+  setTimeParts('sf-start', '08:00');
+  setTimeParts('sf-end', '16:00');
   // Auto-fill location for the initially selected staff member
   onStaffSelect();
 
@@ -5547,9 +5544,9 @@ function renderTimesheet() {
   updateShiftPreview();
 }
 
-function updateHoursPreview(startId, endId, previewId) {
-  const start = parseTimeInput(document.getElementById(startId).value);
-  const end = parseTimeInput(document.getElementById(endId).value);
+function updateHoursPreview(startPrefix, endPrefix, previewId) {
+  const start = getTimeParts(startPrefix);
+  const end = getTimeParts(endPrefix);
   if (start && end) {
     const hrs = calcHours(start, end);
     document.getElementById(previewId).textContent = `= ${numFmt(hrs)} hrs`;
@@ -5717,11 +5714,11 @@ function addShift() {
   const date = document.getElementById('sf-date').value;
   const staff = document.getElementById('sf-staff').value;
   const location = document.getElementById('sf-location').value;
-  const start = parseTimeInput(document.getElementById('sf-start').value);
-  const end = parseTimeInput(document.getElementById('sf-end').value);
+  const start = getTimeParts('sf-start');
+  const end = getTimeParts('sf-end');
   if (!date || !staff) { showToast('Date and staff are required', 'danger'); return; }
   if (!location) { showToast('Location is required', 'danger'); return; }
-  if (!start || !end) { showToast('Enter a valid start and end time, e.g. 3:30 PM', 'danger'); return; }
+  if (!start || !end) { showToast('Select a valid start and end time', 'danger'); return; }
   const lockRec = isPeriodLockedForDate(date);
   if (lockRec) {
     showToast(`🔒 ${lockRec.periodLabel} has been confirmed for payroll and is locked. Unlock it from the Payroll & Taxes page to make changes.`, 'danger');
@@ -5931,8 +5928,8 @@ function editShift(id) {
     `<option value="${l.name}"${l.name === raw.location ? ' selected' : ''}>${l.name}</option>`
   ).join('');
 
-  document.getElementById('edit-sf-start').value = formatTimeDisplay(raw.start);
-  document.getElementById('edit-sf-end').value = formatTimeDisplay(raw.end);
+  setTimeParts('edit-sf-start', raw.start);
+  setTimeParts('edit-sf-end', raw.end);
 
   document.getElementById('edit-sf-date').value = raw.date;
   document.getElementById('edit-modal-who').textContent = `Editing shift for ${name}`;
@@ -5999,11 +5996,11 @@ function saveEditShift() {
   const date = document.getElementById('edit-sf-date').value;
   const staff = document.getElementById('edit-sf-staff').value;
   const location = document.getElementById('edit-sf-location').value;
-  const start = parseTimeInput(document.getElementById('edit-sf-start').value);
-  const end = parseTimeInput(document.getElementById('edit-sf-end').value);
+  const start = getTimeParts('edit-sf-start');
+  const end = getTimeParts('edit-sf-end');
   if (!date || !staff) { showToast('Date and staff are required', 'danger'); return; }
   if (!location) { showToast('Location is required', 'danger'); return; }
-  if (!start || !end) { showToast('Enter a valid start and end time, e.g. 3:30 PM', 'danger'); return; }
+  if (!start || !end) { showToast('Select a valid start and end time', 'danger'); return; }
   const hours = calcHours(start, end);
 
   // ── Same-pay-period enforcement ──
