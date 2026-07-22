@@ -1472,6 +1472,7 @@
   .count-up { display:inline-block; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -1678,8 +1679,10 @@
 
         <div class="card section-gap">
           <div class="card-title">🧾 My Pay Stubs</div>
-          <div class="controls-row" style="margin-bottom:14px">
+          <div class="controls-row" style="margin-bottom:14px;gap:10px">
             <select id="mp-stub-select" onchange="renderMyPortalStub()" style="min-width:240px"></select>
+            <button class="btn btn-primary" style="font-size:12px;padding:8px 16px" onclick="printMyPayStub()">🖨️ Print</button>
+            <button class="btn btn-success" style="font-size:12px;padding:8px 16px" onclick="downloadMyPayStub()">⬇️ Download PDF</button>
           </div>
           <div id="mp-stub-preview"></div>
         </div>
@@ -1960,6 +1963,7 @@
               <span class="rb-panel-head-title" id="rb-results-title">Results</span>
               <div style="margin-left:auto;display:none;gap:8px" id="rb-action-row">
                 <button class="rb-export-btn" onclick="rbExportCSV()">⬇ CSV</button>
+                <button class="rb-export-btn" onclick="rbDownloadPDF()">⬇ PDF</button>
                 <button class="rb-print-btn" onclick="rbPrint()">🖨️ Print Report</button>
               </div>
             </div>
@@ -2111,6 +2115,7 @@
             <div class="page-sub">Bi-weekly payroll summary per staff member</div>
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Report</button>
+          <button class="print-btn" onclick="downloadTableAsPDF('#pp-table table', 'Pay Period Report', document.getElementById('pp-select').selectedOptions[0]?.textContent || '', 'ASO_PayPeriodReport.pdf')">⬇️ PDF</button>
         </div>
         <div class="controls-row">
           <label style="font-size:12px;color:var(--text3);font-family:var(--mono)">Pay Period:</label>
@@ -2185,6 +2190,7 @@
               <div style="display:flex;gap:8px;align-items:center">
                 <select id="pr-stub-select" onchange="renderPayStubPreview()" style="min-width:220px"></select>
                 <button class="btn btn-primary" style="font-size:12px;padding:8px 16px" onclick="printPayStub()">🖨️ Print This Stub</button>
+                <button class="btn btn-success" style="font-size:12px;padding:8px 16px" onclick="downloadPayStub()">⬇️ Download PDF</button>
                 <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px" onclick="printAllPayStubs()">🖨️ Print All Stubs</button>
               </div>
             </div>
@@ -2203,6 +2209,7 @@
             <div class="page-sub">Overtime summary by month</div>
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Monthly</button>
+          <button class="print-btn" onclick="downloadTableAsPDF('#mr-table table', 'Monthly Report', document.getElementById('mr-month').selectedOptions[0]?.textContent + ' ' + document.getElementById('mr-year').value, 'ASO_MonthlyReport.pdf')">⬇️ PDF</button>
         </div>
         <div class="controls-row">
           <div class="form-field">
@@ -4930,6 +4937,22 @@ function renderMyPortalStub() {
   preview.innerHTML = html || '<div class="pay-stub-empty">Could not load this pay stub.</div>';
 }
 
+function printMyPayStub() {
+  const sel = document.getElementById('mp-stub-select');
+  const rec = sel && sel.value ? (PAYROLL_RECORDS||[]).find(r => r.periodStart === sel.value) : null;
+  if (!rec) { showToast('No pay stub selected', 'warn'); return; }
+  const html = buildPayStubHTML(rec, _currentUser.staffId);
+  if (!html) { showToast('Could not build this pay stub', 'danger'); return; }
+  openStubPrintWindow(html, `Pay Stub — ${sel.options[sel.selectedIndex].textContent}`);
+}
+
+function downloadMyPayStub() {
+  const sel = document.getElementById('mp-stub-select');
+  const rec = sel && sel.value ? (PAYROLL_RECORDS||[]).find(r => r.periodStart === sel.value) : null;
+  if (!rec) { showToast('No pay stub selected', 'warn'); return; }
+  generatePayStubPDF(rec, _currentUser.staffId);
+}
+
 function renderMyLeaveHistory() {
   const el = document.getElementById('mp-leave-history');
   const mine = (LEAVE_REQUESTS||[]).slice().sort((a,b) => (b.requestedAt||'').localeCompare(a.requestedAt||''));
@@ -6447,6 +6470,203 @@ function renderPayStubsSection(rec) {
   renderPayStubPreview();
 }
 
+// Generates a real, downloadable PDF pay stub — not a "print, then choose
+// Save as PDF" workaround. Built by hand-positioning text and rules with
+// jsPDF's core drawing API (rather than screenshotting the on-screen HTML),
+// so the result is crisp, small in file size, and has real selectable text.
+// Generic report-to-PDF exporter — works from whatever table is already
+// rendered on screen, so every report page (Report Builder, Pay Period
+// Report, Monthly Report, OT Leaderboard, Audit Trail) can reuse the exact
+// same function instead of needing its own bespoke PDF layout code.
+function downloadTableAsPDF(tableSelector, title, subtitle, filename) {
+  const table = document.querySelector(tableSelector);
+  if (!table) { showToast('No report data to export yet', 'warn'); return; }
+  const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+  const rows = [...table.querySelectorAll('tbody tr')].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()));
+  if (!headers.length) { showToast('No report data to export yet', 'warn'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: headers.length > 6 ? 'landscape' : 'portrait' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 40;
+  const navy = [22, 40, 60], blue = [11, 95, 168], gray = [110, 125, 145];
+  let y = 48;
+
+  function drawHeader() {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...blue);
+    doc.text('American Safety Options', margin, y);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...navy);
+    doc.text(title, margin, y + 16);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gray);
+    if (subtitle) doc.text(subtitle, margin, y + 29);
+    doc.text('Printed ' + new Date().toLocaleString(), pageW - margin, y, { align: 'right' });
+    y += 44;
+    doc.setDrawColor(...blue); doc.setLineWidth(1);
+    doc.line(margin, y, pageW - margin, y);
+    y += 16;
+  }
+  drawHeader();
+
+  const usableW = pageW - margin * 2;
+  const colW = usableW / headers.length;
+  const rowH = 16;
+
+  function drawTableHeader() {
+    doc.setFillColor(...navy);
+    doc.rect(margin, y, usableW, rowH, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+    headers.forEach((h, i) => doc.text(h, margin + i * colW + 5, y + 11));
+    y += rowH;
+  }
+  drawTableHeader();
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+  rows.forEach((row, rIdx) => {
+    if (y > pageH - 50) {
+      doc.addPage();
+      y = 48;
+      drawTableHeader();
+    }
+    if (rIdx % 2 === 1) { doc.setFillColor(246, 249, 252); doc.rect(margin, y, usableW, rowH, 'F'); }
+    doc.setTextColor(...navy);
+    row.forEach((cell, i) => {
+      const truncated = cell.length > 28 ? cell.slice(0, 26) + '\u2026' : cell;
+      doc.text(truncated, margin + i * colW + 5, y + 11);
+    });
+    y += rowH;
+  });
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray);
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    doc.text(`Page ${p} of ${pageCount}`, pageW - margin, pageH - 20, { align: 'right' });
+  }
+
+  doc.save(filename);
+}
+
+function generatePayStubPDF(rec, staffId) {
+  const rows = (rec.rows || []).filter(r => r.staffId === staffId);
+  const emp = (rec.employeeRows || []).find(e => e.staffId === staffId);
+  if (!rows.length || !emp) { showToast('No pay stub data available', 'warn'); return; }
+
+  const name = rows[0].name;
+  const ytd = computeYTDForStaff(staffId, rec.periodStart);
+  const payDate = rec.payDate ? new Date(rec.payDate+'T00:00:00').toLocaleDateString() : '\u2014';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 48;
+  const colRight = pageW - margin;
+  let y = 56;
+
+  const navy = [22, 40, 60], blue = [11, 95, 168], gray = [110, 125, 145], lightRule = [225, 230, 238];
+  const money = v => $fmt(v);
+
+  // ── Header ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...blue);
+  doc.text('American Safety Options, Inc.', margin, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...gray);
+  doc.text('EARNINGS STATEMENT', margin, y + 14);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...navy);
+  doc.text('Pay Stub', colRight, y, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...gray);
+  doc.text('Pay Date: ' + payDate, colRight, y + 14, { align: 'right' });
+
+  y += 28;
+  doc.setDrawColor(...blue); doc.setLineWidth(1.5);
+  doc.line(margin, y, colRight, y);
+  y += 26;
+
+  // ── Employee / period info ──
+  const halfW = (colRight - margin - 16) / 2;
+  [['EMPLOYEE', name], ['PAY PERIOD', rec.periodLabel]].forEach((pair, i) => {
+    const bx = margin + i * (halfW + 16);
+    doc.setFillColor(240, 244, 250);
+    doc.roundedRect(bx, y, halfW, 34, 3, 3, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...gray);
+    doc.text(pair[0], bx + 10, y + 13);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...navy);
+    doc.text(pair[1], bx + 10, y + 26);
+  });
+  y += 50;
+
+  // ── Reusable itemized table renderer ──
+  function drawSectionTable(title, headerCols, dataRows, totalLabel, totalValue) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    doc.text(title, margin, y);
+    y += 10;
+    const colX = [margin, colRight - 210, colRight - 130, colRight - 60];
+    doc.setFillColor(...navy);
+    doc.rect(margin, y, colRight - margin, 16, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+    headerCols.forEach((h, i) => doc.text(h, i === 0 ? colX[i] + 6 : colX[i] + 30, y + 11, i === 0 ? {} : { align: 'right' }));
+    y += 16;
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    dataRows.forEach((r, i) => {
+      if (i % 2 === 1) { doc.setFillColor(247, 249, 252); doc.rect(margin, y, colRight - margin, 15, 'F'); }
+      doc.setTextColor(...navy);
+      doc.text(r[0], colX[0] + 6, y + 10.5);
+      for (let c = 1; c < r.length; c++) {
+        doc.text(r[c], colX[c] + 30, y + 10.5, { align: 'right' });
+      }
+      y += 15;
+    });
+    doc.setDrawColor(...lightRule); doc.setLineWidth(0.5);
+    doc.line(margin, y, colRight, y);
+    y += 14;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...navy);
+    doc.text(totalLabel, colX[0] + 6, y);
+    doc.text(totalValue, colRight - 6, y, { align: 'right' });
+    y += 24;
+  }
+
+  const earningsRows = [];
+  rows.forEach(r => {
+    const regHrs = r.wk1Reg + r.wk2Reg, otHrs = r.wk1OT + r.wk2OT;
+    if (regHrs > 0) earningsRows.push([`${r.location} \u2014 Regular`, numFmt(regHrs), '$'+numFmt(r.rate), money(r.regPay)]);
+    if (otHrs > 0) earningsRows.push([`${r.location} \u2014 Overtime`, numFmt(otHrs), '$'+numFmt(r.rate*1.5), money(r.otPay)]);
+  });
+  drawSectionTable('EARNINGS', ['Description', 'Hours', 'Rate', 'Amount'], earningsRows, 'Gross Pay', money(emp.gross));
+
+  const dedRows = emp.deductions.filter(d => d.amount !== 0)
+    .map(d => [d.label + (d.type === 'percent' ? ` (${numFmt(d.rate)}%)` : ''), '', '', money(d.amount)]);
+  if (!dedRows.length) dedRows.push(['No deductions', '', '', '']);
+  drawSectionTable('TAXES & BENEFITS', ['Description', '', '', 'Amount'], dedRows, 'Total Withheld', money(emp.totalDeductions));
+
+  // ── Net pay banner ──
+  doc.setFillColor(10, 112, 73);
+  doc.roundedRect(margin, y, colRight - margin, 36, 4, 4, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(255,255,255);
+  doc.text('NET PAY', margin + 14, y + 22);
+  doc.setFontSize(15);
+  doc.text(money(emp.net), colRight - 14, y + 23, { align: 'right' });
+  y += 54;
+
+  // ── YTD summary ──
+  const ytdW = (colRight - margin - 16) / 3;
+  [['YTD GROSS', money(ytd.gross)], ['YTD TAXES', money(ytd.tax)], ['YTD NET', money(ytd.net)]].forEach((pair, i) => {
+    const bx = margin + i * (ytdW + 8);
+    doc.setFillColor(240, 244, 250);
+    doc.roundedRect(bx, y, ytdW, 34, 3, 3, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray);
+    doc.text(pair[0], bx + ytdW/2, y + 13, { align: 'center' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    doc.text(pair[1], bx + ytdW/2, y + 26, { align: 'center' });
+  });
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray);
+  doc.text('Generated by the ASO Staff Overtime Management System \u2014 ' + new Date().toLocaleString(), margin, doc.internal.pageSize.getHeight() - 30);
+
+  const safeName = name.replace(/[^a-z0-9]/gi, '_');
+  doc.save(`PayStub_${safeName}_${rec.periodStart}.pdf`);
+}
+
 function buildPayStubHTML(rec, staffId) {
   const rows = (rec.rows || []).filter(r => r.staffId === staffId);
   const emp = (rec.employeeRows || []).find(e => e.staffId === staffId);
@@ -6557,6 +6777,13 @@ function openStubPrintWindow(bodyHtml, title) {
   win.document.close();
   win.focus();
   setTimeout(() => win.print(), 350);
+}
+
+function downloadPayStub() {
+  const rec = findPayrollRecord(getPrSelectedStart());
+  const sel = document.getElementById('pr-stub-select');
+  if (!rec || !rec.finalized || !sel.value) { showToast('No pay stub selected', 'warn'); return; }
+  generatePayStubPDF(rec, sel.value);
 }
 
 function printPayStub() {
@@ -8131,6 +8358,11 @@ function rbPrint() {
   document.getElementById('rb-print-header').style.display = 'flex';
   updatePrintDates();
   window.print();
+}
+
+function rbDownloadPDF() {
+  const title = document.getElementById('rb-results-title').textContent || 'Report';
+  downloadTableAsPDF('#rb-results-body table', title, '', `ASO_${title.replace(/[^a-z0-9]/gi,'_')}.pdf`);
 }
 
 function rbExportCSV() {
