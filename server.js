@@ -253,8 +253,13 @@ function createSchema() {
   db.run(`CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE,
     rate REAL NOT NULL DEFAULT 0, mult REAL NOT NULL DEFAULT 1.5,
-    notes TEXT DEFAULT '', rate_history TEXT DEFAULT '[]'
+    notes TEXT DEFAULT '', rate_history TEXT DEFAULT '[]',
+    max_staff INTEGER DEFAULT 0
   )`);
+  // 0 = no limit. Migration is additive so existing installs don't suddenly
+  // start blocking anyone — every location defaults to unlimited until an
+  // admin explicitly sets a cap.
+  try { db.run(`ALTER TABLE locations ADD COLUMN max_staff INTEGER DEFAULT 0`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS staff (
     id TEXT PRIMARY KEY, first TEXT NOT NULL, last TEXT NOT NULL,
     title TEXT DEFAULT 'DSP', type TEXT DEFAULT 'Full-Time',
@@ -282,6 +287,29 @@ function createSchema() {
     requested_by TEXT DEFAULT '', requested_at TEXT NOT NULL,
     reviewed_by TEXT DEFAULT '', reviewed_at TEXT DEFAULT ''
   )`);
+  // Clock in/out: an employee clocks in and out themselves, but nothing
+  // touches the real SHIFTS table (and therefore payroll/OT calculations)
+  // until an admin or supervisor reviews and approves it. Dates/times are
+  // the employee's own local date/time strings, reported by their browser
+  // at the moment they click — exactly like every other date/time in this
+  // app already works (manual shift entry trusts the browser's local date
+  // too). Deliberately NOT server-side epoch-to-local-time conversion,
+  // which would silently reintroduce the same timezone bug fixed earlier
+  // this session (the server doesn't know what timezone the employee is
+  // actually in). status begins 'open' while clocked in, becomes 'pending'
+  // once clocked out (ready for review), then 'approved' or 'denied'.
+  db.run(`CREATE TABLE IF NOT EXISTS clock_entries (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, location TEXT DEFAULT '',
+    clock_in_date TEXT NOT NULL, clock_in_time TEXT NOT NULL,
+    clock_out_date TEXT DEFAULT '', clock_out_time TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open', notes TEXT DEFAULT '',
+    reviewed_by TEXT DEFAULT '', reviewed_at TEXT DEFAULT '',
+    shift_id TEXT DEFAULT '', created_at TEXT NOT NULL,
+    overridden INTEGER DEFAULT 0, override_reason TEXT DEFAULT '', override_by TEXT DEFAULT ''
+  )`);
+  ['overridden INTEGER DEFAULT 0', 'override_reason TEXT DEFAULT \'\'', 'override_by TEXT DEFAULT \'\''].forEach(colDef => {
+    try { db.run(`ALTER TABLE clock_entries ADD COLUMN ${colDef}`); } catch (e) { /* already exists */ }
+  });
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL,
@@ -327,7 +355,7 @@ function loadDB() {
   }));
   const LOCATIONS = all('SELECT * FROM locations').map(r => ({
     id: r.id, name: r.name, rate: r.rate, mult: r.mult, notes: r.notes,
-    rateHistory: JSON.parse(r.rate_history || '[]')
+    rateHistory: JSON.parse(r.rate_history || '[]'), maxStaff: r.max_staff || 0
   }));
   const STAFF = all('SELECT * FROM staff').map(r => ({
     id: r.id, first: r.first, last: r.last, title: r.title,
@@ -353,10 +381,22 @@ function loadDB() {
     hours: r.hours, status: r.status, notes: r.notes, requestedBy: r.requested_by,
     requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at
   }));
+  // Like LEAVE_REQUESTS, CLOCK_ENTRIES is read here for the client's benefit
+  // but is NEVER written through the generic bulk save below — only through
+  // the dedicated clock-in/out/review endpoints, so it can't be tampered
+  // with via a raw save payload.
+  const CLOCK_ENTRIES = all('SELECT * FROM clock_entries ORDER BY created_at DESC').map(r => ({
+    id: r.id, staffId: r.staff_id, location: r.location,
+    clockInDate: r.clock_in_date, clockInTime: r.clock_in_time,
+    clockOutDate: r.clock_out_date || null, clockOutTime: r.clock_out_time || null,
+    status: r.status, notes: r.notes, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
+    shiftId: r.shift_id || null,
+    overridden: !!r.overridden, overrideReason: r.override_reason || '', overrideBy: r.override_by || ''
+  }));
 
   return { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
            PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS };
+           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES };
 }
 
 function saveDB(data) {
@@ -393,8 +433,8 @@ function saveDB(data) {
   // LOCATIONS
   run('DELETE FROM locations');
   for (const l of (LOCATIONS || []))
-    run('INSERT INTO locations (id,name,rate,mult,notes,rate_history) VALUES (?,?,?,?,?,?)',
-        [l.id, l.name, l.rate, l.mult, l.notes||'', JSON.stringify(l.rateHistory||[])]);
+    run('INSERT INTO locations (id,name,rate,mult,notes,rate_history,max_staff) VALUES (?,?,?,?,?,?,?)',
+        [l.id, l.name, l.rate, l.mult, l.notes||'', JSON.stringify(l.rateHistory||[]), l.maxStaff||0]);
 
   // STAFF — pto_balance is intentionally NEVER taken from the client payload.
   // It's only ever changed through the leave-request endpoints (request/approve),
@@ -471,7 +511,7 @@ function scopeDataForEmployee(fullData, staffId) {
   const empty = {
     PAY_CONFIG: fullData.PAY_CONFIG, USERS: [], LOCATIONS: [], STAFF: [], SHIFTS: [],
     PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [], DATE_CORRECTION_LOG: [],
-    DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: []
+    DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: []
   };
   if (!staffId) return empty; // employee account not linked to a staff record — safest is to show nothing
 
@@ -489,6 +529,7 @@ function scopeDataForEmployee(fullData, staffId) {
   })).filter(rec => rec.employeeRows.length > 0 || rec.rows.length > 0 || !rec.finalized);
 
   const myLeaveRequests = fullData.LEAVE_REQUESTS.filter(r => r.staffId === staffId);
+  const myClockEntries = fullData.CLOCK_ENTRIES.filter(c => c.staffId === staffId);
 
   return {
     PAY_CONFIG: fullData.PAY_CONFIG,
@@ -502,7 +543,8 @@ function scopeDataForEmployee(fullData, staffId) {
     DELETION_LOG: [],
     AUDIT_LOG: [],
     PAYROLL_RECORDS: myPayrollRecords,
-    LEAVE_REQUESTS: myLeaveRequests
+    LEAVE_REQUESTS: myLeaveRequests,
+    CLOCK_ENTRIES: myClockEntries
   };
 }
 
@@ -972,6 +1014,204 @@ async function main() {
       );
       persistDB();
       res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  const ISO_DATE_RE_CLOCK = /^\d{4}-\d{2}-\d{2}$/;
+  const TIME_RE_CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+  // True elapsed hours between two local date+time pairs — handles same-day,
+  // overnight, and (if someone forgets to clock out for a long stretch) any
+  // gap at all, rather than assuming a simple "add 24h if end looks earlier"
+  // shortcut. An absurd gap naturally produces an absurd hours value, which
+  // validateShifts() will then correctly reject rather than silently
+  // creating a bogus multi-day "shift".
+  function computeClockHours(inDate, inTime, outDate, outTime) {
+    const inMs = new Date(`${inDate}T${inTime}:00`).getTime();
+    const outMs = new Date(`${outDate}T${outTime}:00`).getTime();
+    return (outMs - inMs) / 3600000;
+  }
+
+  // List clock entries — admin/supervisor see everyone's, an employee sees
+  // only their own (though employees normally get this via the scoped
+  // /api/db/load response already; this endpoint exists for the Approvals
+  // page's live view without needing a full reload).
+  app.get('/api/clock-entries', requireAuth, (req, res) => {
+    try {
+      const isStaffAction = req.user.role === 'admin' || req.user.role === 'supervisor';
+      const rows = isStaffAction
+        ? all('SELECT * FROM clock_entries ORDER BY created_at DESC')
+        : all('SELECT * FROM clock_entries WHERE staff_id = ? ORDER BY created_at DESC', [req.user.staffId || '__none__']);
+      res.json({ clockEntries: rows.map(r => ({
+        id: r.id, staffId: r.staff_id, location: r.location,
+        clockInDate: r.clock_in_date, clockInTime: r.clock_in_time,
+        clockOutDate: r.clock_out_date || null, clockOutTime: r.clock_out_time || null,
+        status: r.status, notes: r.notes, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
+        shiftId: r.shift_id || null,
+        overridden: !!r.overridden, overrideReason: r.override_reason || '', overrideBy: r.override_by || ''
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Shared by /api/clock/in (blocks at capacity) and /api/clock/admin-in
+  // (shows the same numbers, but allows an explicit override past them).
+  function checkLocationCapacity(locationName) {
+    const loc = get('SELECT max_staff FROM locations WHERE name = ?', [locationName]);
+    const maxStaff = loc ? (loc.max_staff || 0) : 0;
+    const occupancy = get(`SELECT COUNT(*) as c FROM clock_entries WHERE location = ? AND status = 'open'`, [locationName]).c;
+    return { maxStaff, occupancy, atCapacity: maxStaff > 0 && occupancy >= maxStaff };
+  }
+
+  app.post('/api/clock/in', requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!req.user.staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+      const { location, date, time } = req.body || {};
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+      const safeLocation = typeof location === 'string' ? location.slice(0, 100) : '';
+
+      const existingOpen = get(`SELECT id FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+      if (existingOpen) return res.status(400).json({ error: 'Already clocked in — clock out first' });
+
+      const capacity = checkLocationCapacity(safeLocation);
+      if (capacity.atCapacity) {
+        return res.status(400).json({ error: `${safeLocation} is at its staffing limit (${capacity.occupancy}/${capacity.maxStaff}) — ask a supervisor to override if this is intentional`, atCapacity: true });
+      }
+
+      const id = 'CE' + Date.now() + Math.random().toString(36).slice(2,6);
+      run(`INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at)
+           VALUES (?,?,?,?,?,'open',?)`,
+        [id, req.user.staffId, safeLocation, date, time, new Date().toISOString()]);
+      writeAuditLog('CLOCK_IN', `${req.user.name} clocked in at ${time} on ${date}${safeLocation ? ' — ' + safeLocation : ''}`, req.user);
+      persistDB();
+      res.json({ ok: true, id });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/clock/out', requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!req.user.staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+      const { date, time, notes } = req.body || {};
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+      const safeNotes = typeof notes === 'string' ? notes.slice(0, 500) : '';
+
+      const openEntry = get(`SELECT * FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+      if (!openEntry) return res.status(400).json({ error: 'You are not currently clocked in' });
+
+      const hours = computeClockHours(openEntry.clock_in_date, openEntry.clock_in_time, date, time);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return res.status(400).json({ error: 'Clock-out time must be after your clock-in time' });
+      }
+
+      run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, status = 'pending', notes = ? WHERE id = ?`,
+        [date, time, safeNotes, openEntry.id]);
+      writeAuditLog('CLOCK_OUT', `${req.user.name} clocked out at ${time} on ${date} (${hours.toFixed(2)}h) — awaiting approval`, req.user);
+      persistDB();
+      res.json({ ok: true, hours: Math.round(hours * 100) / 100 });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Live occupancy per location — how many people currently have an open
+  // clock-in there right now, against each location's cap. Feeds the
+  // override panel's occupancy hint on the Approvals page.
+  app.get('/api/locations/occupancy', requireAuth, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    try {
+      const locs = all('SELECT name, max_staff FROM locations');
+      const occupancy = locs.map(l => {
+        const c = checkLocationCapacity(l.name);
+        return { location: l.name, maxStaff: c.maxStaff, occupancy: c.occupancy, atCapacity: c.atCapacity };
+      });
+      res.json({ occupancy });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Admin/supervisor clocking a staff member in directly — the one path
+  // that's allowed to bypass a house's staffing cap, and only with an
+  // explicit, required, audited reason. Still blocks a genuine double
+  // clock-in (someone already has an open entry) — capacity override and
+  // "prevent two open entries for the same person" are different concerns,
+  // and this only relaxes the first one.
+  app.post('/api/clock/admin-in', requireAuth, writeLimiter, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized to clock someone in directly' });
+    }
+    try {
+      const { staffId, location, date, time, reason } = req.body || {};
+      if (!staffId || !get('SELECT id FROM staff WHERE id = ?', [staffId])) {
+        return res.status(400).json({ error: 'Unknown staff member' });
+      }
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+      const safeLocation = typeof location === 'string' ? location.slice(0, 100) : '';
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+      if (trimmedReason.length < 3) return res.status(400).json({ error: 'A reason (at least 3 characters) is required to override' });
+
+      const existingOpen = get(`SELECT id FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [staffId]);
+      if (existingOpen) return res.status(400).json({ error: 'This staff member is already clocked in' });
+
+      const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
+      const id = 'CE' + Date.now() + Math.random().toString(36).slice(2,6);
+      run(`INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at,overridden,override_reason,override_by)
+           VALUES (?,?,?,?,?,'open',?,1,?,?)`,
+        [id, staffId, safeLocation, date, time, new Date().toISOString(), trimmedReason.slice(0,300), req.user.name]);
+      writeAuditLog('CLOCK_IN_OVERRIDE',
+        `${req.user.name} clocked in ${staff.first} ${staff.last} at ${safeLocation} past capacity \u2014 reason: ${trimmedReason.slice(0,300)}`,
+        req.user);
+      persistDB();
+      res.json({ ok: true, id });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/clock-entries/:id/review', requireAuth, writeLimiter, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized to review clock entries' });
+    }
+    try {
+      const { action, location } = req.body || {};
+      if (action !== 'approve' && action !== 'deny') return res.status(400).json({ error: 'Invalid action' });
+      const entry = get('SELECT * FROM clock_entries WHERE id = ?', [req.params.id]);
+      if (!entry) return res.status(404).json({ error: 'Clock entry not found' });
+      if (entry.status !== 'pending') return res.status(400).json({ error: 'This entry has already been reviewed, or is still open' });
+
+      const now = new Date().toLocaleString();
+      const staff = get('SELECT * FROM staff WHERE id = ?', [entry.staff_id]);
+
+      if (action === 'deny') {
+        run(`UPDATE clock_entries SET status = 'denied', reviewed_by = ?, reviewed_at = ? WHERE id = ?`,
+          [req.user.name, now, entry.id]);
+        writeAuditLog('CLOCK_DENIED', `${req.user.name} denied a clock entry for ${staff ? staff.first+' '+staff.last : entry.staff_id}`, req.user);
+        persistDB();
+        return res.json({ ok: true });
+      }
+
+      // Approve: build a real shift and validate it exactly like any other
+      // shift entry — a clock entry is just a different way of arriving at
+      // the same SHIFTS row, so it gets the same scrutiny before it can
+      // affect payroll.
+      const finalLocation = (typeof location === 'string' && location.trim()) ? location.trim() : (entry.location || (staff ? staff.loc : ''));
+      const hours = computeClockHours(entry.clock_in_date, entry.clock_in_time, entry.clock_out_date, entry.clock_out_time);
+      const shiftId = 'SH' + Date.now() + Math.random().toString(36).slice(2,6);
+      const newShift = { id: shiftId, staff: entry.staff_id, date: entry.clock_in_date,
+                          start: entry.clock_in_time, end: entry.clock_out_time,
+                          location: finalLocation, hours: Math.round(hours * 100) / 100 };
+
+      const staffIds = new Set(all('SELECT id FROM staff').map(s => s.id));
+      const shiftError = validateShifts([newShift], staffIds);
+      if (shiftError) return res.status(400).json({ error: `Cannot approve — ${shiftError}` });
+
+      run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data)
+           VALUES (?,?,?,?,?,?,?,0,0,1,'','','{}')`,
+        [newShift.id, newShift.staff, newShift.date, newShift.start, newShift.end, newShift.location, newShift.hours]);
+
+      run(`UPDATE clock_entries SET status = 'approved', reviewed_by = ?, reviewed_at = ?, shift_id = ? WHERE id = ?`,
+        [req.user.name, now, shiftId, entry.id]);
+      writeAuditLog('CLOCK_APPROVED', `${req.user.name} approved a ${newShift.hours}h clock entry for ${staff ? staff.first+' '+staff.last : entry.staff_id} \u2014 added to timesheet`, req.user);
+      persistDB();
+      res.json({ ok: true, shiftId });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 

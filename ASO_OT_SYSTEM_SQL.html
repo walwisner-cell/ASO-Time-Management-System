@@ -497,6 +497,7 @@
     .pay-stub-title { text-align:left !important; }
     .pr-ded-row { grid-template-columns:1fr; gap:6px; }
     .pr-ded-remove { width:100%; height:36px; }
+    .card-title-with-action .btn { width:100%; justify-content:center; }
     .pr-step-label { font-size:10px; }
   }
 
@@ -573,6 +574,8 @@
     background:var(--border);
     margin-left:6px;
   }
+  .card-title-with-action { flex-wrap:wrap; }
+  .card-title-with-action .btn { text-transform:none; letter-spacing:normal; font-weight:600; }
 
   /* STAT CARDS */
   .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:16px; margin-bottom:28px; }
@@ -1673,6 +1676,11 @@
         <div class="report-summary" id="mp-summary"></div>
 
         <div class="card section-gap">
+          <div class="card-title">⏱️ Clock In / Out</div>
+          <div id="mp-clock-widget"></div>
+        </div>
+
+        <div class="card section-gap">
           <div class="card-title">📅 My Shifts</div>
           <div class="table-wrap" id="mp-shifts-table"></div>
         </div>
@@ -2103,6 +2111,15 @@
           <div class="card-title">🌴 Time Off Requests</div>
           <div class="table-wrap" id="leave-requests-list"></div>
         </div>
+
+        <div class="card section-gap">
+          <div class="card-title card-title-with-action">
+            <span>⏱️ Clock In/Out Entries</span>
+            <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="toggleOverridePanel()">🔓 Override Clock-In</button>
+          </div>
+          <div id="clock-override-panel" style="display:none"></div>
+          <div class="table-wrap" id="clock-entries-list"></div>
+        </div>
       </div>
 
       <!-- PAY PERIOD REPORT -->
@@ -2367,9 +2384,17 @@
           <div class="card-title">🧾 Default Taxes &amp; Benefits</div>
           <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">Add, remove, or rename any withholding, tax, or benefit deduction — each can be a percentage of gross pay or a flat dollar amount per paycheck. This list becomes the starting point for Step 2 of every new pay period on the Payroll &amp; Taxes page. You can still adjust the list for one specific period without changing this default.</p>
           <div id="cfg-deductions-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
             <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="addCfgDeductionRow()">➕ Add Tax or Benefit</button>
             <button class="btn btn-success" style="font-size:12px;padding:7px 14px" onclick="saveCfgDeductionDefaults()">💾 Save as Default</button>
+          </div>
+          <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;gap:10px">
+            <span style="font-size:16px">🇺🇸</span>
+            <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Federal Withholding (2026 Brackets)</b> — a deduction type that computes real IRS bracket-based withholding using each employee's actual gross pay this period and their W-4 elections (filing status, Steps 3/4), set on their Staff Register profile. This replaces guessing at a flat percentage with the same math the IRS's own Publication 15-T "Percentage Method for Automated Payroll Systems" uses (Worksheet 1A, Standard Withholding Rate Schedules). It assumes the W-4 Step 2 checkbox is unchecked (single job) — if any staff have multiple jobs and checked that box, their real withholding may run higher than what this calculates.</div>
+          </div>
+          <div style="background:rgba(198,138,30,0.08);border:1px solid rgba(198,138,30,0.3);border-radius:10px;padding:14px 18px;display:flex;gap:10px">
+            <span style="font-size:16px">📍</span>
+            <div style="font-size:12px;color:var(--text2)"><b style="color:var(--warn)">Pennsylvania state tax</b> — PA has a genuinely flat state income tax rate (not bracket-based like federal), so a regular "% of Gross" deduction is the correct way to represent it, not a gap. What isn't handled here is <b>local Earned Income Tax (Act 32)</b> — municipalities and school districts each set their own local EIT rate. If your houses span different municipalities, you may need a separate flat-percent deduction per location group, set up manually.</div>
           </div>
         </div>
       </div>
@@ -2421,6 +2446,7 @@
             <div class="form-field"><label>Location Name</label><input type="text" id="loc-name-input" placeholder="e.g. Franklin House"></div>
             <div class="form-field"><label>Hourly Rate ($/hr)</label><input type="number" id="loc-rate-input" step="0.25" placeholder="12.00"></div>
             <div class="form-field"><label>OT Multiplier</label><input type="number" id="loc-mult-input" step="0.5" value="1.5"></div>
+            <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-maxstaff-input" min="0" step="1" placeholder="0 = no limit"></div>
             <div class="form-field"><label>Notes</label><input type="text" id="loc-note-input" placeholder="Standard"></div>
           </div>
           <button class="btn btn-primary" style="margin-top:14px" onclick="addLocation()">+ Add Location</button>
@@ -3370,6 +3396,7 @@
     <!-- Name / Notes row -->
     <div class="form-grid" style="margin-bottom:20px">
       <div class="form-field"><label>Location Name</label><input type="text" id="loc-edit-name" style="width:100%"></div>
+      <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-edit-maxstaff" min="0" step="1" style="width:100%" placeholder="0 = no limit"></div>
       <div class="form-field"><label>Notes</label><input type="text" id="loc-edit-notes" style="width:100%"></div>
     </div>
 
@@ -3414,7 +3441,7 @@
 
 <!-- ══ STAFF EDIT MODAL ══ -->
 <div class="modal-overlay hidden" id="staff-edit-modal">
-  <div class="modal" style="max-width:540px">
+  <div class="modal" style="max-width:580px">
     <div class="modal-title" style="color:var(--accent2)">✏️ Edit Staff Member</div>
     <div class="modal-sub" id="staff-edit-modal-sub">Editing staff details</div>
     <input type="hidden" id="staff-edit-id">
@@ -3438,6 +3465,21 @@
         </select>
       </div>
     </div>
+    <div style="font-family:var(--display);font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;padding-top:8px;border-top:1px solid var(--border)">Federal W-4 (for bracket-based withholding)</div>
+    <div class="form-grid" style="margin-bottom:8px">
+      <div class="form-field"><label>Filing Status</label>
+        <select id="staff-edit-filingstatus" style="width:100%">
+          <option value="single">Single or Married Filing Separately</option>
+          <option value="mfj">Married Filing Jointly</option>
+          <option value="hoh">Head of Household</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Step 3: Dependents Credit ($/yr)</label><input type="number" id="staff-edit-w4step3" step="1" min="0" placeholder="0" style="width:100%"></div>
+      <div class="form-field"><label>Step 4(a): Other Income ($/yr)</label><input type="number" id="staff-edit-w4step4a" step="1" min="0" placeholder="0" style="width:100%"></div>
+      <div class="form-field"><label>Step 4(b): Deductions ($/yr)</label><input type="number" id="staff-edit-w4step4b" step="1" min="0" placeholder="0" style="width:100%"></div>
+      <div class="form-field"><label>Step 4(c): Extra Withholding ($/period)</label><input type="number" id="staff-edit-w4step4c" step="1" min="0" placeholder="0" style="width:100%"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:20px">Only used if "Federal Withholding (2026 Brackets)" is selected as a deduction type on Taxes &amp; Benefits. Leave blank for Step 3/4 fields if not applicable — they default to $0.</div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeStaffEditModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditStaff()">💾 Save Changes</button>
@@ -3454,7 +3496,7 @@
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -3462,13 +3504,13 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: []
 };
 
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS };
+                 DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES };
   fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3610,6 +3652,7 @@ async function loadAppData() {
   AUDIT_LOG             = data.AUDIT_LOG             || [];
   PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
   LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
+  CLOCK_ENTRIES         = data.CLOCK_ENTRIES           || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
@@ -3835,6 +3878,14 @@ function buildMinuteOptions(selMin) {
 }
 function buildAmPmOptions(selPeriod) {
   return ['AM','PM'].map(p => `<option value="${p}"${p === selPeriod ? ' selected' : ''}>${p}</option>`).join('');
+}
+
+// 24-hour "HH:MM" to a friendly "H:MM AM/PM" for display purposes.
+function formatTimeDisplay(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${period}`;
 }
 
 // Reads the three dropdowns for a given field prefix (e.g. "sf-start") and
@@ -4340,7 +4391,8 @@ function printCurrentPage() {
 function updateApprovalsBadge() {
   const badge = document.getElementById('approvals-badge');
   const pendingLeave = (LEAVE_REQUESTS || []).filter(r => r.status === 'pending').length;
-  const count = PENDING_APPROVALS.length + pendingLeave;
+  const pendingClock = (CLOCK_ENTRIES || []).filter(c => c.status === 'pending').length;
+  const count = PENDING_APPROVALS.length + pendingLeave + pendingClock;
   if (count > 0) {
     badge.textContent = count;
     badge.style.display = 'inline-block';
@@ -4874,6 +4926,91 @@ function renderDashboardTrendChart() {
   });
 }
 
+function renderMyClockWidget() {
+  const el = document.getElementById('mp-clock-widget');
+  const staffId = _currentUser.staffId;
+  const myStaff = STAFF.find(s => s.id === staffId);
+  const openEntry = (CLOCK_ENTRIES || []).find(c => c.staffId === staffId && c.status === 'open');
+
+  let html = '';
+  if (openEntry) {
+    html += `<div style="background:rgba(14,143,94,0.1);border:1px solid var(--success);border-radius:10px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:22px">🟢</span>
+      <div><div style="font-size:14px;font-weight:600;color:var(--text)">Clocked in since ${esc(formatTimeDisplay(openEntry.clockInTime))} on ${esc(openEntry.clockInDate)}</div>
+      <div style="font-size:12px;color:var(--text2)">${esc(openEntry.location || 'No location noted')}</div></div>
+    </div>
+    <div class="form-field" style="margin-bottom:12px"><label>Notes (optional)</label><input type="text" id="mp-clock-out-notes" maxlength="500" placeholder="Anything worth noting about this shift"></div>
+    <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockOut()">⏹️ Clock Out</button>`;
+  } else {
+    const defaultLoc = myStaff ? myStaff.loc : '';
+    html += `<div class="form-field" style="margin-bottom:14px"><label>Location</label>
+      <select id="mp-clock-location">${LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name===defaultLoc?' selected':''}>${esc(l.name)}</option>`).join('')}</select>
+    </div>
+    <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockIn()">▶️ Clock In</button>`;
+  }
+
+  const mine = (CLOCK_ENTRIES || []).filter(c => c.staffId === staffId && c.status !== 'open').slice(0, 8);
+  if (mine.length) {
+    html += `<div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">Recent Clock History</div>
+    <table><thead><tr><th>Date</th><th>Time</th><th>Location</th><th>Hours</th><th>Status</th></tr></thead><tbody>`;
+    mine.forEach(c => {
+      const hrs = c.clockOutDate ? calcHours(c.clockInTime, c.clockOutTime) : null;
+      const badgeClass = c.status === 'approved' ? 'badge-success' : c.status === 'denied' ? 'badge-danger' : 'badge-warn';
+      html += `<tr>
+        <td class="mono">${c.clockInDate}</td>
+        <td class="mono">${formatTimeDisplay(c.clockInTime)}\u2013${c.clockOutTime ? formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
+        <td>${esc(c.location||'\u2014')}</td>
+        <td class="mono">${hrs!==null ? numFmt(hrs) : '\u2014'}</td>
+        <td><span class="badge ${badgeClass}">${esc(c.status)}</span></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  el.innerHTML = html;
+}
+
+async function doClockIn() {
+  const location = document.getElementById('mp-clock-location').value;
+  const date = todayLocalISO();
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  try {
+    const res = await fetch('/api/clock/in', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ location, date, time })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Clock in failed', 'danger'); return; }
+    showToast(`✅ Clocked in at ${formatTimeDisplay(time)}`);
+    CLOCK_ENTRIES.unshift({ id: body.id, staffId: _currentUser.staffId, location, clockInDate: date, clockInTime: time, clockOutDate: null, clockOutTime: null, status: 'open', notes: '', reviewedBy: '', reviewedAt: '', shiftId: null });
+    renderMyClockWidget();
+  } catch (e) {
+    showToast('Clock in failed — check your connection', 'danger');
+  }
+}
+
+async function doClockOut() {
+  const notes = document.getElementById('mp-clock-out-notes').value;
+  const date = todayLocalISO();
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  try {
+    const res = await fetch('/api/clock/out', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date, time, notes })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Clock out failed', 'danger'); return; }
+    showToast(`✅ Clocked out at ${formatTimeDisplay(time)} (${numFmt(body.hours)}h) \u2014 awaiting approval`);
+    const openEntry = CLOCK_ENTRIES.find(c => c.staffId === _currentUser.staffId && c.status === 'open');
+    if (openEntry) { openEntry.clockOutDate = date; openEntry.clockOutTime = time; openEntry.status = 'pending'; openEntry.notes = notes; }
+    renderMyClockWidget();
+  } catch (e) {
+    showToast('Clock out failed — check your connection', 'danger');
+  }
+}
+
 function renderMyPortal() {
   const staffId = _currentUser.staffId;
   const myStaff = STAFF.find(s => s.id === staffId);
@@ -4882,9 +5019,11 @@ function renderMyPortal() {
     : 'No staff record is linked to this account yet — contact your admin.';
 
   if (!myStaff) {
-    ['mp-summary','mp-shifts-table','mp-stub-preview','mp-pto-balance','mp-leave-history'].forEach(id => document.getElementById(id).innerHTML = '');
+    ['mp-summary','mp-shifts-table','mp-stub-preview','mp-pto-balance','mp-leave-history','mp-clock-widget'].forEach(id => document.getElementById(id).innerHTML = '');
     return;
   }
+
+  renderMyClockWidget();
 
   const cp = currentPeriodLabel();
   const allMyShifts = computeShiftsWithOT();
@@ -5298,8 +5437,150 @@ async function reviewLeaveRequest(id, action) {
   }
 }
 
+function renderClockEntriesAdmin() {
+  const el = document.getElementById('clock-entries-list');
+  if (!el) return;
+  const entries = (CLOCK_ENTRIES || []).filter(c => c.status !== 'open').slice().sort((a,b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (b.status === 'pending' && a.status !== 'pending') return 1;
+    return (b.clockInDate+b.clockInTime).localeCompare(a.clockInDate+a.clockInTime);
+  });
+  if (!entries.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0">No clock in/out entries yet.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Staff</th><th>Location</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>';
+  entries.forEach(c => {
+    const st = STAFF.find(s => s.id === c.staffId);
+    const name = st ? `${st.last}, ${st.first}` : c.staffId;
+    const hrs = c.clockOutDate ? calcHours(c.clockInTime, c.clockOutTime) : null;
+    const badgeClass = c.status === 'approved' ? 'badge-success' : c.status === 'denied' ? 'badge-danger' : 'badge-warn';
+    const actions = c.status === 'pending'
+      ? `<button class="btn btn-success" style="font-size:11px;padding:5px 10px" onclick="reviewClockEntry('${c.id}','approve')">✅ Approve</button>
+         <button class="btn btn-danger" style="font-size:11px;padding:5px 10px" onclick="reviewClockEntry('${c.id}','deny')">✕ Deny</button>`
+      : `<span style="font-size:11px;color:var(--text3)">${esc(c.reviewedBy||'')}</span>`;
+    const overrideNote = c.overridden ? `<div style="font-size:11px;color:var(--warn);margin-top:2px">⚠️ Override by ${esc(c.overrideBy||'')}: ${esc(c.overrideReason||'')}</div>` : '';
+    html += `<tr>
+      <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}${c.notes ? `<div style="font-size:11px;color:var(--text3);font-weight:400;margin-top:2px">${esc(c.notes)}</div>` : ''}</td>
+      <td>${esc(c.location||'\u2014')}</td>
+      <td class="mono">${c.clockInDate} ${formatTimeDisplay(c.clockInTime)}</td>
+      <td class="mono">${c.clockOutDate ? c.clockOutDate + ' ' + formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
+      <td class="mono">${hrs!==null ? numFmt(hrs) : '\u2014'}</td>
+      <td><span class="badge ${badgeClass}">${esc(c.status)}</span></td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+async function reviewClockEntry(id, action) {
+  try {
+    const res = await fetch(`/api/clock-entries/${encodeURIComponent(id)}/review`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Review failed', 'danger'); return; }
+
+    const entry = CLOCK_ENTRIES.find(c => c.id === id);
+    if (entry) {
+      entry.status = action === 'approve' ? 'approved' : 'denied';
+      entry.reviewedBy = _currentUser.name;
+      entry.reviewedAt = new Date().toLocaleString();
+      if (action === 'approve' && body.shiftId) {
+        entry.shiftId = body.shiftId;
+        SHIFTS.push({ id: body.shiftId, staff: entry.staffId, date: entry.clockInDate, timeIn: entry.clockInTime, timeOut: entry.clockOutTime, loc: entry.location, hours: calcHours(entry.clockInTime, entry.clockOutTime), regHours: 0, otHours: 0, approved: true, periodStart: '', periodEnd: '' });
+      }
+    }
+    showToast(action === 'approve' ? '✅ Clock entry approved — added to timesheet' : 'Clock entry denied');
+    renderClockEntriesAdmin();
+    updateApprovalsBadge();
+  } catch (e) {
+    showToast('Review failed — check your connection', 'danger');
+  }
+}
+
+function toggleOverridePanel() {
+  const panel = document.getElementById('clock-override-panel');
+  const willOpen = panel.style.display === 'none';
+  panel.style.display = willOpen ? 'block' : 'none';
+  if (willOpen) renderOverridePanel();
+}
+
+function renderOverridePanel() {
+  const panel = document.getElementById('clock-override-panel');
+  const openStaffIds = new Set((CLOCK_ENTRIES||[]).filter(c => c.status === 'open').map(c => c.staffId));
+  const availableStaff = STAFF.filter(s => s.status === 'Active' && !openStaffIds.has(s.id));
+  if (!availableStaff.length) {
+    panel.innerHTML = '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;color:var(--text3);font-size:13px">Every active staff member is already clocked in.</div>';
+    return;
+  }
+  panel.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div class="form-grid">
+        <div class="form-field"><label>Staff Member</label><select id="ov-staff">${availableStaff.map(s=>`<option value="${s.id}">${esc(s.last)}, ${esc(s.first)}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Location</label><select id="ov-location" onchange="updateOverrideOccupancyHint()">${LOCATIONS.map(l=>`<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Date</label><input type="date" id="ov-date" value="${todayLocalISO()}"></div>
+        <div class="form-field"><label>Time</label><div class="time-parts">
+          <select id="ov-time-h"></select>:<select id="ov-time-m"></select>
+          <select id="ov-time-p"></select>
+        </div></div>
+      </div>
+      <div id="ov-occupancy-hint" style="font-size:12px;margin:8px 0 12px"></div>
+      <div class="form-field" style="margin-bottom:12px"><label>Reason (required)</label><input type="text" id="ov-reason" maxlength="300" placeholder="Why is this override needed?"></div>
+      <button class="btn btn-primary" onclick="submitOverride()">🔓 Clock In (Override)</button>
+    </div>
+  `;
+  const now = new Date();
+  setTimeParts('ov-time', `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`);
+  updateOverrideOccupancyHint();
+}
+
+function updateOverrideOccupancyHint() {
+  const locSel = document.getElementById('ov-location');
+  const hintEl = document.getElementById('ov-occupancy-hint');
+  if (!locSel || !hintEl) return;
+  const locName = locSel.value;
+  const loc = LOCATIONS.find(l => l.name === locName);
+  const occupancy = (CLOCK_ENTRIES||[]).filter(c => c.status === 'open' && c.location === locName).length;
+  if (!loc || !loc.maxStaff) {
+    hintEl.innerHTML = `<span style="color:var(--text3)">${esc(locName)}: ${occupancy} currently clocked in \u00b7 no staffing limit set</span>`;
+  } else {
+    const atCap = occupancy >= loc.maxStaff;
+    hintEl.innerHTML = `<span style="color:${atCap?'var(--warn)':'var(--text3)'}">${esc(locName)}: ${occupancy}/${loc.maxStaff} currently clocked in${atCap ? ' \u2014 at capacity, this will be an override' : ''}</span>`;
+  }
+}
+
+async function submitOverride() {
+  const staffId = document.getElementById('ov-staff').value;
+  const location = document.getElementById('ov-location').value;
+  const date = document.getElementById('ov-date').value;
+  const time = getTimeParts('ov-time');
+  const reason = document.getElementById('ov-reason').value.trim();
+  if (!date) { showToast('Select a date', 'danger'); return; }
+  if (!time) { showToast('Select a valid time', 'danger'); return; }
+  if (reason.length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
+
+  try {
+    const res = await fetch('/api/clock/admin-in', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ staffId, location, date, time, reason })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Override failed', 'danger'); return; }
+    const st = STAFF.find(s => s.id === staffId);
+    CLOCK_ENTRIES.unshift({ id: body.id, staffId, location, clockInDate: date, clockInTime: time, clockOutDate: null, clockOutTime: null, status: 'open', notes: '', reviewedBy: '', reviewedAt: '', shiftId: null, overridden: true, overrideReason: reason, overrideBy: _currentUser.name });
+    showToast(`✅ ${st ? st.first+' '+st.last : staffId} clocked in at ${esc(location)} (override)`);
+    toggleOverridePanel();
+    renderClockEntriesAdmin();
+  } catch (e) {
+    showToast('Override failed — check your connection', 'danger');
+  }
+}
+
 function renderApprovalsPage() {
   renderLeaveRequestsAdmin();
+  renderClockEntriesAdmin();
   updateApprovalsBadge();
   // Pending
   const pendingEl = document.getElementById('pending-approvals-list');
@@ -6389,6 +6670,7 @@ function renderDeductionsList(kind) {
       <select onchange="updateDeductionField('${kind}','${it.id}','type',this.value)">
         <option value="percent" ${it.type==='percent'?'selected':''}>% of Gross</option>
         <option value="flat" ${it.type==='flat'?'selected':''}>Flat $ Amount</option>
+        <option value="bracket" ${it.type==='bracket'?'selected':''}>Federal Withholding (2026 Brackets)</option>
       </select>
       <input type="number" step="0.01" min="0" value="${it.value}"
         onchange="updateDeductionField('${kind}','${it.id}','value',parseFloat(this.value)||0)">
@@ -6445,6 +6727,88 @@ function updatePrStepTracker(rec) {
 }
 
 // ── Pay Stubs ────────────────────────────────────────────
+// ── Federal income tax withholding — real IRS 2026 brackets ──
+// Source: IRS Publication 15-T (2026), "1. Percentage Method Tables for
+// Automated Payroll Systems," STANDARD Withholding Rate Schedules (used when
+// Form W-4 Step 2 checkbox is NOT checked — the normal single-job case).
+// Fetched directly from irs.gov/pub/irs-pdf/p15t.pdf, not a third-party
+// summary — two independent secondary sources disagreed with each other on
+// the Single filer's top-bracket threshold ($626,350 vs $640,600); the
+// actual IRS table says $648,100. Numbers below are exactly as published.
+const FED_TAX_BRACKETS_2026 = {
+  single: [
+    [0, 7500, 0, 0.00],
+    [7500, 19900, 0, 0.10],
+    [19900, 57900, 1240.00, 0.12],
+    [57900, 113200, 5800.00, 0.22],
+    [113200, 209275, 17966.00, 0.24],
+    [209275, 263725, 41024.00, 0.32],
+    [263725, 648100, 58448.00, 0.35],
+    [648100, Infinity, 192979.25, 0.37]
+  ],
+  mfj: [
+    [0, 19300, 0, 0.00],
+    [19300, 44100, 0, 0.10],
+    [44100, 120100, 2480.00, 0.12],
+    [120100, 230700, 11600.00, 0.22],
+    [230700, 422850, 35932.00, 0.24],
+    [422850, 531750, 82048.00, 0.32],
+    [531750, 788000, 116896.00, 0.35],
+    [788000, Infinity, 206583.50, 0.37]
+  ],
+  hoh: [
+    [0, 15550, 0, 0.00],
+    [15550, 33250, 0, 0.10],
+    [33250, 83000, 1770.00, 0.12],
+    [83000, 121250, 7740.00, 0.22],
+    [121250, 217300, 16155.00, 0.24],
+    [217300, 271750, 39207.00, 0.32],
+    [271750, 656150, 56631.00, 0.35],
+    [656150, Infinity, 191171.00, 0.37]
+  ]
+};
+// Standard deduction offset applied in Step 1g of Worksheet 1A when the W-4
+// Step 2 checkbox is NOT checked (the normal case for this app).
+const FED_STD_DEDUCTION_OFFSET_2026 = { single: 8600, mfj: 12900, hoh: 8600 };
+// Table 3 of Worksheet 1A — pay periods per year, by frequency.
+const FED_PAY_PERIODS_PER_YEAR = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12, semiannually: 2, quarterly: 4 };
+
+// Implements Worksheet 1A exactly (Steps 1-4), using the STANDARD Withholding
+// Rate Schedules (Step 2 checkbox unchecked — the normal single-job case).
+// staff.filingStatus: 'single' | 'mfj' | 'hoh' (defaults to 'single' if unset
+// or unrecognized, matching the IRS's own default-to-single treatment for an
+// employee who hasn't specified a filing status).
+// staff.w4Step3/w4Step4a/w4Step4b/w4Step4c: annual dependents credit, annual
+// other income, annual deductions, and per-period extra withholding — all
+// optional, default to 0 if not set.
+function computeFederalWithholding(grossThisPeriod, payFrequency, staff) {
+  const filingStatus = (staff && FED_TAX_BRACKETS_2026[staff.filingStatus]) ? staff.filingStatus : 'single';
+  const payPeriods = FED_PAY_PERIODS_PER_YEAR[payFrequency] || 26;
+
+  // Step 1: annualize wages, apply Step 4(a)/4(b) adjustments and the
+  // standard deduction offset (Step 2 unchecked).
+  const annualWage = grossThisPeriod * payPeriods;
+  const step4a = (staff && staff.w4Step4a) || 0;
+  const step4b = (staff && staff.w4Step4b) || 0;
+  const stdOffset = FED_STD_DEDUCTION_OFFSET_2026[filingStatus];
+  const adjustedAnnualWage = Math.max(0, (annualWage + step4a) - (step4b + stdOffset));
+
+  // Step 2: find the bracket row and compute the tentative annual withholding.
+  const brackets = FED_TAX_BRACKETS_2026[filingStatus];
+  const row = brackets.find(r => adjustedAnnualWage >= r[0] && adjustedAnnualWage < r[1]) || brackets[brackets.length - 1];
+  const [rowFloor, , rowBase, rowRate] = row;
+  const tentativeAnnual = rowBase + (adjustedAnnualWage - rowFloor) * rowRate;
+  const tentativePerPeriod = tentativeAnnual / payPeriods;
+
+  // Step 3: subtract the per-period share of the Step 3 dependents/other credits.
+  const step3Annual = (staff && staff.w4Step3) || 0;
+  const afterCredits = Math.max(0, tentativePerPeriod - (step3Annual / payPeriods));
+
+  // Step 4: add any flat extra withholding requested in Step 4(c).
+  const step4c = (staff && staff.w4Step4c) || 0;
+  return Math.max(0, afterCredits + step4c);
+}
+
 function computeYTDForStaff(staffId, uptoPeriodStart) {
   const year = uptoPeriodStart.slice(0, 4);
   let gross = 0, tax = 0, net = 0;
@@ -6832,10 +7196,14 @@ function confirmAndRunPayroll() {
     byEmployee[r.staffId].gross += r.gross;
   });
 
+  const payFrequency = PAY_CONFIG.periodDays === 7 ? 'weekly' : PAY_CONFIG.periodDays === 14 ? 'biweekly' : PAY_CONFIG.periodDays <= 16 ? 'semimonthly' : 'monthly';
   const employeeRows = Object.values(byEmployee).map(emp => {
     let totalDeductions = 0;
+    const staffForTax = STAFF.find(s => s.id === emp.staffId);
     const deductions = items.map(it => {
-      const amount = it.type === 'percent' ? emp.gross * it.value / 100 : it.value;
+      const amount = it.type === 'percent' ? emp.gross * it.value / 100
+                    : it.type === 'bracket' ? computeFederalWithholding(emp.gross, payFrequency, staffForTax)
+                    : it.value;
       totalDeductions += amount;
       return { label: it.label, type: it.type, rate: it.value, amount };
     });
@@ -7300,6 +7668,11 @@ function openEditStaffModal(id) {
   document.getElementById('staff-edit-rate').value = s.rate;
   document.getElementById('staff-edit-start').value = s.start;
   document.getElementById('staff-edit-modal-sub').textContent = 'Editing: ' + s.first + ' ' + s.last + ' (' + id + ')';
+  document.getElementById('staff-edit-filingstatus').value = s.filingStatus || 'single';
+  document.getElementById('staff-edit-w4step3').value = s.w4Step3 || '';
+  document.getElementById('staff-edit-w4step4a').value = s.w4Step4a || '';
+  document.getElementById('staff-edit-w4step4b').value = s.w4Step4b || '';
+  document.getElementById('staff-edit-w4step4c').value = s.w4Step4c || '';
 
   // Populate location dropdown and pre-select current value
   const locSel = document.getElementById('staff-edit-loc');
@@ -7341,6 +7714,11 @@ function saveEditStaff() {
   s.rate   = parseFloat(document.getElementById('staff-edit-rate').value) || s.rate;
   s.start  = document.getElementById('staff-edit-start').value || s.start;
   s.status = document.getElementById('staff-edit-status').value;
+  s.filingStatus = document.getElementById('staff-edit-filingstatus').value;
+  s.w4Step3  = parseFloat(document.getElementById('staff-edit-w4step3').value) || 0;
+  s.w4Step4a = parseFloat(document.getElementById('staff-edit-w4step4a').value) || 0;
+  s.w4Step4b = parseFloat(document.getElementById('staff-edit-w4step4b').value) || 0;
+  s.w4Step4c = parseFloat(document.getElementById('staff-edit-w4step4c').value) || 0;
 
   const changes = [];
   if (oldLoc !== s.loc) changes.push(`Location: ${oldLoc} → ${s.loc}`);
@@ -7358,7 +7736,7 @@ function saveEditStaff() {
 // LOCATIONS
 // ──────────────────────────────────────────────────────────
 function renderLocationsPage() {
-  let html = '<table><thead><tr><th>#</th><th>Location Name</th><th>Rate ($/hr)</th><th>OT Multiplier</th><th>OT Rate</th><th>Notes</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>#</th><th>Location Name</th><th>Rate ($/hr)</th><th>OT Multiplier</th><th>OT Rate</th><th>Max Staff</th><th>Notes</th><th></th></tr></thead><tbody>';
   LOCATIONS.forEach((l, i) => {
     const hasHistory = l.rateHistory && l.rateHistory.length > 1;
     html += `<tr>
@@ -7367,6 +7745,7 @@ function renderLocationsPage() {
       <td class="mono">${$fmt(l.rate)}${hasHistory ? ' <span style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:4px">▸ history</span>' : ''}</td>
       <td class="mono">${l.mult}×</td>
       <td class="mono" style="color:var(--warn)">${$fmt(l.rate*l.mult)}</td>
+      <td class="mono">${l.maxStaff ? l.maxStaff : '<span style="color:var(--text3)">No limit</span>'}</td>
       <td style="color:var(--text3)">${esc(l.notes || '')}</td>
       <td style="display:flex;gap:6px;flex-wrap:nowrap">
         <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;white-space:nowrap" onclick="openEditLocationModal('${l.id}')">✏️ Edit</button>
@@ -7383,17 +7762,18 @@ function addLocation() {
   const rate = parseFloat(document.getElementById('loc-rate-input').value);
   if (!name || !rate) { showToast('Name and rate required', 'danger'); return; }
   const mult = parseFloat(document.getElementById('loc-mult-input').value) || 1.5;
+  const maxStaff = parseInt(document.getElementById('loc-maxstaff-input').value, 10) || 0;
   const today = todayLocalISO();
   const maxLocNum = LOCATIONS.reduce((max, l) => { const n = parseInt(l.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   LOCATIONS.push({
     id: 'L' + String(maxLocNum+1).padStart(2,'0'),
-    name, rate, mult,
+    name, rate, mult, maxStaff,
     notes: document.getElementById('loc-note-input').value,
     rateHistory: [{ rate, mult, effectiveFrom: '2000-01-01' }]
   });
-  ['loc-name-input','loc-rate-input','loc-note-input'].forEach(id=>document.getElementById(id).value='');
+  ['loc-name-input','loc-rate-input','loc-note-input','loc-maxstaff-input'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('loc-mult-input').value='1.5';
-  auditLog('ADD_LOCATION', `Location added: ${name}`, `Rate: ${$fmt(rate)}/hr · OT mult: ${mult}×`);
+  auditLog('ADD_LOCATION', `Location added: ${name}`, `Rate: ${$fmt(rate)}/hr · OT mult: ${mult}×${maxStaff ? ' · Max staff: '+maxStaff : ''}`);
   dbSave();
   showToast(`${name} added`);
   renderLocationsPage();
@@ -7428,6 +7808,7 @@ function openEditLocationModal(id) {
   document.getElementById('loc-edit-name').value = l.name;
   document.getElementById('loc-edit-rate').value = l.rate;
   document.getElementById('loc-edit-mult').value = l.mult;
+  document.getElementById('loc-edit-maxstaff').value = l.maxStaff || 0;
   document.getElementById('loc-edit-notes').value = l.notes || '';
   document.getElementById('loc-edit-modal-sub').textContent = 'Editing: ' + l.name;
   // Reset radio
@@ -7525,6 +7906,7 @@ function saveEditLocation() {
   const newName = document.getElementById('loc-edit-name').value.trim();
   const newRate = parseFloat(document.getElementById('loc-edit-rate').value);
   const newMult = parseFloat(document.getElementById('loc-edit-mult').value) || 1.5;
+  const newMaxStaff = parseInt(document.getElementById('loc-edit-maxstaff').value, 10) || 0;
   const newNotes = document.getElementById('loc-edit-notes').value.trim();
 
   if (!newName || isNaN(newRate) || newRate <= 0) { showToast('Name and a valid rate are required', 'danger'); return; }
@@ -7565,6 +7947,7 @@ function saveEditLocation() {
   l.name = newName;
   l.rate = newRate;
   l.mult = newMult;
+  l.maxStaff = newMaxStaff;
   l.notes = newNotes;
 
   const changes = [];

@@ -181,6 +181,65 @@ async function main() {
     const absurdResult = await request('POST', '/api/db/save', { body: absurdHours, cookie: adminCookie });
     check('absurdly large shift hours are rejected', absurdResult.status === 403);
 
+    console.log('\nPer-house staffing caps and supervisor override:');
+    const capBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const capSetup = { ...capBase.body };
+    capSetup.LOCATIONS = [...capSetup.LOCATIONS, { id: 'L90', name: 'Cap Test House', rate: 12, mult: 1.5, notes: '', rateHistory: [], maxStaff: 1 }];
+    capSetup.STAFF = [...capSetup.STAFF,
+      { id: 'S920', first: 'Cap', last: 'One', title: 'DSP', type: 'Full-Time', loc: 'Cap Test House', rate: 12, start: '2026-01-01', status: 'Active' },
+      { id: 'S921', first: 'Cap', last: 'Two', title: 'DSP', type: 'Full-Time', loc: 'Cap Test House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    capSetup.USERS = [...capSetup.USERS,
+      { id: 'U920', username: 'capworker1', password: 'cappass1', name: 'Cap One', role: 'employee', staffId: 'S920' },
+      { id: 'U921', username: 'capworker2', password: 'cappass2', name: 'Cap Two', role: 'employee', staffId: 'S921' }];
+    await request('POST', '/api/db/save', { body: capSetup, cookie: adminCookie });
+
+    const cap1Login = await request('POST', '/api/auth/login', { body: { username: 'capworker1', password: 'cappass1' } });
+    const cap1Cookie = cap1Login.cookie;
+    const cap2Login = await request('POST', '/api/auth/login', { body: { username: 'capworker2', password: 'cappass2' } });
+    const cap2Cookie = cap2Login.cookie;
+
+    const firstIn = await request('POST', '/api/clock/in', { cookie: cap1Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:00' } });
+    check('first clock-in at a 1-person house succeeds', firstIn.status === 200);
+
+    const secondIn = await request('POST', '/api/clock/in', { cookie: cap2Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:05' } });
+    check('second clock-in at the same house is blocked at capacity', secondIn.status === 400 && secondIn.body.atCapacity === true);
+
+    const overrideNoAuth = await request('POST', '/api/clock/admin-in', { cookie: cap2Cookie, body: { staffId: 'S921', location: 'Cap Test House', date: '2026-05-10', time: '08:05', reason: 'test' } });
+    check('non-admin cannot use the override endpoint', overrideNoAuth.status === 403);
+
+    const overrideNoReason = await request('POST', '/api/clock/admin-in', { cookie: adminCookie, body: { staffId: 'S921', location: 'Cap Test House', date: '2026-05-10', time: '08:05', reason: '' } });
+    check('override without a reason is rejected', overrideNoReason.status === 400);
+
+    const overrideBadStaff = await request('POST', '/api/clock/admin-in', { cookie: adminCookie, body: { staffId: 'GHOST', location: 'Cap Test House', date: '2026-05-10', time: '08:05', reason: 'valid reason' } });
+    check('override with an unknown staff ID is rejected', overrideBadStaff.status === 400);
+
+    const overrideOk = await request('POST', '/api/clock/admin-in', { cookie: adminCookie, body: { staffId: 'S921', location: 'Cap Test House', date: '2026-05-10', time: '08:05', reason: 'Coverage emergency' } });
+    check('override succeeds past a confirmed-at-capacity house', overrideOk.status === 200);
+
+    const afterOverride = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const overriddenEntry = afterOverride.body.clockEntries.find(c => c.staffId === 'S921' && c.status === 'open');
+    check('overridden entry correctly flagged with reason and who did it', overriddenEntry && overriddenEntry.overridden === true && overriddenEntry.overrideReason === 'Coverage emergency' && overriddenEntry.overrideBy === 'Admin');
+
+    const doubleOverride = await request('POST', '/api/clock/admin-in', { cookie: adminCookie, body: { staffId: 'S921', location: 'Cap Test House', date: '2026-05-10', time: '09:00', reason: 'another try' } });
+    check('double-override for someone already clocked in is still blocked', doubleOverride.status === 400);
+
+    const auditAfterOverride = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const overrideAuditEntry = auditAfterOverride.body.AUDIT_LOG.find(e => e.type === 'CLOCK_IN_OVERRIDE');
+    check('override is recorded in the audit trail', overrideAuditEntry && overrideAuditEntry.detail.includes('Coverage emergency'));
+
+    console.log('\nAdmin-facing clock entry review:');
+    await request('POST', '/api/clock/out', { cookie: cap1Cookie, body: { date: '2026-05-10', time: '16:00', notes: '' } });
+    const pendingClockList = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const pendingClockEntry = pendingClockList.body.clockEntries.find(c => c.staffId === 'S920' && c.status === 'pending');
+    check('clocked-out entry appears as pending for admin review', !!pendingClockEntry);
+
+    const clockApprove = await request('POST', `/api/clock-entries/${pendingClockEntry.id}/review`, { cookie: adminCookie, body: { action: 'approve' } });
+    check('approving a clock entry succeeds and returns a shift ID', clockApprove.status === 200 && !!clockApprove.body.shiftId);
+
+    const afterClockApprove = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const createdShift = afterClockApprove.body.SHIFTS.find(s => s.id === clockApprove.body.shiftId);
+    check('approved clock entry created a real shift with correct data', createdShift && createdShift.staff === 'S920' && createdShift.date === '2026-05-10' && createdShift.timeIn === '08:00' && createdShift.timeOut === '16:00');
+
     console.log('\nPTO balance adjustments:');
     const ptoGrant = await request('POST', '/api/staff/S900/pto-adjust', { cookie: adminCookie, body: { delta: 40, reason: 'Annual grant' } });
     check('admin can grant PTO hours', ptoGrant.status === 200 && ptoGrant.body.newBalance === 40);
