@@ -181,6 +181,13 @@ async function main() {
     const absurdResult = await request('POST', '/api/db/save', { body: absurdHours, cookie: adminCookie });
     check('absurdly large shift hours are rejected', absurdResult.status === 403);
 
+    console.log('\nRole existence validation (catches a typo before it locks someone out):');
+    const roleTypoBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const roleTypoSetup = { ...roleTypoBase.body };
+    roleTypoSetup.USERS = [...roleTypoSetup.USERS, { id: 'UTYPO', username: 'typouser', password: 'typopass1', name: 'Typo User', role: 'adnim' }];
+    const typoResult = await request('POST', '/api/db/save', { body: roleTypoSetup, cookie: adminCookie });
+    check('assigning a nonexistent role name is rejected', typoResult.status === 403);
+
     console.log('\nMax Staff / Shift validation:');
     const maxStaffBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     async function tryMaxStaff(value) {
@@ -313,7 +320,7 @@ async function main() {
 
     const afterClockApprove = await request('GET', '/api/db/load', { cookie: adminCookie });
     const createdShift = afterClockApprove.body.SHIFTS.find(s => s.id === clockApprove.body.shiftId);
-    check('approved clock entry created a real shift with correct data', createdShift && createdShift.staff === 'S920' && createdShift.date === '2026-05-10' && createdShift.timeIn === '08:00' && createdShift.timeOut === '16:00');
+    check('approved clock entry created a real shift with correct data', createdShift && createdShift.staff === 'S920' && createdShift.date === '2026-05-10' && createdShift.start === '08:00' && createdShift.end === '16:00');
 
     console.log('\nPTO balance adjustments:');
     const ptoGrant = await request('POST', '/api/staff/S900/pto-adjust', { cookie: adminCookie, body: { delta: 40, reason: 'Annual grant' } });

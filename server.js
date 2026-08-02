@@ -193,6 +193,71 @@ function writeAuditLog(type, detail, user, meta) {
        type, (user && user.id) || '', new Date(ts).toISOString()]);
 }
 
+// ── Granular permissions ────────────────────────────────────
+// Every permission key that exists in the system, organized by module. This
+// is the single source of truth for what CAN be granted — a custom role's
+// stored permissions are validated against this list on every save, so a
+// tampered or malformed role definition can never grant something that
+// isn't a real, recognized permission.
+const ALL_PERMISSIONS = [
+  'dashboard_view',
+  'shifts_view', 'shifts_add', 'shifts_edit', 'shifts_delete',
+  'approvals_view', 'approvals_review_shifts', 'approvals_review_leave', 'approvals_review_clock', 'clock_override',
+  'payroll_view', 'payroll_run', 'payroll_unlock', 'taxes_manage',
+  'staff_view', 'staff_manage', 'staff_view_wage', 'staff_pto_adjust',
+  'locations_view', 'locations_manage',
+  'users_view', 'users_manage', 'roles_manage',
+  'data_export', 'data_import', 'data_backup', 'data_reset',
+  'reports_view', 'audit_view', 'audit_verify',
+];
+
+// The four original roles are "built-in": their permissions are fixed here
+// in code, not in the database, specifically so nothing (a bug, a bad
+// migration, direct database access) can ever silently weaken what "admin"
+// or "supervisor" is allowed to do. This mapping preserves the EXACT same
+// behavior these roles already had before granular permissions existed —
+// no existing account's access changes because this system was added.
+const BUILTIN_ROLE_PERMISSIONS = {
+  admin: ALL_PERMISSIONS, // everything, always
+  supervisor: [
+    'dashboard_view', 'shifts_view', 'shifts_add', 'shifts_edit',
+    'approvals_view', 'approvals_review_shifts', 'approvals_review_leave', 'approvals_review_clock', 'clock_override',
+    'payroll_view', 'staff_view', 'locations_view', 'reports_view',
+  ],
+  viewer: [
+    'dashboard_view', 'shifts_view', 'approvals_view', 'payroll_view',
+    'staff_view', 'locations_view', 'reports_view', 'audit_view',
+  ],
+  employee: [], // employees use their own scoped self-service endpoints, not this permission system at all
+};
+
+function roleExists(roleName) {
+  if (BUILTIN_ROLE_PERMISSIONS[roleName]) return true;
+  return !!get('SELECT id FROM roles WHERE name = ?', [roleName]);
+}
+
+function getRolePermissions(roleName) {
+  if (BUILTIN_ROLE_PERMISSIONS[roleName]) return BUILTIN_ROLE_PERMISSIONS[roleName];
+  const row = get('SELECT permissions FROM roles WHERE name = ?', [roleName]);
+  if (!row) return [];
+  try {
+    const perms = JSON.parse(row.permissions);
+    // Re-validate against ALL_PERMISSIONS on every read too, not just on
+    // save — defense in depth in case a permission was ever removed from
+    // the taxonomy after a role was created with it.
+    return Array.isArray(perms) ? perms.filter(p => ALL_PERMISSIONS.includes(p)) : [];
+  } catch (e) { return []; }
+}
+
+// The one function every permission check in this file should call. Takes
+// the full req.user object (needs .role) and a permission key.
+function hasPermission(user, permissionKey) {
+  if (!user || !user.role) return false;
+  if (!ALL_PERMISSIONS.includes(permissionKey)) return false; // fail closed on an unrecognized key, never fail open
+  return getRolePermissions(user.role).includes(permissionKey);
+}
+
+
 // ── Backups ────────────────────────────────────────────────
 // Snapshots the current DB file into BACKUP_DIR with a timestamped name, then
 // prunes older automatic backups beyond BACKUP_RETENTION. Manual backups
@@ -246,6 +311,16 @@ function createSchema() {
     staff_id TEXT DEFAULT NULL
   )`);
   try { db.run(`ALTER TABLE users ADD COLUMN staff_id TEXT DEFAULT NULL`); } catch (e) { /* already exists */ }
+  // Custom roles: 'admin'/'supervisor'/'viewer'/'employee' are built-in and
+  // never stored here — their permissions are fixed in code (see
+  // BUILTIN_ROLE_PERMISSIONS below) specifically so they can never be
+  // accidentally weakened by editing a database row. Anything else is a
+  // custom role, defined here with a per-permission-key JSON object.
+  db.run(`CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE,
+    permissions TEXT NOT NULL DEFAULT '{}',
+    created_by TEXT DEFAULT '', created_at TEXT NOT NULL
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL,
     last_activity INTEGER DEFAULT 0
@@ -274,8 +349,16 @@ function createSchema() {
     time_in TEXT NOT NULL, time_out TEXT NOT NULL, loc TEXT DEFAULT '',
     hours REAL DEFAULT 0, reg_hours REAL DEFAULT 0, ot_hours REAL DEFAULT 0,
     approved INTEGER DEFAULT 0, period_start TEXT DEFAULT '',
-    period_end TEXT DEFAULT '', extra_data TEXT DEFAULT '{}'
+    period_end TEXT DEFAULT '', extra_data TEXT DEFAULT '{}',
+    source TEXT DEFAULT 'manual'
   )`);
+  // 'manual' (entered by an admin/supervisor), 'clock_in' (employee clocked
+  // themselves in/out, then approved), or 'clock_in_override' (an admin
+  // clocked someone in past capacity, or closed out a stuck clock-in on
+  // their behalf, before it was approved). Existing shifts predate this
+  // column and default to 'manual', which is accurate — they were all
+  // entered by hand before clock in/out existed.
+  try { db.run(`ALTER TABLE shifts ADD COLUMN source TEXT DEFAULT 'manual'`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS pending_approvals (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS approved_exceptions (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS date_correction_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
@@ -365,9 +448,10 @@ function loadDB() {
   }));
   const SHIFTS = all('SELECT * FROM shifts').map(r => {
     const extra = JSON.parse(r.extra_data || '{}');
-    return { id: r.id, staff: r.staff_id, date: r.date, timeIn: r.time_in, timeOut: r.time_out,
-             loc: r.loc, hours: r.hours, regHours: r.reg_hours, otHours: r.ot_hours,
-             approved: !!r.approved, periodStart: r.period_start, periodEnd: r.period_end, ...extra };
+    return { id: r.id, staff: r.staff_id, date: r.date, start: r.time_in, end: r.time_out,
+             location: r.loc, hours: r.hours, regHours: r.reg_hours, otHours: r.ot_hours,
+             approved: !!r.approved, periodStart: r.period_start, periodEnd: r.period_end,
+             source: r.source || 'manual', ...extra };
   });
   const PENDING_APPROVALS  = all('SELECT data FROM pending_approvals').map(r => JSON.parse(r.data));
   const APPROVED_EXCEPTIONS = all('SELECT data FROM approved_exceptions').map(r => JSON.parse(r.data));
@@ -455,13 +539,13 @@ function saveDB(data) {
   // SHIFTS
   run('DELETE FROM shifts');
   for (const s of (SHIFTS || [])) {
-    const { id, staff, date, timeIn, timeOut, loc, hours, regHours, otHours, approved, periodStart, periodEnd, ...rest } = s;
-    run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, staff, date, timeIn||s.time_in||'', timeOut||s.time_out||'',
-         loc||'', hours||0, regHours||s.reg_hours||0, otHours||s.ot_hours||0,
+    const { id, staff, date, start, end, location, hours, regHours, otHours, approved, periodStart, periodEnd, source, ...rest } = s;
+    run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data,source)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, staff, date, start||'', end||'',
+         location||'', hours||0, regHours||0, otHours||0,
          approved?1:0, periodStart||s.period_start||'', periodEnd||s.period_end||'',
-         JSON.stringify(rest)]);
+         JSON.stringify(rest), source||'manual']);
   }
 
   // Blob tables
@@ -630,6 +714,20 @@ function validateLocations(incomingLocations) {
   return null;
 }
 
+// Catches the exact failure mode a typo would cause: assigning someone to a
+// role name that doesn't exist (built-in or custom) doesn't grant them
+// nothing dangerous — hasPermission() fails closed — but it silently locks
+// that person out with no explanation, which is its own kind of data
+// integrity problem in a system managing people's actual paychecks.
+function validateUsers(incomingUsers) {
+  for (const u of (incomingUsers || [])) {
+    if (!u.role || !roleExists(u.role)) {
+      return `"${u.name || u.username || 'A user'}" is assigned to "${u.role || '(no role)'}", which isn't a real role \u2014 check for a typo or create that role first`;
+    }
+  }
+  return null;
+}
+
 function authorizeSave(existing, incoming, user) {
   const isAdmin = user.role === 'admin';
   const canShift = user.role === 'admin' || user.role === 'supervisor';
@@ -640,6 +738,9 @@ function authorizeSave(existing, incoming, user) {
 
   const locationValidationError = validateLocations(incoming.LOCATIONS);
   if (locationValidationError) return locationValidationError;
+
+  const userValidationError = validateUsers(incoming.USERS);
+  if (userValidationError) return userValidationError;
 
   if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !isAdmin)
     return 'Pay period settings can only be changed by an admin account';
@@ -870,6 +971,96 @@ async function main() {
     }
   });
 
+  // ── Custom roles / granular permissions ──────────────────
+  // Creating, editing, or deleting a role requires 'roles_manage' — held
+  // only by admin among the built-in roles, and only grantable to a custom
+  // role by an admin (see the privilege-escalation check in POST below).
+  app.get('/api/permissions', requireAuth, (req, res) => {
+    // The full taxonomy and what the built-in roles have, so the client can
+    // render a real permission matrix instead of a hardcoded guess.
+    res.json({ allPermissions: ALL_PERMISSIONS, builtinRoles: BUILTIN_ROLE_PERMISSIONS });
+  });
+
+  // A user's own resolved permission list — works identically for built-in
+  // and custom roles, so the client never needs to know which kind of role
+  // it's looking at, just what it's actually allowed to do.
+  app.get('/api/my-permissions', requireAuth, (req, res) => {
+    res.json({ role: req.user.role, permissions: getRolePermissions(req.user.role) });
+  });
+
+  app.get('/api/roles', requireAuth, (req, res) => {
+    try {
+      const rows = all('SELECT * FROM roles ORDER BY name ASC');
+      res.json({ roles: rows.map(r => ({
+        id: r.id, name: r.name, permissions: JSON.parse(r.permissions || '[]'),
+        createdBy: r.created_by, createdAt: r.created_at
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/roles', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'roles_manage')) return res.status(403).json({ error: 'Not authorized to manage roles' });
+    try {
+      const { name, permissions } = req.body || {};
+      const trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (trimmedName.length < 2 || trimmedName.length > 40) return res.status(400).json({ error: 'Role name must be 2-40 characters' });
+      if (BUILTIN_ROLE_PERMISSIONS[trimmedName.toLowerCase()]) return res.status(400).json({ error: `"${trimmedName}" is a built-in role name and can't be reused` });
+      if (roleExists(trimmedName)) return res.status(400).json({ error: 'A role with this name already exists' });
+      if (!Array.isArray(permissions)) return res.status(400).json({ error: 'Permissions must be a list' });
+      // Only real, recognized permission keys can ever be stored — this is
+      // the actual privilege-escalation guard: even if something upstream
+      // is compromised or buggy, a role can never be granted a permission
+      // that doesn't exist in ALL_PERMISSIONS.
+      const validPerms = permissions.filter(p => ALL_PERMISSIONS.includes(p));
+      // A custom role can only ever be granted roles_manage by an existing
+      // holder of roles_manage (i.e. today, only admin) — otherwise someone
+      // with a lesser permission set could create a role that out-ranks
+      // their own and assign themselves to it.
+      if (validPerms.includes('roles_manage') && !hasPermission(req.user, 'roles_manage')) {
+        return res.status(403).json({ error: 'You cannot grant a permission you do not hold yourself' });
+      }
+
+      const id = 'ROLE' + Date.now() + Math.random().toString(36).slice(2,6);
+      run('INSERT INTO roles (id,name,permissions,created_by,created_at) VALUES (?,?,?,?,?)',
+        [id, trimmedName, JSON.stringify(validPerms), req.user.name, new Date().toISOString()]);
+      writeAuditLog('ROLE_CREATED', `${req.user.name} created role "${trimmedName}" with permissions: ${validPerms.join(', ') || '(none)'}`, req.user);
+      persistDB();
+      res.json({ ok: true, id });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/roles/:id', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'roles_manage')) return res.status(403).json({ error: 'Not authorized to manage roles' });
+    try {
+      const existing = get('SELECT * FROM roles WHERE id = ?', [req.params.id]);
+      if (!existing) return res.status(404).json({ error: 'Role not found' });
+      const { permissions } = req.body || {};
+      if (!Array.isArray(permissions)) return res.status(400).json({ error: 'Permissions must be a list' });
+      const validPerms = permissions.filter(p => ALL_PERMISSIONS.includes(p));
+      if (validPerms.includes('roles_manage') && !hasPermission(req.user, 'roles_manage')) {
+        return res.status(403).json({ error: 'You cannot grant a permission you do not hold yourself' });
+      }
+      run('UPDATE roles SET permissions = ? WHERE id = ?', [JSON.stringify(validPerms), req.params.id]);
+      writeAuditLog('ROLE_UPDATED', `${req.user.name} updated role "${existing.name}" \u2014 permissions now: ${validPerms.join(', ') || '(none)'}`, req.user);
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/roles/:id', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'roles_manage')) return res.status(403).json({ error: 'Not authorized to manage roles' });
+    try {
+      const existing = get('SELECT * FROM roles WHERE id = ?', [req.params.id]);
+      if (!existing) return res.status(404).json({ error: 'Role not found' });
+      const inUse = get('SELECT COUNT(*) as c FROM users WHERE role = ?', [existing.name]);
+      if (inUse && inUse.c > 0) return res.status(400).json({ error: `${inUse.c} user${inUse.c!==1?'s are':' is'} still assigned to this role \u2014 reassign them first` });
+      run('DELETE FROM roles WHERE id = ?', [req.params.id]);
+      writeAuditLog('ROLE_DELETED', `${req.user.name} deleted role "${existing.name}"`, req.user);
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Data routes (all require a valid session) ───────────
   app.get('/api/db/load', requireAuth, (req, res) => {
     try {
@@ -943,7 +1134,7 @@ async function main() {
   // ── Leave requests (PTO) ─────────────────────────────────
   // Full list — admin/supervisor only, for reviewing requests.
   app.get('/api/leave-requests', requireAuth, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+    if (!hasPermission(req.user, 'approvals_review_leave')) {
       return res.status(403).json({ error: 'Not authorized to view all leave requests' });
     }
     try {
@@ -966,7 +1157,7 @@ async function main() {
 
   app.post('/api/leave-requests', requireAuth, writeLimiter, (req, res) => {
     try {
-      const isStaffAction = req.user.role === 'admin' || req.user.role === 'supervisor';
+      const isStaffAction = hasPermission(req.user, 'approvals_review_leave');
       const staffId = isStaffAction ? (req.body.staffId || req.user.staffId) : req.user.staffId;
       if (!staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
 
@@ -1015,7 +1206,7 @@ async function main() {
   // the hours from the employee's PTO balance at review time (not request time),
   // since a denied request should never have touched the balance.
   app.post('/api/leave-requests/:id/review', requireAuth, writeLimiter, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+    if (!hasPermission(req.user, 'approvals_review_leave')) {
       return res.status(403).json({ error: 'Not authorized to review leave requests' });
     }
     try {
@@ -1064,7 +1255,7 @@ async function main() {
   // page's live view without needing a full reload).
   app.get('/api/clock-entries', requireAuth, (req, res) => {
     try {
-      const isStaffAction = req.user.role === 'admin' || req.user.role === 'supervisor';
+      const isStaffAction = hasPermission(req.user, 'approvals_review_clock');
       const rows = isStaffAction
         ? all('SELECT * FROM clock_entries ORDER BY created_at DESC')
         : all('SELECT * FROM clock_entries WHERE staff_id = ? ORDER BY created_at DESC', [req.user.staffId || '__none__']);
@@ -1187,7 +1378,7 @@ async function main() {
   // "prevent two open entries for the same person" are different concerns,
   // and this only relaxes the first one.
   app.post('/api/clock/admin-in', requireAuth, writeLimiter, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+    if (!hasPermission(req.user, 'clock_override')) {
       return res.status(403).json({ error: 'Not authorized to clock someone in directly' });
     }
     try {
@@ -1218,7 +1409,7 @@ async function main() {
   });
 
   app.post('/api/clock/admin-out', requireAuth, writeLimiter, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+    if (!hasPermission(req.user, 'clock_override')) {
       return res.status(403).json({ error: 'Not authorized to clock someone out directly' });
     }
     try {
@@ -1251,7 +1442,7 @@ async function main() {
   });
 
   app.post('/api/clock-entries/:id/review', requireAuth, writeLimiter, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+    if (!hasPermission(req.user, 'approvals_review_clock')) {
       return res.status(403).json({ error: 'Not authorized to review clock entries' });
     }
     try {
@@ -1282,14 +1473,15 @@ async function main() {
       const newShift = { id: shiftId, staff: entry.staff_id, date: entry.clock_in_date,
                           start: entry.clock_in_time, end: entry.clock_out_time,
                           location: finalLocation, hours: Math.round(hours * 100) / 100 };
+      const shiftSource = entry.overridden ? 'clock_in_override' : 'clock_in';
 
       const staffIds = new Set(all('SELECT id FROM staff').map(s => s.id));
       const shiftError = validateShifts([newShift], staffIds);
       if (shiftError) return res.status(400).json({ error: `Cannot approve — ${shiftError}` });
 
-      run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data)
-           VALUES (?,?,?,?,?,?,?,0,0,1,'','','{}')`,
-        [newShift.id, newShift.staff, newShift.date, newShift.start, newShift.end, newShift.location, newShift.hours]);
+      run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data,source)
+           VALUES (?,?,?,?,?,?,?,0,0,1,'','','{}',?)`,
+        [newShift.id, newShift.staff, newShift.date, newShift.start, newShift.end, newShift.location, newShift.hours, shiftSource]);
 
       run(`UPDATE clock_entries SET status = 'approved', reviewed_by = ?, reviewed_at = ?, shift_id = ? WHERE id = ?`,
         [req.user.name, now, shiftId, entry.id]);

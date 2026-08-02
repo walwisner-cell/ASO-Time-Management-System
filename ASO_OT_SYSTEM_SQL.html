@@ -1661,6 +1661,7 @@
       <div class="nav-item" data-page="staff" onclick="nav('staff',this)"><span class="nav-icon">👥</span>Staff Register</div>
       <div class="nav-item" data-page="locations" onclick="nav('locations',this)"><span class="nav-icon">📍</span>Locations</div>
       <div class="nav-item" data-page="passwords" onclick="nav('passwords',this)"><span class="nav-icon">🔐</span>Passwords</div>
+      <div class="nav-item" data-page="roles" onclick="nav('roles',this)"><span class="nav-icon">🛡️</span>Roles &amp; Permissions</div>
       <div class="nav-item" data-page="datamanager" onclick="nav('datamanager',this)"><span class="nav-icon">🗄️</span>Data Manager</div>
       <div class="nav-section">Help</div>
       <div class="nav-item" data-page="audittrail" onclick="nav('audittrail',this)"><span class="nav-icon">🔍</span>Audit Trail</div>
@@ -2626,6 +2627,33 @@
         </div>
         <div class="card">
           <div id="at-log-body" style="font-size:13px;max-height:none"></div>
+        </div>
+      </div>
+
+      <!-- ROLES & PERMISSIONS -->
+      <div class="page" id="page-roles">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">Roles &amp; Permissions</div>
+            <div class="page-sub">Create custom roles and control exactly what each one can see and do</div>
+          </div>
+        </div>
+
+        <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+          <span style="font-size:16px">🛡️</span>
+          <div style="font-size:12px;color:var(--text2)"><b style="color:var(--accent2)">Admin, Supervisor, Viewer, and Employee</b> are built-in — their permissions are fixed in the system itself and can't be edited here, so they can never be accidentally weakened. Anything you create below is a <b style="color:var(--text)">custom role</b> with exactly the permissions you choose, enforced the same way everywhere in the system — hiding a button in the browser is never the only thing standing between a role and something it shouldn't touch.</div>
+        </div>
+
+        <div class="card section-gap">
+          <div class="card-title">➕ Create a New Role</div>
+          <div class="form-field" style="margin-bottom:16px;max-width:360px"><label>Role Name</label><input type="text" id="role-new-name" placeholder="e.g. HR Assistant, Billing Clerk"></div>
+          <div id="role-new-permissions" style="margin-bottom:16px"></div>
+          <button class="btn btn-primary" onclick="createRole()">Create Role</button>
+        </div>
+
+        <div class="card section-gap">
+          <div class="card-title">Existing Custom Roles</div>
+          <div id="roles-list"></div>
         </div>
       </div>
 
@@ -3703,6 +3731,16 @@ function esc(str) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// How a shift record actually came to exist — entered by hand, or the
+// employee clocked themselves in/out (either normally, or via a supervisor
+// override past a house's staffing cap). Existing shifts from before this
+// tracking existed correctly default to 'manual'.
+function sourceBadge(source) {
+  if (source === 'clock_in') return '<span class="badge badge-success" style="font-size:10px" title="Employee clocked in/out themselves">📱 Clock In</span>';
+  if (source === 'clock_in_override') return '<span class="badge badge-warn" style="font-size:10px" title="Admin or supervisor clocked in or closed out on the employees behalf">🔓 Override</span>';
+  return '<span class="badge badge-muted" style="font-size:10px" title="Entered directly by an admin or supervisor">✏️ Manual</span>';
+}
+
 // Returns today's date as YYYY-MM-DD in the browser's actual local timezone.
 // NEVER build "today" by taking new Date(), calling toISOString(), then
 // slicing the date portion — toISOString() always converts to UTC first, so
@@ -3746,6 +3784,35 @@ function updateSaveIndicator() {
 // ──────────────────────────────────────────────────────────
 // ROLE-BASED ACCESS CONTROL
 // ──────────────────────────────────────────────────────────
+let _myPermissions = [];
+const BUILTIN_ROLE_NAMES = ['admin','supervisor','viewer','employee'];
+
+async function loadMyPermissions() {
+  try {
+    const res = await fetch('/api/my-permissions');
+    if (res.ok) { const body = await res.json(); _myPermissions = body.permissions || []; }
+  } catch(e) { _myPermissions = []; }
+}
+
+// Which permission a custom role needs to see a given page. Built-in roles
+// never consult this — they keep using PAGE_ROLES exactly as before, so
+// their existing access is completely unaffected by this system existing.
+const PAGE_REQUIRED_PERMISSION = {
+  dashboard: 'dashboard_view', timesheet: 'shifts_view', approvals: 'approvals_view',
+  reportbuilder: 'reports_view', payperiod: 'reports_view', payroll: 'payroll_view',
+  monthly: 'reports_view', leaderboard: 'reports_view', payconfig: 'payroll_run',
+  taxbenefits: 'taxes_manage', staff: 'staff_view', locations: 'locations_view',
+  passwords: 'users_view', datamanager: 'data_export', audittrail: 'audit_view',
+  usermanual: 'dashboard_view', roles: 'roles_manage',
+};
+
+function canAccessPage(page) {
+  const role = _currentUser ? _currentUser.role : 'viewer';
+  if (BUILTIN_ROLE_NAMES.includes(role)) return (PAGE_ROLES[page] || ['admin']).includes(role);
+  const requiredPerm = PAGE_REQUIRED_PERMISSION[page];
+  return requiredPerm ? _myPermissions.includes(requiredPerm) : false;
+}
+
 const PAGE_ROLES = {
   myportal:      ['employee'],
   dashboard:     ['admin','supervisor','viewer'],
@@ -3761,6 +3828,7 @@ const PAGE_ROLES = {
   staff:         ['admin'],
   locations:     ['admin'],
   passwords:     ['admin'],
+  roles:         ['admin'],
   datamanager:   ['admin'],
   audittrail:    ['admin','supervisor'],
   usermanual:    ['admin','supervisor','viewer'],
@@ -3779,15 +3847,21 @@ function userCan(action) {
     dataManager:   ['admin'],
     payConfig:     ['admin'],
   };
-  return (map[action] || ['admin']).includes(role);
+  if (BUILTIN_ROLE_NAMES.includes(role)) return (map[action] || ['admin']).includes(role);
+  // Custom role: the same actions, expressed as permission keys instead.
+  const permMap = {
+    addShift: 'shifts_add', deleteShift: 'shifts_delete', editShift: 'shifts_edit',
+    manageStaff: 'staff_manage', manageLocations: 'locations_manage', manageUsers: 'users_manage',
+    approveShifts: 'approvals_review_shifts', dataManager: 'data_export', payConfig: 'payroll_run',
+  };
+  return _myPermissions.includes(permMap[action] || '__unmapped__');
 }
 
 function updateNavForRole() {
   const role = _currentUser ? _currentUser.role : 'viewer';
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     const page = item.getAttribute('data-page');
-    const allowed = PAGE_ROLES[page] || ['admin'];
-    const canAccess = allowed.includes(role);
+    const canAccess = canAccessPage(page);
     if (role === 'employee') {
       // Employees get a purpose-built portal — hide everything that isn't theirs
       item.style.display = canAccess ? '' : 'none';
@@ -3795,7 +3869,7 @@ function updateNavForRole() {
       item.style.display = '';
       item.style.opacity = '0.35';
       item.style.pointerEvents = 'none';
-      item.title = 'Access restricted — Admin only';
+      item.title = 'Access restricted — this role does not have permission';
     } else {
       item.style.display = '';
       item.style.opacity = '';
@@ -4068,7 +4142,7 @@ document.getElementById('login-user').addEventListener('keydown', e => { if(e.ke
 
 // Shows the main app UI for the now-authenticated, now-loaded _currentUser.
 // Called after either a fresh login or an auto-resumed session on page load.
-function enterApp() {
+async function enterApp() {
   const user = _currentUser;
   document.getElementById('app').style.display = 'block';
   document.getElementById('user-name-label').textContent = user.name;
@@ -4087,6 +4161,7 @@ function enterApp() {
     roleEl.style.color = roleColors[user.role] || 'var(--text3)';
     roleEl.style.display = 'inline';
   }
+  if (!BUILTIN_ROLE_NAMES.includes(user.role)) await loadMyPermissions();
   updateNavForRole();
   initApp();
 }
@@ -4109,9 +4184,8 @@ function toggleMobileSidebar(forceState) {
 
 function nav(page, el) {
   const role = _currentUser ? _currentUser.role : 'viewer';
-  const allowed = PAGE_ROLES[page] || ['admin'];
-  if (!allowed.includes(role)) {
-    showToast('🚫 Access restricted — ' + role + ' role cannot access this section', 'danger');
+  if (!canAccessPage(page)) {
+    showToast('🚫 Access restricted — your role does not have permission for this section', 'danger');
     return;
   }
   toggleMobileSidebar(false); // auto-close the drawer on mobile after picking a page
@@ -4140,7 +4214,8 @@ function nav(page, el) {
     passwords: renderPasswordsPage,
     datamanager: renderDataManager,
     audittrail: renderAuditTrail,
-    reportbuilder: renderReportBuilder
+    reportbuilder: renderReportBuilder,
+    roles: renderRolesPage
   };
   if (renders[page]) renders[page]();
 }
@@ -5578,7 +5653,7 @@ async function reviewClockEntry(id, action) {
       entry.reviewedAt = new Date().toLocaleString();
       if (action === 'approve' && body.shiftId) {
         entry.shiftId = body.shiftId;
-        SHIFTS.push({ id: body.shiftId, staff: entry.staffId, date: entry.clockInDate, timeIn: entry.clockInTime, timeOut: entry.clockOutTime, loc: entry.location, hours: calcHours(entry.clockInTime, entry.clockOutTime), regHours: 0, otHours: 0, approved: true, periodStart: '', periodEnd: '' });
+        SHIFTS.push({ id: body.shiftId, staff: entry.staffId, date: entry.clockInDate, start: entry.clockInTime, end: entry.clockOutTime, location: entry.location, hours: calcHours(entry.clockInTime, entry.clockOutTime), regHours: 0, otHours: 0, approved: true, periodStart: '', periodEnd: '', source: entry.overridden ? 'clock_in_override' : 'clock_in' });
       }
     }
     showToast(action === 'approve' ? '✅ Clock entry approved — added to timesheet' : 'Clock entry denied');
@@ -5773,7 +5848,7 @@ function approveShift(pendingId) {
   if (idx < 0) return;
   const p = PENDING_APPROVALS[idx];
   // Add the shift
-  const newShift = { id: genId(), date: p.date, staff: p.staffId, location: p.location, start: p.start, end: p.end, hours: p.hours, _new: true };
+  const newShift = { id: genId(), date: p.date, staff: p.staffId, location: p.location, start: p.start, end: p.end, hours: p.hours, source: 'manual', _new: true };
   SHIFTS.unshift(newShift);
   // Log approval
   APPROVED_EXCEPTIONS.push({
@@ -6092,7 +6167,7 @@ function renderTimesheetTable() {
       <th>#</th><th>Date</th><th>Staff</th><th>ID</th><th>Location</th>
       <th>Start</th><th>End</th><th>Hrs</th><th>Rate</th>
       <th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th>Shift Pay</th>
-      <th>Period Hrs</th><th>Status</th><th>Pay Period</th><th></th>
+      <th>Period Hrs</th><th>Status</th><th>Source</th><th>Pay Period</th><th></th>
     </tr></thead><tbody>`;
 
   data.forEach((s, i) => {
@@ -6116,6 +6191,7 @@ function renderTimesheetTable() {
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(s.shiftPay)}</td>
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
       <td>${isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : '')}</td>
+      <td>${sourceBadge(s.source)}</td>
       <td style="font-size:11px;color:var(--text3);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${s.period}</td>
       <td style="white-space:nowrap">${userCan('editShift') ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift">✕ Delete</button>` : ''}</td>
     </tr>`;
@@ -6217,7 +6293,7 @@ function addShift() {
   }
 
   // No violation — add directly
-  const newShift = { id: genId(), date, staff, location, start, end, hours, _new: true };
+  const newShift = { id: genId(), date, staff, location, start, end, hours, source: 'manual', _new: true };
   SHIFTS.unshift(newShift);
   const stName = STAFF.find(x=>x.id===staff);
   auditLog('ADD_SHIFT', `Shift added: ${stName ? stName.last+', '+stName.first : staff} @ ${location}`,
@@ -6262,7 +6338,7 @@ function approveAndAdd() {
   const reason = document.getElementById('modal-24hr-reason').value.trim();
   if (!reason) { showToast('Please enter an authorization reason', 'danger'); return; }
   if (!_pendingShift) return;
-  const newShift = { id: genId(), date: _pendingShift.date, staff: _pendingShift.staffId, location: _pendingShift.location, start: _pendingShift.start, end: _pendingShift.end, hours: _pendingShift.hours, _new: true };
+  const newShift = { id: genId(), date: _pendingShift.date, staff: _pendingShift.staffId, location: _pendingShift.location, start: _pendingShift.start, end: _pendingShift.end, hours: _pendingShift.hours, source: 'manual', _new: true };
   SHIFTS.unshift(newShift);
   APPROVED_EXCEPTIONS.push({
     shiftId: newShift.id,
@@ -8146,7 +8222,129 @@ function saveEditLocation() {
 // ──────────────────────────────────────────────────────────
 // PASSWORD MANAGEMENT
 // ──────────────────────────────────────────────────────────
-function renderPasswordsPage() {
+// Friendly grouping/labels for the permission checkbox matrix — purely
+// presentational, doesn't affect what's actually enforced server-side.
+const PERMISSION_GROUPS = [
+  { title: 'General', perms: { dashboard_view: 'View Dashboard' } },
+  { title: 'Timesheet / Shifts', perms: { shifts_view: 'View shifts', shifts_add: 'Add shifts', shifts_edit: 'Edit shifts', shifts_delete: 'Delete shifts' } },
+  { title: 'Approvals', perms: { approvals_view: 'View Approvals page', approvals_review_shifts: 'Approve/deny 24hr shift exceptions', approvals_review_leave: 'Approve/deny time-off requests', approvals_review_clock: 'Approve/deny clock in/out entries', clock_override: 'Override clock-in/out past capacity' } },
+  { title: 'Payroll & Taxes', perms: { payroll_view: 'View payroll', payroll_run: 'Confirm & run payroll', payroll_unlock: 'Unlock a finalized payroll period', taxes_manage: 'Manage tax & benefit defaults' } },
+  { title: 'Staff', perms: { staff_view: 'View staff list', staff_manage: 'Add/edit/deactivate staff', staff_view_wage: 'View pay rates', staff_pto_adjust: 'Manually adjust PTO balances' } },
+  { title: 'Locations', perms: { locations_view: 'View locations', locations_manage: 'Add/edit/delete locations' } },
+  { title: 'Users & Roles', perms: { users_view: 'View user accounts', users_manage: 'Create/edit/delete user accounts', roles_manage: 'Create/edit custom roles' } },
+  { title: 'Data Manager', perms: { data_export: 'Export data', data_import: 'Import data', data_backup: 'Create/download backups', data_reset: 'Factory reset (delete all data)' } },
+  { title: 'Reports & Audit', perms: { reports_view: 'View reports', audit_view: 'View audit trail', audit_verify: 'Verify audit trail integrity' } },
+];
+
+function renderPermissionCheckboxes(containerId, checkedPerms) {
+  checkedPerms = checkedPerms || [];
+  const el = document.getElementById(containerId);
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">';
+  PERMISSION_GROUPS.forEach(group => {
+    html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">${esc(group.title)}</div>`;
+    Object.entries(group.perms).forEach(([key, label]) => {
+      const checked = checkedPerms.includes(key);
+      html += `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" value="${key}" class="${containerId}-perm-cb" ${checked?'checked':''} style="width:15px;height:15px;cursor:pointer">
+        ${esc(label)}
+      </label>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function getCheckedPermissions(containerId) {
+  return [...document.querySelectorAll(`.${containerId}-perm-cb:checked`)].map(cb => cb.value);
+}
+
+async function renderRolesPage() {
+  renderPermissionCheckboxes('role-new-permissions', []);
+  const listEl = document.getElementById('roles-list');
+  listEl.innerHTML = '<div style="color:var(--text3);font-size:13px">Loading\u2026</div>';
+  try {
+    const res = await fetch('/api/roles');
+    const body = await res.json();
+    if (!res.ok) { listEl.innerHTML = `<div style="color:var(--danger2);font-size:13px">${esc(body.error||'Could not load roles')}</div>`; return; }
+    window._rolesCache = body.roles;
+    if (!body.roles.length) {
+      listEl.innerHTML = '<div style="color:var(--text3);font-size:13px">No custom roles yet \u2014 create one above.</div>';
+      return;
+    }
+    let html = '';
+    body.roles.forEach(role => {
+      const containerId = 'role-edit-' + role.id;
+      const userCount = USERS.filter(u => u.role === role.name).length;
+      html += `<div style="border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div><span style="font-size:14px;font-weight:700;color:var(--text)">${esc(role.name)}</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:10px">${userCount} user${userCount!==1?'s':''} assigned \u00b7 created by ${esc(role.createdBy)}</span></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" style="font-size:11px;padding:6px 12px" onclick="saveRolePermissions('${role.id}')">💾 Save Changes</button>
+            <button class="btn btn-danger" style="font-size:11px;padding:6px 12px" onclick="deleteRole('${role.id}','${esc(role.name).replace(/'/g,"\\'")}')">✕ Delete</button>
+          </div>
+        </div>
+        <div id="${containerId}"></div>
+      </div>`;
+    });
+    listEl.innerHTML = html;
+    body.roles.forEach(role => renderPermissionCheckboxes('role-edit-' + role.id, role.permissions));
+  } catch (e) {
+    listEl.innerHTML = '<div style="color:var(--danger2);font-size:13px">Could not load roles \u2014 check your connection.</div>';
+  }
+}
+
+async function createRole() {
+  const name = document.getElementById('role-new-name').value.trim();
+  const permissions = getCheckedPermissions('role-new-permissions');
+  if (!name) { showToast('Enter a role name', 'danger'); return; }
+  try {
+    const res = await fetch('/api/roles', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name, permissions })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not create role', 'danger'); return; }
+    showToast(`✅ Role "${esc(name)}" created`);
+    document.getElementById('role-new-name').value = '';
+    renderPermissionCheckboxes('role-new-permissions', []);
+    renderRolesPage();
+  } catch (e) {
+    showToast('Could not create role — check your connection', 'danger');
+  }
+}
+
+async function saveRolePermissions(roleId) {
+  const permissions = getCheckedPermissions('role-edit-' + roleId);
+  try {
+    const res = await fetch(`/api/roles/${encodeURIComponent(roleId)}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ permissions })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not save changes', 'danger'); return; }
+    showToast('✅ Permissions updated');
+  } catch (e) {
+    showToast('Could not save — check your connection', 'danger');
+  }
+}
+
+async function deleteRole(roleId, roleName) {
+  if (!confirm(`Delete the role "${roleName}"? Anyone still assigned to it will need a new role first.`)) return;
+  try {
+    const res = await fetch(`/api/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not delete role', 'danger'); return; }
+    showToast('Role deleted', 'warn');
+    renderRolesPage();
+  } catch (e) {
+    showToast('Could not delete — check your connection', 'danger');
+  }
+}
+
+async function renderPasswordsPage() {
   renderUserList();
   renderChangePasswordDropdown();
   const linkSel = document.getElementById('pw-staff-link');
@@ -8155,6 +8353,27 @@ function renderPasswordsPage() {
       .map(s => `<option value="${s.id}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})</option>`).join('');
   }
   onPwRoleChange();
+  // Custom roles get appended after the built-in ones, in their own group
+  try {
+    const res = await fetch('/api/roles');
+    if (res.ok) {
+      const body = await res.json();
+      const roleSel = document.getElementById('pw-role');
+      const existingCustomGroup = roleSel.querySelector('optgroup[label="Custom Roles"]');
+      if (existingCustomGroup) existingCustomGroup.remove();
+      if (body.roles.length) {
+        const group = document.createElement('optgroup');
+        group.label = 'Custom Roles';
+        body.roles.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.name;
+          opt.textContent = r.name;
+          group.appendChild(opt);
+        });
+        roleSel.appendChild(group);
+      }
+    }
+  } catch (e) { /* custom roles are a nice-to-have here; built-in roles still work without this */ }
 }
 
 function onPwRoleChange() {
@@ -8793,7 +9012,7 @@ function rbBuildDateRangeReport(allComputed, fromDate, toDate, staffIds) {
     <div class="rb-sum-pill"><div class="rb-sum-pill-label">Total Pay</div><div class="rb-sum-pill-val" style="color:var(--accent2)">${$fmt(totRegPay+totOTPay)}</div></div>
   </div>
   <div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Staff</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>OT Hrs</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>Period</th></tr></thead>
+    <thead><tr><th>Date</th><th>Staff</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>OT Hrs</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>Period</th><th>Source</th></tr></thead>
     <tbody>
       ${shifts.map(s => {
         const st = STAFF.find(x=>x.id===s.staff);
@@ -8809,6 +9028,7 @@ function rbBuildDateRangeReport(allComputed, fromDate, toDate, staffIds) {
           <td class="mono" style="color:${s.otPay>0?'var(--danger)':'var(--text3)'}">${$fmt(s.otPay)}</td>
           <td class="mono" style="color:var(--accent2);font-weight:600">${$fmt(s.shiftPay)}</td>
           <td style="font-size:11px;color:var(--text3)">${s.period}</td>
+          <td>${sourceBadge(s.source)}</td>
         </tr>`;
       }).join('')}
       <tr style="background:var(--surface2);font-weight:600">
@@ -8818,6 +9038,7 @@ function rbBuildDateRangeReport(allComputed, fromDate, toDate, staffIds) {
         <td class="mono">${$fmt(totRegPay)}</td>
         <td class="mono" style="color:var(--danger)">${$fmt(totOTPay)}</td>
         <td class="mono" style="color:var(--accent2)">${$fmt(totRegPay+totOTPay)}</td>
+        <td></td>
         <td></td>
       </tr>
     </tbody>
