@@ -470,6 +470,11 @@
   }
   @media (max-width: 860px) {
     #mobile-menu-btn { display:inline-block !important; }
+    .topbar-brand span { display:none; }
+    .topbar-period { display:none; }
+    .print-topbar-btn, #db-indicator, #topbar-role-badge, #new-period-topbar-btn { display:none !important; }
+    .topbar-user { gap:8px; }
+    #user-name-label { max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .sidebar {
       position:fixed;
       top:60px;
@@ -2118,6 +2123,9 @@
             <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="toggleOverridePanel()">🔓 Override Clock-In</button>
           </div>
           <div id="clock-override-panel" style="display:none"></div>
+          <div style="font-family:var(--display);font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">🟢 Currently Clocked In</div>
+          <div class="table-wrap" id="open-clock-entries-list" style="margin-bottom:24px"></div>
+          <div style="font-family:var(--display);font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Awaiting Review / History</div>
           <div class="table-wrap" id="clock-entries-list"></div>
         </div>
       </div>
@@ -2446,7 +2454,7 @@
             <div class="form-field"><label>Location Name</label><input type="text" id="loc-name-input" placeholder="e.g. Franklin House"></div>
             <div class="form-field"><label>Hourly Rate ($/hr)</label><input type="number" id="loc-rate-input" step="0.25" placeholder="12.00"></div>
             <div class="form-field"><label>OT Multiplier</label><input type="number" id="loc-mult-input" step="0.5" value="1.5"></div>
-            <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-maxstaff-input" min="0" step="1" placeholder="0 = no limit"></div>
+            <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-maxstaff-input" min="0" max="100" step="1" placeholder="0 = no limit"></div>
             <div class="form-field"><label>Notes</label><input type="text" id="loc-note-input" placeholder="Standard"></div>
           </div>
           <button class="btn btn-primary" style="margin-top:14px" onclick="addLocation()">+ Add Location</button>
@@ -3396,7 +3404,7 @@
     <!-- Name / Notes row -->
     <div class="form-grid" style="margin-bottom:20px">
       <div class="form-field"><label>Location Name</label><input type="text" id="loc-edit-name" style="width:100%"></div>
-      <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-edit-maxstaff" min="0" step="1" style="width:100%" placeholder="0 = no limit"></div>
+      <div class="form-field"><label>Max Staff / Shift</label><input type="number" id="loc-edit-maxstaff" min="0" max="100" step="1" style="width:100%" placeholder="0 = no limit"></div>
       <div class="form-field"><label>Notes</label><input type="text" id="loc-edit-notes" style="width:100%"></div>
     </div>
 
@@ -3440,6 +3448,26 @@
 </div>
 
 <!-- ══ STAFF EDIT MODAL ══ -->
+<div class="modal-overlay hidden" id="admin-clockout-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title" style="color:var(--warn)">⏹️ Close Out Clock-In</div>
+    <div class="modal-sub" id="admin-clockout-sub">Closing out on behalf of an employee</div>
+    <input type="hidden" id="admin-clockout-entry-id">
+    <input type="hidden" id="admin-clockout-staff-id">
+    <div class="form-field" style="margin-bottom:14px"><label>Clock-Out Date</label><input type="date" id="admin-clockout-date" style="width:100%"></div>
+    <div class="form-field" style="margin-bottom:14px"><label>Clock-Out Time</label><div class="time-parts">
+      <select id="admin-clockout-time-h"></select>:<select id="admin-clockout-time-m"></select>
+      <select id="admin-clockout-time-p"></select>
+    </div></div>
+    <div class="form-field" style="margin-bottom:8px"><label>Reason (required)</label><input type="text" id="admin-clockout-reason" maxlength="300" placeholder="e.g. Forgot to clock out, confirmed hours with employee"></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:20px">This closes out their open clock-in with the hours you enter. It still goes through the normal Approve/Deny review afterward — this doesn't skip that step, it just lets someone else finish what the employee couldn't.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAdminClockOutModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdminClockOut()">⏹️ Close Out</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay hidden" id="staff-edit-modal">
   <div class="modal" style="max-width:580px">
     <div class="modal-title" style="color:var(--accent2)">✏️ Edit Staff Member</div>
@@ -4926,7 +4954,7 @@ function renderDashboardTrendChart() {
   });
 }
 
-function renderMyClockWidget() {
+async function renderMyClockWidget() {
   const el = document.getElementById('mp-clock-widget');
   const staffId = _currentUser.staffId;
   const myStaff = STAFF.find(s => s.id === staffId);
@@ -4941,13 +4969,32 @@ function renderMyClockWidget() {
     </div>
     <div class="form-field" style="margin-bottom:12px"><label>Notes (optional)</label><input type="text" id="mp-clock-out-notes" maxlength="500" placeholder="Anything worth noting about this shift"></div>
     <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockOut()">⏹️ Clock Out</button>`;
-  } else {
-    const defaultLoc = myStaff ? myStaff.loc : '';
-    html += `<div class="form-field" style="margin-bottom:14px"><label>Location</label>
-      <select id="mp-clock-location">${LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name===defaultLoc?' selected':''}>${esc(l.name)}</option>`).join('')}</select>
-    </div>
-    <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockIn()">▶️ Clock In</button>`;
+    el.innerHTML = html;
+    return;
   }
+
+  // Not clocked in — show every house (not just their assigned one, since
+  // staff sometimes cover shifts elsewhere) with live occupancy so they can
+  // see at a glance whether a house has room, before trying and getting
+  // rejected. Only counts are shown here, never who specifically is there.
+  const defaultLoc = myStaff ? myStaff.loc : '';
+  let occupancyByLoc = {};
+  try {
+    const res = await fetch('/api/locations/occupancy');
+    if (res.ok) { const body = await res.json(); body.occupancy.forEach(o => { occupancyByLoc[o.location] = o; }); }
+  } catch (e) { /* occupancy hint is a nice-to-have; clock-in still works without it */ }
+
+  function locLabel(l) {
+    const occ = occupancyByLoc[l.name];
+    if (!occ || !occ.maxStaff) return l.name;
+    return `${l.name} (${occ.occupancy}/${occ.maxStaff}${occ.atCapacity ? ' \u2014 full' : ''})`;
+  }
+
+  html += `<div class="form-field" style="margin-bottom:14px"><label>Location</label>
+    <select id="mp-clock-location" onchange="updateMyClockOccupancyHint()">${LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name===defaultLoc?' selected':''}>${esc(locLabel(l))}</option>`).join('')}</select>
+    <div id="mp-clock-occupancy-hint" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
+  </div>
+  <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockIn()">▶️ Clock In</button>`;
 
   const mine = (CLOCK_ENTRIES || []).filter(c => c.staffId === staffId && c.status !== 'open').slice(0, 8);
   if (mine.length) {
@@ -4968,6 +5015,19 @@ function renderMyClockWidget() {
   }
 
   el.innerHTML = html;
+  window._mpOccupancyByLoc = occupancyByLoc;
+  updateMyClockOccupancyHint();
+}
+
+function updateMyClockOccupancyHint() {
+  const sel = document.getElementById('mp-clock-location');
+  const hint = document.getElementById('mp-clock-occupancy-hint');
+  if (!sel || !hint) return;
+  const occ = (window._mpOccupancyByLoc || {})[sel.value];
+  if (!occ || !occ.maxStaff) { hint.textContent = 'No staffing limit set for this house.'; return; }
+  hint.innerHTML = occ.atCapacity
+    ? `<span style="color:var(--warn)">\u26A0\uFE0F This house is at capacity (${occ.occupancy}/${occ.maxStaff}) \u2014 you may be asked to have a supervisor override.</span>`
+    : `${occ.occupancy}/${occ.maxStaff} currently clocked in \u2014 room for ${occ.maxStaff - occ.occupancy} more.`;
 }
 
 async function doClockIn() {
@@ -5437,6 +5497,35 @@ async function reviewLeaveRequest(id, action) {
   }
 }
 
+// Shows everyone currently clocked in, with a way to close out their entry
+// on their behalf — for someone who forgot to clock out, lost portal access,
+// or otherwise can't do it themselves. The review table below this one
+// previously excluded 'open' entries entirely, which meant admins had no
+// visibility into who was still clocked in at all.
+function renderOpenClockEntries() {
+  const el = document.getElementById('open-clock-entries-list');
+  if (!el) return;
+  const openEntries = (CLOCK_ENTRIES || []).filter(c => c.status === 'open').slice().sort((a,b) => (a.clockInDate+a.clockInTime).localeCompare(b.clockInDate+b.clockInTime));
+  if (!openEntries.length) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0">Nobody is currently clocked in.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Staff</th><th>Location</th><th>Clocked In Since</th><th></th></tr></thead><tbody>';
+  openEntries.forEach(c => {
+    const st = STAFF.find(s => s.id === c.staffId);
+    const name = st ? `${st.last}, ${st.first}` : c.staffId;
+    const overrideNote = c.overridden ? `<div style="font-size:11px;color:var(--warn);margin-top:2px">⚠️ Override by ${esc(c.overrideBy||'')}: ${esc(c.overrideReason||'')}</div>` : '';
+    html += `<tr>
+      <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}</td>
+      <td>${esc(c.location||'\u2014')}</td>
+      <td class="mono">${c.clockInDate} ${formatTimeDisplay(c.clockInTime)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openAdminClockOutModal('${c.id}','${c.staffId}','${esc(name).replace(/'/g,"\\'")}')">⏹️ Clock Out</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
 function renderClockEntriesAdmin() {
   const el = document.getElementById('clock-entries-list');
   if (!el) return;
@@ -5497,6 +5586,52 @@ async function reviewClockEntry(id, action) {
     updateApprovalsBadge();
   } catch (e) {
     showToast('Review failed — check your connection', 'danger');
+  }
+}
+
+function openAdminClockOutModal(entryId, staffId, staffName) {
+  document.getElementById('admin-clockout-entry-id').value = entryId;
+  document.getElementById('admin-clockout-staff-id').value = staffId;
+  document.getElementById('admin-clockout-sub').textContent = 'Closing out: ' + staffName;
+  document.getElementById('admin-clockout-date').value = todayLocalISO();
+  const now = new Date();
+  setTimeParts('admin-clockout-time', `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`);
+  document.getElementById('admin-clockout-reason').value = '';
+  document.getElementById('admin-clockout-modal').classList.remove('hidden');
+}
+
+function closeAdminClockOutModal() {
+  document.getElementById('admin-clockout-modal').classList.add('hidden');
+}
+
+async function submitAdminClockOut() {
+  const staffId = document.getElementById('admin-clockout-staff-id').value;
+  const date = document.getElementById('admin-clockout-date').value;
+  const time = getTimeParts('admin-clockout-time');
+  const reason = document.getElementById('admin-clockout-reason').value.trim();
+  if (!date) { showToast('Select a date', 'danger'); return; }
+  if (!time) { showToast('Select a valid time', 'danger'); return; }
+  if (reason.length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
+
+  try {
+    const res = await fetch('/api/clock/admin-out', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ staffId, date, time, reason })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Clock out failed', 'danger'); return; }
+
+    const entry = CLOCK_ENTRIES.find(c => c.staffId === staffId && c.status === 'open');
+    if (entry) {
+      entry.clockOutDate = date; entry.clockOutTime = time; entry.status = 'pending';
+      entry.overridden = true; entry.overrideReason = reason; entry.overrideBy = _currentUser.name;
+    }
+    showToast(`✅ Closed out (${numFmt(body.hours)}h) \u2014 now awaiting review`);
+    closeAdminClockOutModal();
+    renderOpenClockEntries();
+    renderClockEntriesAdmin();
+  } catch (e) {
+    showToast('Clock out failed — check your connection', 'danger');
   }
 }
 
@@ -5580,6 +5715,7 @@ async function submitOverride() {
 
 function renderApprovalsPage() {
   renderLeaveRequestsAdmin();
+  renderOpenClockEntries();
   renderClockEntriesAdmin();
   updateApprovalsBadge();
   // Pending
@@ -7763,6 +7899,7 @@ function addLocation() {
   if (!name || !rate) { showToast('Name and rate required', 'danger'); return; }
   const mult = parseFloat(document.getElementById('loc-mult-input').value) || 1.5;
   const maxStaff = parseInt(document.getElementById('loc-maxstaff-input').value, 10) || 0;
+  if (maxStaff < 0 || maxStaff > 100) { showToast('Max Staff / Shift must be 0 (no limit) to 100', 'danger'); return; }
   const today = todayLocalISO();
   const maxLocNum = LOCATIONS.reduce((max, l) => { const n = parseInt(l.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   LOCATIONS.push({
@@ -7784,9 +7921,11 @@ function deleteLocation(id) {
 
   const staffAssigned = STAFF.filter(s => s.loc === l.name).length;
   const shiftsHere = SHIFTS.filter(s => s.location === l.name || s.loc === l.name).length;
+  const currentlyClockedIn = (CLOCK_ENTRIES||[]).filter(c => c.location === l.name && c.status === 'open').length;
   let msg = `Delete ${l.name}?`;
-  if (staffAssigned || shiftsHere) {
+  if (staffAssigned || shiftsHere || currentlyClockedIn) {
     const parts = [];
+    if (currentlyClockedIn) parts.push(`${currentlyClockedIn} ${currentlyClockedIn!==1?'people are':'person is'} clocked in there right now`);
     if (staffAssigned) parts.push(`${staffAssigned} staff member${staffAssigned!==1?'s':''} assigned here`);
     if (shiftsHere) parts.push(`${shiftsHere} shift${shiftsHere!==1?'s':''} on record here`);
     msg += `\n\nThis location has ${parts.join(' and ')}. Existing shift history stays intact, but this location will no longer be selectable for new shifts, and assigned staff will need a new location set.\n\nDelete anyway?`;
@@ -7910,6 +8049,7 @@ function saveEditLocation() {
   const newNotes = document.getElementById('loc-edit-notes').value.trim();
 
   if (!newName || isNaN(newRate) || newRate <= 0) { showToast('Name and a valid rate are required', 'danger'); return; }
+  if (newMaxStaff < 0 || newMaxStaff > 100) { showToast('Max Staff / Shift must be 0 (no limit) to 100', 'danger'); return; }
 
   const retro = document.querySelector('input[name="loc-retro"]:checked')?.value || 'forward';
   const oldName = l.name;

@@ -181,6 +181,19 @@ async function main() {
     const absurdResult = await request('POST', '/api/db/save', { body: absurdHours, cookie: adminCookie });
     check('absurdly large shift hours are rejected', absurdResult.status === 403);
 
+    console.log('\nMax Staff / Shift validation:');
+    const maxStaffBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    async function tryMaxStaff(value) {
+      const body = { ...maxStaffBase.body };
+      body.LOCATIONS = body.LOCATIONS.map((l, i) => i === 0 ? { ...l, maxStaff: value } : l);
+      return request('POST', '/api/db/save', { body, cookie: adminCookie });
+    }
+    check('negative maxStaff is rejected', (await tryMaxStaff(-5)).status === 403);
+    check('decimal maxStaff is rejected', (await tryMaxStaff(2.5)).status === 403);
+    check('absurdly large maxStaff is rejected', (await tryMaxStaff(999999999)).status === 403);
+    check('valid maxStaff is accepted', (await tryMaxStaff(3)).status === 200);
+    check('zero (no limit) is accepted', (await tryMaxStaff(0)).status === 200);
+
     console.log('\nPer-house staffing caps and supervisor override:');
     const capBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     const capSetup = { ...capBase.body };
@@ -226,6 +239,68 @@ async function main() {
     const auditAfterOverride = await request('GET', '/api/db/load', { cookie: adminCookie });
     const overrideAuditEntry = auditAfterOverride.body.AUDIT_LOG.find(e => e.type === 'CLOCK_IN_OVERRIDE');
     check('override is recorded in the audit trail', overrideAuditEntry && overrideAuditEntry.detail.includes('Coverage emergency'));
+
+    console.log('\nGenuine concurrency — capacity and double-clock-in guards under real simultaneous requests:');
+    const raceBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const raceSetup = { ...raceBase.body };
+    raceSetup.LOCATIONS = [...raceSetup.LOCATIONS, { id: 'LRACE', name: 'Race Condition House', rate: 12, mult: 1.5, notes: '', rateHistory: [], maxStaff: 2 }];
+    const raceStaffIds = ['SR1','SR2','SR3','SR4','SR5'];
+    raceSetup.STAFF = [...raceSetup.STAFF, ...raceStaffIds.map(id => ({ id, first: id, last: 'Race', title: 'DSP', type: 'Full-Time', loc: 'Race Condition House', rate: 12, start: '2026-01-01', status: 'Active' }))];
+    raceSetup.USERS = [...raceSetup.USERS, ...raceStaffIds.map(id => ({ id: 'U'+id, username: 'race'+id.toLowerCase(), password: 'racepass1', name: id, role: 'employee', staffId: id }))];
+    await request('POST', '/api/db/save', { body: raceSetup, cookie: adminCookie });
+
+    const raceCookies = await Promise.all(raceStaffIds.map(id =>
+      request('POST', '/api/auth/login', { body: { username: 'race'+id.toLowerCase(), password: 'racepass1' } }).then(r => r.cookie)
+    ));
+
+    // Fire all 5 clock-in requests at once — genuinely concurrent, not sequential awaits.
+    const raceResults = await Promise.all(raceCookies.map(cookie =>
+      request('POST', '/api/clock/in', { cookie, body: { location: 'Race Condition House', date: '2026-05-10', time: '08:00' } })
+    ));
+    const raceSuccesses = raceResults.filter(r => r.status === 200).length;
+    check('exactly capacity (2) succeed out of 5 truly simultaneous clock-ins, never more', raceSuccesses === 2);
+
+    const raceEntries = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const raceOpenCount = raceEntries.body.clockEntries.filter(c => c.location === 'Race Condition House' && c.status === 'open').length;
+    check('database ground truth matches — exactly 2 open entries, not more', raceOpenCount === 2);
+
+    // Same person firing 5 truly simultaneous clock-in requests (rapid double-click).
+    const dblSetup = { ...raceBase.body };
+    dblSetup.STAFF = [...dblSetup.STAFF, { id: 'SDBL', first: 'Double', last: 'Click', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    dblSetup.USERS = [...dblSetup.USERS, { id: 'UDBL', username: 'dblclick', password: 'dblpass1', name: 'Double Click', role: 'employee', staffId: 'SDBL' }];
+    await request('POST', '/api/db/save', { body: dblSetup, cookie: adminCookie });
+    const dblLogin = await request('POST', '/api/auth/login', { body: { username: 'dblclick', password: 'dblpass1' } });
+    const dblResults = await Promise.all(Array(5).fill(0).map(() =>
+      request('POST', '/api/clock/in', { cookie: dblLogin.cookie, body: { location: 'Usene House', date: '2026-05-10', time: '08:00' } })
+    ));
+    check('exactly 1 of 5 simultaneous clock-ins from the same person succeeds', dblResults.filter(r => r.status === 200).length === 1);
+
+    console.log('\nAdmin closing out someone stuck clocked in:');
+    const stuckSetup = { ...raceBase.body };
+    stuckSetup.STAFF = [...stuckSetup.STAFF, { id: 'SSTUCK', first: 'Stuck', last: 'Employee', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    stuckSetup.USERS = [...stuckSetup.USERS, { id: 'USTUCK', username: 'stuckemployee', password: 'stuckpass1', name: 'Stuck Employee', role: 'employee', staffId: 'SSTUCK' }];
+    await request('POST', '/api/db/save', { body: stuckSetup, cookie: adminCookie });
+    const stuckLogin = await request('POST', '/api/auth/login', { body: { username: 'stuckemployee', password: 'stuckpass1' } });
+    await request('POST', '/api/clock/in', { cookie: stuckLogin.cookie, body: { location: 'Usene House', date: '2026-05-08', time: '08:00' } });
+
+    const adminOutNoAuth = await request('POST', '/api/clock/admin-out', { cookie: stuckLogin.cookie, body: { staffId: 'SSTUCK', date: '2026-05-08', time: '16:00', reason: 'test' } });
+    check('non-admin cannot use admin clock-out', adminOutNoAuth.status === 403);
+
+    const adminOutNoReason = await request('POST', '/api/clock/admin-out', { cookie: adminCookie, body: { staffId: 'SSTUCK', date: '2026-05-08', time: '16:00', reason: '' } });
+    check('admin clock-out without a reason is rejected', adminOutNoReason.status === 400);
+
+    const adminOutNotClockedIn = await request('POST', '/api/clock/admin-out', { cookie: adminCookie, body: { staffId: 'S900', date: '2026-05-08', time: '16:00', reason: 'valid reason' } });
+    check('admin clock-out for someone not currently clocked in is rejected', adminOutNotClockedIn.status === 400);
+
+    const adminOutOk = await request('POST', '/api/clock/admin-out', { cookie: adminCookie, body: { staffId: 'SSTUCK', date: '2026-05-08', time: '16:00', reason: 'Forgot to clock out, confirmed with employee' } });
+    check('admin successfully closes out a stuck clock-in with correct hours', adminOutOk.status === 200 && adminOutOk.body.hours === 8);
+
+    const afterAdminOut = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const closedEntry = afterAdminOut.body.clockEntries.find(c => c.staffId === 'SSTUCK');
+    check('closed-out entry is pending (still goes through normal review) and correctly flagged', closedEntry && closedEntry.status === 'pending' && closedEntry.overridden === true && closedEntry.overrideBy === 'Admin');
+
+    const adminOutApprove = await request('POST', `/api/clock-entries/${closedEntry.id}/review`, { cookie: adminCookie, body: { action: 'approve' } });
+    check('the admin-closed entry can still go through normal approval afterward', adminOutApprove.status === 200 && !!adminOutApprove.body.shiftId);
 
     console.log('\nAdmin-facing clock entry review:');
     await request('POST', '/api/clock/out', { cookie: cap1Cookie, body: { date: '2026-05-10', time: '16:00', notes: '' } });

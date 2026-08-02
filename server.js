@@ -122,6 +122,7 @@ const DEFAULT_SEED = {
 // ── DB helpers ─────────────────────────────────────────────
 function run(sql, params = []) {
   db.run(sql, params);
+  return { changes: db.getRowsModified() };
 }
 
 function all(sql, params = []) {
@@ -519,8 +520,13 @@ function scopeDataForEmployee(fullData, staffId) {
   if (!myStaff.length) return empty;
 
   const myShifts = fullData.SHIFTS.filter(s => s.staff === staffId);
-  const myLocationNames = new Set(myShifts.map(s => s.loc).concat(myStaff.map(s => s.loc)));
-  const myLocations = fullData.LOCATIONS.filter(l => myLocationNames.has(l.name));
+  // Deliberately NOT filtered down to only locations this employee has
+  // already worked at — staff sometimes cover shifts at other houses, and
+  // they need to see every active location (name, rate, current staffing)
+  // to pick one when clocking in, not just their own history. None of this
+  // is sensitive per-person data; it's the same operational info already
+  // visible to anyone who's ever seen a shift entry.
+  const myLocations = fullData.LOCATIONS;
 
   const myPayrollRecords = fullData.PAYROLL_RECORDS.map(rec => ({
     ...rec,
@@ -607,6 +613,23 @@ function validateShifts(incomingShifts, staffIds) {
   return null;
 }
 
+// maxStaff of 0 means "no limit" everywhere else in the app, so it's
+// deliberately allowed here too — only negative, non-integer, or absurdly
+// large values get rejected. Without this, a negative value was silently
+// being treated as "no limit" by the capacity-check logic (which only
+// enforces a cap when maxStaff > 0), which is the opposite of what an admin
+// entering a negative number would reasonably expect it to mean.
+function validateLocations(incomingLocations) {
+  for (const l of (incomingLocations || [])) {
+    if (l.maxStaff === undefined || l.maxStaff === null) continue;
+    const maxStaff = Number(l.maxStaff);
+    if (!Number.isFinite(maxStaff) || !Number.isInteger(maxStaff) || maxStaff < 0 || maxStaff > 100) {
+      return `${l.name || 'A location'}'s Max Staff / Shift must be a whole number from 0 (no limit) to 100`;
+    }
+  }
+  return null;
+}
+
 function authorizeSave(existing, incoming, user) {
   const isAdmin = user.role === 'admin';
   const canShift = user.role === 'admin' || user.role === 'supervisor';
@@ -614,6 +637,9 @@ function authorizeSave(existing, incoming, user) {
   const staffIds = new Set((incoming.STAFF || existing.STAFF || []).map(s => s.id));
   const shiftValidationError = validateShifts(incoming.SHIFTS, staffIds);
   if (shiftValidationError) return shiftValidationError;
+
+  const locationValidationError = validateLocations(incoming.LOCATIONS);
+  if (locationValidationError) return locationValidationError;
 
   if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !isAdmin)
     return 'Pay period settings can only be changed by an admin account';
@@ -1069,19 +1095,43 @@ async function main() {
       if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
       if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
       const safeLocation = typeof location === 'string' ? location.slice(0, 100) : '';
+      if (!get('SELECT id FROM locations WHERE name = ?', [safeLocation])) {
+        return res.status(400).json({ error: 'Unknown location' });
+      }
 
-      const existingOpen = get(`SELECT id FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
-      if (existingOpen) return res.status(400).json({ error: 'Already clocked in — clock out first' });
+      // The staffing cap and the "no double clock-in" rule both live inside
+      // the WHERE clause of the INSERT itself, not a separate check beforehand.
+      // This isn't "check, then insert" — it's one atomic SQL statement, so
+      // there's no gap in between for two near-simultaneous requests to both
+      // slip through and over-fill the same house. This holds regardless of
+      // Node's single-threaded execution model or any future refactor that
+      // might add an `await` between a check and an insert — the database
+      // itself is the single source of truth for whether the row goes in.
+      const id = 'CE' + Date.now() + Math.random().toString(36).slice(2,6);
+      const result = run(
+        `INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at)
+         SELECT ?,?,?,?,?,'open',?
+         WHERE NOT EXISTS (SELECT 1 FROM clock_entries WHERE staff_id = ? AND status = 'open')
+           AND (
+             COALESCE((SELECT max_staff FROM locations WHERE name = ?), 0) = 0
+             OR (SELECT COUNT(*) FROM clock_entries WHERE location = ? AND status = 'open')
+                < (SELECT max_staff FROM locations WHERE name = ?)
+           )`,
+        [id, req.user.staffId, safeLocation, date, time, new Date().toISOString(),
+         req.user.staffId, safeLocation, safeLocation, safeLocation]
+      );
 
-      const capacity = checkLocationCapacity(safeLocation);
-      if (capacity.atCapacity) {
+      if (result.changes === 0) {
+        // The atomic insert didn't happen — figure out which of the two
+        // guards actually blocked it, purely to give a clear error message.
+        // This read happens AFTER the fact and doesn't affect correctness;
+        // the real decision was already made atomically above.
+        const stillOpen = get(`SELECT id FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+        if (stillOpen) return res.status(400).json({ error: 'Already clocked in — clock out first' });
+        const capacity = checkLocationCapacity(safeLocation);
         return res.status(400).json({ error: `${safeLocation} is at its staffing limit (${capacity.occupancy}/${capacity.maxStaff}) — ask a supervisor to override if this is intentional`, atCapacity: true });
       }
 
-      const id = 'CE' + Date.now() + Math.random().toString(36).slice(2,6);
-      run(`INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at)
-           VALUES (?,?,?,?,?,'open',?)`,
-        [id, req.user.staffId, safeLocation, date, time, new Date().toISOString()]);
       writeAuditLog('CLOCK_IN', `${req.user.name} clocked in at ${time} on ${date}${safeLocation ? ' — ' + safeLocation : ''}`, req.user);
       persistDB();
       res.json({ ok: true, id });
@@ -1115,10 +1165,11 @@ async function main() {
   // Live occupancy per location — how many people currently have an open
   // clock-in there right now, against each location's cap. Feeds the
   // override panel's occupancy hint on the Approvals page.
+  // Any authenticated user can see this — it's aggregate counts only, never
+  // staff identities, so there's no privacy concern in letting an employee
+  // see "2/3 clocked in" before picking a house, the same way the admin
+  // override panel already shows it.
   app.get('/api/locations/occupancy', requireAuth, (req, res) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
-      return res.status(403).json({ error: 'Not authorized' });
-    }
     try {
       const locs = all('SELECT name, max_staff FROM locations');
       const occupancy = locs.map(l => {
@@ -1163,6 +1214,39 @@ async function main() {
         req.user);
       persistDB();
       res.json({ ok: true, id });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/clock/admin-out', requireAuth, writeLimiter, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Not authorized to clock someone out directly' });
+    }
+    try {
+      const { staffId, date, time, reason } = req.body || {};
+      if (!staffId || !get('SELECT id FROM staff WHERE id = ?', [staffId])) {
+        return res.status(400).json({ error: 'Unknown staff member' });
+      }
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+      if (trimmedReason.length < 3) return res.status(400).json({ error: 'A reason (at least 3 characters) is required — e.g. "forgot to clock out, confirmed with employee"' });
+
+      const openEntry = get(`SELECT * FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [staffId]);
+      if (!openEntry) return res.status(400).json({ error: 'This staff member is not currently clocked in' });
+
+      const hours = computeClockHours(openEntry.clock_in_date, openEntry.clock_in_time, date, time);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return res.status(400).json({ error: 'Clock-out time must be after the clock-in time (' + openEntry.clock_in_date + ' ' + openEntry.clock_in_time + ')' });
+      }
+
+      const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
+      run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, status = 'pending', overridden = 1, override_reason = ?, override_by = ? WHERE id = ?`,
+        [date, time, trimmedReason.slice(0,300), req.user.name, openEntry.id]);
+      writeAuditLog('CLOCK_OUT_OVERRIDE',
+        `${req.user.name} closed out ${staff.first} ${staff.last}'s open clock-in at ${time} on ${date} (${hours.toFixed(2)}h) \u2014 reason: ${trimmedReason.slice(0,300)}`,
+        req.user);
+      persistDB();
+      res.json({ ok: true, hours: Math.round(hours * 100) / 100 });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
