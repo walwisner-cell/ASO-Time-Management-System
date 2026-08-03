@@ -3935,6 +3935,20 @@ function calcHours(start, end) {
   return (e - s) / 60;
 }
 
+// For clock entries specifically, which may carry second-level precision
+// (needed so clocking in and out within the same minute — easy to do by
+// accident — never computes to a false "0 hours" or, worse, wraps to a
+// bogus 24h like calcHours' minute-only overnight heuristic would). Uses
+// the real clock-in/out dates rather than assuming same-day, matching
+// exactly how the server computes the authoritative value.
+function calcClockHours(inDate, inTime, outDate, outTime) {
+  if (!outDate || !outTime) return null;
+  const norm = t => t.length === 5 ? t + ':00' : t;
+  const inMs = new Date(`${inDate}T${norm(inTime)}`).getTime();
+  const outMs = new Date(`${outDate}T${norm(outTime)}`).getTime();
+  return (outMs - inMs) / 3600000;
+}
+
 function getLocRate(locName, date) {
   const l = LOCATIONS.find(x => x.name === locName);
   if (!l) return 0;
@@ -3990,6 +4004,15 @@ function formatTimeDisplay(hhmm) {
   return `${h12}:${String(m).padStart(2,'0')} ${period}`;
 }
 
+// ISO "YYYY-MM-DD" (how dates are stored everywhere, for correct sorting
+// and comparison) to "MM/DD/YYYY" for display. Dates are always stored in
+// ISO internally — only ever convert at the point of display.
+function formatDateDisplay(iso) {
+  if (!iso || typeof iso !== 'string') return iso || '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
+}
+
 // Reads the three dropdowns for a given field prefix (e.g. "sf-start") and
 // combines them into 24-hour "HH:MM" — exactly what calcHours(), overlap
 // detection, and shift storage already expect, so nothing downstream needed
@@ -4033,6 +4056,18 @@ function computeShiftsWithOT() {
     const period = fmtPeriod(ps, pe);
     const periodKey = sh.staff + '|' + ps.toISOString().split('T')[0];
     if (!periodHrs[periodKey]) periodHrs[periodKey] = 0;
+
+    // A rejected shift stays fully visible (the whole point is the employee
+    // can see it happened and why it doesn't count) but contributes nothing
+    // to pay or to the running-hours total that determines OTHER shifts'
+    // overtime threshold — it's as if, payroll-wise, it never happened.
+    if (sh.shiftStatus === 'rejected') {
+      const approvedEx = APPROVED_EXCEPTIONS.find(a => a.shiftId === sh.id);
+      return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate: 0, otRate: 0,
+               regHrs: 0, otHrs: 0, regPay: 0, otPay: 0, shiftPay: 0,
+               runningHrs: periodHrs[periodKey], approvedEx: approvedEx || null };
+    }
+
     const runningBefore = periodHrs[periodKey];
     const hrs = sh.hours;
     const runningAfter = runningBefore + hrs;
@@ -5039,11 +5074,12 @@ async function renderMyClockWidget() {
   if (openEntry) {
     html += `<div style="background:rgba(14,143,94,0.1);border:1px solid var(--success);border-radius:10px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
       <span style="font-size:22px">🟢</span>
-      <div><div style="font-size:14px;font-weight:600;color:var(--text)">Clocked in since ${esc(formatTimeDisplay(openEntry.clockInTime))} on ${esc(openEntry.clockInDate)}</div>
+      <div><div style="font-size:14px;font-weight:600;color:var(--text)">Clocked in since ${esc(formatTimeDisplay(openEntry.clockInTime))} on ${esc(formatDateDisplay(openEntry.clockInDate))}</div>
       <div style="font-size:12px;color:var(--text2)">${esc(openEntry.location || 'No location noted')}</div></div>
     </div>
     <div class="form-field" style="margin-bottom:12px"><label>Notes (optional)</label><input type="text" id="mp-clock-out-notes" maxlength="500" placeholder="Anything worth noting about this shift"></div>
-    <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockOut()">⏹️ Clock Out</button>`;
+    <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700;margin-bottom:8px" onclick="doClockOut()">⏹️ Clock Out</button>
+    <button class="btn btn-ghost" style="width:100%;padding:10px;font-size:12px" onclick="doCancelClockIn()">Clocked in by mistake? Cancel this clock-in</button>`;
     el.innerHTML = html;
     return;
   }
@@ -5076,10 +5112,10 @@ async function renderMyClockWidget() {
     html += `<div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">Recent Clock History</div>
     <table><thead><tr><th>Date</th><th>Time</th><th>Location</th><th>Hours</th><th>Status</th></tr></thead><tbody>`;
     mine.forEach(c => {
-      const hrs = c.clockOutDate ? calcHours(c.clockInTime, c.clockOutTime) : null;
+      const hrs = calcClockHours(c.clockInDate, c.clockInTime, c.clockOutDate, c.clockOutTime);
       const badgeClass = c.status === 'approved' ? 'badge-success' : c.status === 'denied' ? 'badge-danger' : 'badge-warn';
       html += `<tr>
-        <td class="mono">${c.clockInDate}</td>
+        <td class="mono">${formatDateDisplay(c.clockInDate)}</td>
         <td class="mono">${formatTimeDisplay(c.clockInTime)}\u2013${c.clockOutTime ? formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
         <td>${esc(c.location||'\u2014')}</td>
         <td class="mono">${hrs!==null ? numFmt(hrs) : '\u2014'}</td>
@@ -5107,9 +5143,28 @@ function updateMyClockOccupancyHint() {
 
 async function doClockIn() {
   const location = document.getElementById('mp-clock-location').value;
+
+  // If their own last entry was clocked out very recently, check in with
+  // them before starting a new one — catches the "clicked the wrong button"
+  // case before it creates a confusing string of near-identical entries.
+  const myRecent = (CLOCK_ENTRIES || [])
+    .filter(c => c.staffId === _currentUser.staffId && c.status !== 'open' && c.clockOutDate)
+    .sort((a,b) => (b.clockOutDate+b.clockOutTime).localeCompare(a.clockOutDate+a.clockOutTime))[0];
+  if (myRecent) {
+    const outMs = new Date(`${myRecent.clockOutDate}T${myRecent.clockOutTime}`).getTime();
+    const minutesAgo = (Date.now() - outMs) / 60000;
+    if (minutesAgo >= 0 && minutesAgo < 10) {
+      const proceed = confirm(`You clocked out just ${Math.round(minutesAgo) <= 1 ? 'under a minute' : Math.round(minutesAgo) + ' minutes'} ago at ${esc(myRecent.location)} (${formatTimeDisplay(myRecent.clockOutTime)}).\n\nClock in again for a new shift?\n\nOK = yes, this is a new shift\nCancel = that clock-out was a mistake`);
+      if (!proceed) {
+        showToast('Clock-in cancelled — use "Cancel Clock-Out" below if the previous clock-out was a mistake', 'warn');
+        return;
+      }
+    }
+  }
+
   const date = todayLocalISO();
   const now = new Date();
-  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   try {
     const res = await fetch('/api/clock/in', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -5125,11 +5180,31 @@ async function doClockIn() {
   }
 }
 
+// Undoes an open clock-in that should never have happened — e.g. clocked in
+// at the wrong location, or didn't mean to clock in at all. Only works
+// while it's still open (nobody's tried to clock out of it yet); once
+// clocked out, use the normal review/reject flow instead, since by then
+// it's a real record an admin should see, not just erase.
+async function doCancelClockIn() {
+  if (!confirm('Cancel this clock-in? This removes it completely — use this only if it should never have happened (wrong button, wrong location, etc).')) return;
+  try {
+    const res = await fetch('/api/clock/cancel', { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not cancel', 'danger'); return; }
+    showToast('Clock-in cancelled');
+    const idx = CLOCK_ENTRIES.findIndex(c => c.staffId === _currentUser.staffId && c.status === 'open');
+    if (idx >= 0) CLOCK_ENTRIES.splice(idx, 1);
+    renderMyClockWidget();
+  } catch (e) {
+    showToast('Could not cancel — check your connection', 'danger');
+  }
+}
+
 async function doClockOut() {
   const notes = document.getElementById('mp-clock-out-notes').value;
   const date = todayLocalISO();
   const now = new Date();
-  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   try {
     const res = await fetch('/api/clock/out', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -5173,15 +5248,17 @@ function renderMyPortal() {
   animateStatsIn('#mp-summary');
 
   const sorted = allMyShifts.slice().sort((a,b) => b.date.localeCompare(a.date));
-  let html = '<table><thead><tr><th>Date</th><th>Location</th><th>Time</th><th>Hours</th><th>OT</th></tr></thead><tbody>';
-  if (!sorted.length) html += '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px">No shifts recorded yet.</td></tr>';
+  let html = '<table><thead><tr><th>Date</th><th>Location</th><th>Time</th><th>Hours</th><th>OT</th><th>Status</th></tr></thead><tbody>';
+  if (!sorted.length) html += '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No shifts recorded yet.</td></tr>';
   sorted.slice(0, 60).forEach(s => {
-    html += `<tr>
-      <td class="mono">${s.date}</td>
+    const isRejected = s.shiftStatus === 'rejected';
+    html += `<tr style="${isRejected?'opacity:0.6':''}">
+      <td class="mono">${esc(formatDateDisplay(s.date))}</td>
       <td>${esc(s.location)}</td>
       <td class="mono">${s.start}\u2013${s.end}</td>
       <td class="mono">${numFmt(s.regHrs+s.otHrs)}</td>
       <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${s.otHrs>0?numFmt(s.otHrs):'\u2014'}</td>
+      <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected${s.rejectedReason ? ': '+esc(s.rejectedReason) : ''}</span>` : '<span class="badge badge-success" style="font-size:10px">✓ Active</span>'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -5593,7 +5670,7 @@ function renderOpenClockEntries() {
     html += `<tr>
       <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}</td>
       <td>${esc(c.location||'\u2014')}</td>
-      <td class="mono">${c.clockInDate} ${formatTimeDisplay(c.clockInTime)}</td>
+      <td class="mono">${formatDateDisplay(c.clockInDate)} ${formatTimeDisplay(c.clockInTime)}</td>
       <td style="white-space:nowrap"><button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="openAdminClockOutModal('${c.id}','${c.staffId}','${esc(name).replace(/'/g,"\\'")}')">⏹️ Clock Out</button></td>
     </tr>`;
   });
@@ -5617,7 +5694,7 @@ function renderClockEntriesAdmin() {
   entries.forEach(c => {
     const st = STAFF.find(s => s.id === c.staffId);
     const name = st ? `${st.last}, ${st.first}` : c.staffId;
-    const hrs = c.clockOutDate ? calcHours(c.clockInTime, c.clockOutTime) : null;
+    const hrs = calcClockHours(c.clockInDate, c.clockInTime, c.clockOutDate, c.clockOutTime);
     const badgeClass = c.status === 'approved' ? 'badge-success' : c.status === 'denied' ? 'badge-danger' : 'badge-warn';
     const actions = c.status === 'pending'
       ? `<button class="btn btn-success" style="font-size:11px;padding:5px 10px" onclick="reviewClockEntry('${c.id}','approve')">✅ Approve</button>
@@ -5627,8 +5704,8 @@ function renderClockEntriesAdmin() {
     html += `<tr>
       <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}${c.notes ? `<div style="font-size:11px;color:var(--text3);font-weight:400;margin-top:2px">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(c.location||'\u2014')}</td>
-      <td class="mono">${c.clockInDate} ${formatTimeDisplay(c.clockInTime)}</td>
-      <td class="mono">${c.clockOutDate ? c.clockOutDate + ' ' + formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
+      <td class="mono">${formatDateDisplay(c.clockInDate)} ${formatTimeDisplay(c.clockInTime)}</td>
+      <td class="mono">${c.clockOutDate ? formatDateDisplay(c.clockOutDate) + ' ' + formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
       <td class="mono">${hrs!==null ? numFmt(hrs) : '\u2014'}</td>
       <td><span class="badge ${badgeClass}">${esc(c.status)}</span></td>
       <td style="white-space:nowrap">${actions}</td>
@@ -5653,7 +5730,7 @@ async function reviewClockEntry(id, action) {
       entry.reviewedAt = new Date().toLocaleString();
       if (action === 'approve' && body.shiftId) {
         entry.shiftId = body.shiftId;
-        SHIFTS.push({ id: body.shiftId, staff: entry.staffId, date: entry.clockInDate, start: entry.clockInTime, end: entry.clockOutTime, location: entry.location, hours: calcHours(entry.clockInTime, entry.clockOutTime), regHours: 0, otHours: 0, approved: true, periodStart: '', periodEnd: '', source: entry.overridden ? 'clock_in_override' : 'clock_in' });
+        SHIFTS.push({ id: body.shiftId, staff: entry.staffId, date: entry.clockInDate, start: entry.clockInTime.slice(0,5), end: entry.clockOutTime.slice(0,5), location: entry.location, hours: calcClockHours(entry.clockInDate, entry.clockInTime, entry.clockOutDate, entry.clockOutTime), regHours: 0, otHours: 0, approved: true, periodStart: '', periodEnd: '', source: entry.overridden ? 'clock_in_override' : 'clock_in' });
       }
     }
     showToast(action === 'approve' ? '✅ Clock entry approved — added to timesheet' : 'Clock entry denied');
@@ -6175,10 +6252,11 @@ function renderTimesheetTable() {
     const name = st ? `${esc(st.last)}, ${esc(st.first)}` : esc(s.staff);
     const hasOT = s.otHrs > 0;
     const isApproved = s.approvedEx !== null;
-    html += `<tr class="${s._new?'new-row':''}" style="${hasOT?'background:rgba(194,74,70,0.04)':''}">
+    const isRejected = s.shiftStatus === 'rejected';
+    html += `<tr class="${s._new?'new-row':''}" style="${isRejected?'opacity:0.55':(hasOT?'background:rgba(194,74,70,0.04)':'')}">
       <td class="mono" style="color:var(--text3)">${i+1}</td>
-      <td class="mono">${esc(s.date)}</td>
-      <td style="color:var(--text);font-weight:500">${name}</td>
+      <td class="mono">${esc(formatDateDisplay(s.date))}</td>
+      <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}</td>
       <td class="mono" style="color:var(--text3)">${esc(s.staff)}</td>
       <td style="color:var(--text2)">${esc(s.location)}</td>
       <td class="mono">${esc(s.start)}</td>
@@ -6190,10 +6268,10 @@ function renderTimesheetTable() {
       <td class="mono" style="color:${hasOT?'var(--danger)':'var(--text3)'}">${hasOT?$fmt(s.otPay):'—'}</td>
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(s.shiftPay)}</td>
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
-      <td>${isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : '')}</td>
+      <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}</td>
       <td>${sourceBadge(s.source)}</td>
       <td style="font-size:11px;color:var(--text3);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${s.period}</td>
-      <td style="white-space:nowrap">${userCan('editShift') ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift">✕ Delete</button>` : ''}</td>
+      <td style="white-space:nowrap">${userCan('editShift') && !isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('approveShifts') ? (isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="restoreShift('${s.id}')" title="Undo the rejection">↩️ Restore</button>` : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(194,74,70,0.35);color:var(--danger2);margin-right:4px" onclick="rejectShift('${s.id}')" title="Reject this shift — excludes it from payroll, employee still sees it and why">✕ Reject</button>`) : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift entirely">🗑️</button>` : ''}</td>
     </tr>`;
   });
 
@@ -6364,6 +6442,41 @@ function approveAndAdd() {
 
 // ── DELETE WITH CONFIRMATION ──
 let _deleteShiftId = null;
+async function rejectShift(id) {
+  const reason = prompt('Why is this shift being rejected? (required — the employee will see this)');
+  if (reason === null) return; // cancelled
+  if (reason.trim().length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
+  try {
+    const res = await fetch(`/api/shifts/${encodeURIComponent(id)}/reject`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ reason: reason.trim() })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not reject shift', 'danger'); return; }
+    const sh = SHIFTS.find(s => s.id === id);
+    if (sh) { sh.shiftStatus = 'rejected'; sh.rejectedReason = reason.trim(); sh.rejectedBy = _currentUser.name; }
+    showToast('Shift rejected — excluded from payroll, employee can see why');
+    renderTimesheet();
+  } catch (e) {
+    showToast('Could not reject shift — check your connection', 'danger');
+  }
+}
+
+async function restoreShift(id) {
+  if (!confirm('Restore this shift? It will count toward payroll again.')) return;
+  try {
+    const res = await fetch(`/api/shifts/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not restore shift', 'danger'); return; }
+    const sh = SHIFTS.find(s => s.id === id);
+    if (sh) { sh.shiftStatus = 'active'; sh.rejectedReason = ''; sh.rejectedBy = ''; }
+    showToast('Shift restored');
+    renderTimesheet();
+  } catch (e) {
+    showToast('Could not restore shift — check your connection', 'danger');
+  }
+}
+
 function deleteShift(id) {
   const all = computeShiftsWithOT();
   const s = all.find(x => x.id === id);
@@ -8785,7 +8898,7 @@ function rbBuildIndividualReport(staffArr, allComputed, fromDate, toDate, otThre
           <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Reg Hrs</th><th>OT Hrs</th><th>Rate</th><th>OT Rate</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>Period Running Hrs</th></tr></thead>
           <tbody>
             ${shifts.map(s => `<tr>
-              <td class="mono">${s.date}</td>
+              <td class="mono">${formatDateDisplay(s.date)}</td>
               <td style="color:var(--text)">${s.location}</td>
               <td class="mono">${s.start}</td>
               <td class="mono">${s.end}</td>
@@ -8853,7 +8966,7 @@ function rbBuildLocationReport(locs, allComputed, fromDate, toDate) {
             const st = STAFF.find(x=>x.id===s.staff);
             const name = st ? `${st.last}, ${st.first}` : s.staff;
             return `<tr>
-              <td class="mono">${s.date}</td>
+              <td class="mono">${formatDateDisplay(s.date)}</td>
               <td style="color:var(--text)">${name}</td>
               <td class="mono">${s.start}</td><td class="mono">${s.end}</td>
               <td class="mono">${numFmt(s.hours)}</td>
@@ -8921,7 +9034,7 @@ function rbBuildOvertimeReport(allComputed, fromDate, toDate, staffIds) {
         <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>OT Hrs</th><th>OT Pay</th><th>Period Running Hrs</th></tr></thead>
         <tbody>
           ${d.shifts.sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr>
-            <td class="mono">${s.date}</td>
+            <td class="mono">${formatDateDisplay(s.date)}</td>
             <td>${s.location}</td>
             <td class="mono">${numFmt(s.hours)}</td>
             <td class="mono" style="color:var(--warn)">${numFmt(s.otHrs)}</td>
@@ -9018,7 +9131,7 @@ function rbBuildDateRangeReport(allComputed, fromDate, toDate, staffIds) {
         const st = STAFF.find(x=>x.id===s.staff);
         const name = st ? `${st.last}, ${st.first}` : s.staff;
         return `<tr>
-          <td class="mono">${s.date}</td>
+          <td class="mono">${formatDateDisplay(s.date)}</td>
           <td style="color:var(--text)">${name}</td>
           <td>${s.location}</td>
           <td class="mono">${s.start}</td><td class="mono">${s.end}</td>
@@ -9082,7 +9195,7 @@ function rbBuildAttendanceReport(allComputed, fromDate, toDate, staffIds) {
         <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>OT Hrs</th><th>Status</th></tr></thead>
         <tbody>
           ${d.shifts.sort((a,b)=>a.date.localeCompare(b.date)).map(sh=>`<tr>
-            <td class="mono">${sh.date}</td>
+            <td class="mono">${formatDateDisplay(sh.date)}</td>
             <td>${sh.location}</td>
             <td class="mono">${sh.start}</td>
             <td class="mono">${sh.end}</td>

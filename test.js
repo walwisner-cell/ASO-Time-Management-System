@@ -72,7 +72,7 @@ function waitForServer(retries = 20) {
 async function main() {
   console.log(`\nStarting test server (scratch DB at ${TEST_DIR})...\n`);
   const server = spawn('node', [path.join(__dirname, 'server.js')], {
-    env: { ...process.env, DB_DIR: TEST_DIR, PORT: String(PORT) },
+    env: { ...process.env, DB_DIR: TEST_DIR, PORT: String(PORT), NODE_ENV: 'test' },
     stdio: 'pipe'
   });
   let serverOutput = '';
@@ -281,6 +281,47 @@ async function main() {
       request('POST', '/api/clock/in', { cookie: dblLogin.cookie, body: { location: 'Usene House', date: '2026-05-10', time: '08:00' } })
     ));
     check('exactly 1 of 5 simultaneous clock-ins from the same person succeeds', dblResults.filter(r => r.status === 200).length === 1);
+
+    console.log('\nSame-minute clock in/out (previously left people permanently stuck):');
+    const sameMinSetup = { ...raceBase.body };
+    sameMinSetup.STAFF = [...sameMinSetup.STAFF, { id: 'SSM1', first: 'Same', last: 'Minute', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    sameMinSetup.USERS = [...sameMinSetup.USERS, { id: 'USM1', username: 'sameminute', password: 'samepass1', name: 'Same Minute', role: 'employee', staffId: 'SSM1' }];
+    await request('POST', '/api/db/save', { body: sameMinSetup, cookie: adminCookie });
+    const sameMinLogin = await request('POST', '/api/auth/login', { body: { username: 'sameminute', password: 'samepass1' } });
+    await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '22:11:05' } });
+    const sameMinOut = await request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '22:11:45', notes: '' } });
+    check('clocking out 40 seconds later in the same minute now succeeds', sameMinOut.status === 200 && sameMinOut.body.hours === 0.01);
+
+    const trueZeroOut = await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '23:00:00' } })
+      .then(() => request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '23:00:00', notes: '' } }));
+    check('genuine zero-duration (exact same second) is still correctly rejected', trueZeroOut.status === 400);
+
+    const cancelResult = await request('POST', '/api/clock/cancel', { cookie: sameMinLogin.cookie });
+    check('cancelling an open clock-in succeeds', cancelResult.status === 200);
+    const cancelAgain = await request('POST', '/api/clock/cancel', { cookie: sameMinLogin.cookie });
+    check('cancelling with nothing open is correctly rejected', cancelAgain.status === 400);
+
+    console.log('\nShift rejection (visible to the employee, excluded from payroll):');
+    const rejectSetup = { ...raceBase.body };
+    rejectSetup.STAFF = [...rejectSetup.STAFF, { id: 'SRJ1', first: 'Reject', last: 'Test', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    rejectSetup.SHIFTS = [...rejectSetup.SHIFTS, { id: 'SHRJ1', staff: 'SRJ1', date: '2026-08-02', start: '08:00', end: '16:00', location: 'Usene House', hours: 8, source: 'manual' }];
+    await request('POST', '/api/db/save', { body: rejectSetup, cookie: adminCookie });
+
+    const rejectNoReason = await request('POST', '/api/shifts/SHRJ1/reject', { cookie: adminCookie, body: { reason: '' } });
+    check('rejecting a shift without a reason is rejected', rejectNoReason.status === 400);
+
+    const rejectOk = await request('POST', '/api/shifts/SHRJ1/reject', { cookie: adminCookie, body: { reason: 'Duplicate entry, already logged separately' } });
+    check('rejecting a shift with a reason succeeds', rejectOk.status === 200);
+
+    const afterReject = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const rejectedShift = afterReject.body.SHIFTS.find(s => s.id === 'SHRJ1');
+    check('rejected shift stays visible with status/reason, not deleted', rejectedShift && rejectedShift.shiftStatus === 'rejected' && rejectedShift.rejectedReason.includes('Duplicate'));
+
+    const restoreOk = await request('POST', '/api/shifts/SHRJ1/restore', { cookie: adminCookie });
+    check('restoring a rejected shift succeeds', restoreOk.status === 200);
+    const afterRestore = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const restoredShift = afterRestore.body.SHIFTS.find(s => s.id === 'SHRJ1');
+    check('restored shift is active again', restoredShift && restoredShift.shiftStatus === 'active');
 
     console.log('\nAdmin closing out someone stuck clocked in:');
     const stuckSetup = { ...raceBase.body };

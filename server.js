@@ -359,6 +359,14 @@ function createSchema() {
   // column and default to 'manual', which is accurate — they were all
   // entered by hand before clock in/out existed.
   try { db.run(`ALTER TABLE shifts ADD COLUMN source TEXT DEFAULT 'manual'`); } catch (e) { /* already exists */ }
+  // A rejected shift is never deleted — it stays fully visible to the
+  // employee (with the reason) and excluded from payroll, rather than
+  // silently vanishing with no explanation. Deleting a shift is still
+  // available separately for genuine mistakes (duplicate entry, wrong
+  // person entirely); rejecting is for "this happened, but shouldn't count."
+  ['shift_status TEXT DEFAULT \'active\'', 'rejected_reason TEXT DEFAULT \'\'', 'rejected_by TEXT DEFAULT \'\'', 'rejected_at TEXT DEFAULT \'\''].forEach(colDef => {
+    try { db.run(`ALTER TABLE shifts ADD COLUMN ${colDef}`); } catch (e) { /* already exists */ }
+  });
   db.run(`CREATE TABLE IF NOT EXISTS pending_approvals (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS approved_exceptions (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
   db.run(`CREATE TABLE IF NOT EXISTS date_correction_log (id TEXT PRIMARY KEY, data TEXT NOT NULL)`);
@@ -451,7 +459,9 @@ function loadDB() {
     return { id: r.id, staff: r.staff_id, date: r.date, start: r.time_in, end: r.time_out,
              location: r.loc, hours: r.hours, regHours: r.reg_hours, otHours: r.ot_hours,
              approved: !!r.approved, periodStart: r.period_start, periodEnd: r.period_end,
-             source: r.source || 'manual', ...extra };
+             source: r.source || 'manual', shiftStatus: r.shift_status || 'active',
+             rejectedReason: r.rejected_reason || '', rejectedBy: r.rejected_by || '', rejectedAt: r.rejected_at || '',
+             ...extra };
   });
   const PENDING_APPROVALS  = all('SELECT data FROM pending_approvals').map(r => JSON.parse(r.data));
   const APPROVED_EXCEPTIONS = all('SELECT data FROM approved_exceptions').map(r => JSON.parse(r.data));
@@ -539,13 +549,14 @@ function saveDB(data) {
   // SHIFTS
   run('DELETE FROM shifts');
   for (const s of (SHIFTS || [])) {
-    const { id, staff, date, start, end, location, hours, regHours, otHours, approved, periodStart, periodEnd, source, ...rest } = s;
-    run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data,source)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    const { id, staff, date, start, end, location, hours, regHours, otHours, approved, periodStart, periodEnd, source, shiftStatus, rejectedReason, rejectedBy, rejectedAt, ...rest } = s;
+    run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data,source,shift_status,rejected_reason,rejected_by,rejected_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [id, staff, date, start||'', end||'',
          location||'', hours||0, regHours||0, otHours||0,
          approved?1:0, periodStart||s.period_start||'', periodEnd||s.period_end||'',
-         JSON.stringify(rest), source||'manual']);
+         JSON.stringify(rest), source||'manual', shiftStatus||'active',
+         rejectedReason||'', rejectedBy||'', rejectedAt||'']);
   }
 
   // Blob tables
@@ -878,9 +889,17 @@ async function main() {
   // no malicious intent. 60/15min still blocks a real brute-force attempt
   // (a genuine attacker trying hundreds of passwords) while giving a house
   // with a dozen-plus staff realistic headroom for normal daily use.
+  // Rate limits are unchanged in production. The only thing IS_TEST_ENV
+  // affects is the ceiling itself — tests run many requests from one IP in
+  // a tight loop (simulating many different people in quick succession),
+  // which isn't the pattern this limiter exists to catch. This does NOT
+  // disable rate limiting for tests, it just sets a realistic ceiling for
+  // an automated test run instead of a single real user's normal pace.
+  const IS_TEST_ENV = process.env.NODE_ENV === 'test';
+
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 60,
+    max: IS_TEST_ENV ? 1000 : 60,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many login attempts from this network — please wait a few minutes and try again' }
@@ -888,7 +907,7 @@ async function main() {
 
   const writeLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 40,
+    max: IS_TEST_ENV ? 1000 : 40,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests — please wait a few minutes and try again' }
@@ -1235,7 +1254,15 @@ async function main() {
   });
 
   const ISO_DATE_RE_CLOCK = /^\d{4}-\d{2}-\d{2}$/;
-  const TIME_RE_CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  // Accepts HH:MM or HH:MM:SS. Employee self-service clock in/out sends
+  // seconds (see the fix note below); admin-entered times via the
+  // hour/minute/AM-PM dropdowns don't have a seconds control, so HH:MM
+  // alone is still valid there.
+  const TIME_RE_CLOCK = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
+
+  // Normalizes to HH:MM:SS so computeClockHours always compares consistent
+  // precision regardless of which caller supplied seconds.
+  function normalizeClockTime(t) { return t.length === 5 ? t + ':00' : t; }
 
   // True elapsed hours between two local date+time pairs — handles same-day,
   // overnight, and (if someone forgets to clock out for a long stretch) any
@@ -1243,9 +1270,18 @@ async function main() {
   // shortcut. An absurd gap naturally produces an absurd hours value, which
   // validateShifts() will then correctly reject rather than silently
   // creating a bogus multi-day "shift".
+  //
+  // FIX: this used to compare at minute precision only. Clocking in and out
+  // within the same clock minute (extremely easy to do by accident — a
+  // mis-click, or someone testing the buttons) computed to exactly 0 hours,
+  // which was then rejected as "clock-out must be after clock-in" — leaving
+  // the person stuck with no way to clock out until the minute ticked over,
+  // and stuck again if it happened again. Now compares at second precision,
+  // so two genuinely distinct actions (even a few seconds apart) always
+  // produce a real, positive duration.
   function computeClockHours(inDate, inTime, outDate, outTime) {
-    const inMs = new Date(`${inDate}T${inTime}:00`).getTime();
-    const outMs = new Date(`${outDate}T${outTime}:00`).getTime();
+    const inMs = new Date(`${inDate}T${normalizeClockTime(inTime)}`).getTime();
+    const outMs = new Date(`${outDate}T${normalizeClockTime(outTime)}`).getTime();
     return (outMs - inMs) / 3600000;
   }
 
@@ -1342,7 +1378,7 @@ async function main() {
 
       const hours = computeClockHours(openEntry.clock_in_date, openEntry.clock_in_time, date, time);
       if (!Number.isFinite(hours) || hours <= 0) {
-        return res.status(400).json({ error: 'Clock-out time must be after your clock-in time' });
+        return res.status(400).json({ error: 'Clock-out time must be after your clock-in time. If you clocked in by mistake, use "Cancel Clock-In" instead of clocking out.' });
       }
 
       run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, status = 'pending', notes = ? WHERE id = ?`,
@@ -1350,6 +1386,64 @@ async function main() {
       writeAuditLog('CLOCK_OUT', `${req.user.name} clocked out at ${time} on ${date} (${hours.toFixed(2)}h) — awaiting approval`, req.user);
       persistDB();
       res.json({ ok: true, hours: Math.round(hours * 100) / 100 });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Self-service undo for a clock-in that should never have happened — only
+  // while it's still open. Deletes the row entirely rather than creating a
+  // 0-hour shift record, since there's genuinely nothing to review here: it
+  // never should have existed in the first place. Once someone has clocked
+  // out of an entry it's a real record for an admin to review/reject, not
+  // something the employee can silently erase.
+  app.post('/api/clock/cancel', requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!req.user.staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+      const openEntry = get(`SELECT * FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+      if (!openEntry) return res.status(400).json({ error: 'You are not currently clocked in' });
+      run('DELETE FROM clock_entries WHERE id = ?', [openEntry.id]);
+      writeAuditLog('CLOCK_IN_CANCELLED', `${req.user.name} cancelled an accidental clock-in at ${openEntry.location} (${openEntry.clock_in_time} on ${openEntry.clock_in_date})`, req.user);
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Rejecting a shift never deletes it — it stays fully visible to the
+  // employee, with the reason, and is excluded from payroll (computeShiftsWithOT
+  // filters shiftStatus !== 'active' out before any hours/pay math runs).
+  // This is deliberately different from Delete, which is for a shift that
+  // genuinely never should have existed at all (duplicate, wrong person).
+  app.post('/api/shifts/:id/reject', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'approvals_review_shifts')) {
+      return res.status(403).json({ error: 'Not authorized to reject shifts' });
+    }
+    try {
+      const shift = get('SELECT * FROM shifts WHERE id = ?', [req.params.id]);
+      if (!shift) return res.status(404).json({ error: 'Shift not found' });
+      const { reason } = req.body || {};
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+      if (trimmedReason.length < 3) return res.status(400).json({ error: 'A reason (at least 3 characters) is required to reject a shift' });
+
+      const staff = get('SELECT * FROM staff WHERE id = ?', [shift.staff_id]);
+      run(`UPDATE shifts SET shift_status = 'rejected', rejected_reason = ?, rejected_by = ?, rejected_at = ? WHERE id = ?`,
+        [trimmedReason.slice(0,500), req.user.name, new Date().toLocaleString(), req.params.id]);
+      writeAuditLog('SHIFT_REJECTED', `${req.user.name} rejected a ${shift.hours}h shift for ${staff ? staff.first+' '+staff.last : shift.staff_id} on ${shift.date} \u2014 ${trimmedReason.slice(0,500)}`, req.user);
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/shifts/:id/restore', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'approvals_review_shifts')) {
+      return res.status(403).json({ error: 'Not authorized to restore shifts' });
+    }
+    try {
+      const shift = get('SELECT * FROM shifts WHERE id = ?', [req.params.id]);
+      if (!shift) return res.status(404).json({ error: 'Shift not found' });
+      const staff = get('SELECT * FROM staff WHERE id = ?', [shift.staff_id]);
+      run(`UPDATE shifts SET shift_status = 'active', rejected_reason = '', rejected_by = '', rejected_at = '' WHERE id = ?`, [req.params.id]);
+      writeAuditLog('SHIFT_RESTORED', `${req.user.name} restored a previously-rejected shift for ${staff ? staff.first+' '+staff.last : shift.staff_id} on ${shift.date}`, req.user);
+      persistDB();
+      res.json({ ok: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1470,8 +1564,11 @@ async function main() {
       const finalLocation = (typeof location === 'string' && location.trim()) ? location.trim() : (entry.location || (staff ? staff.loc : ''));
       const hours = computeClockHours(entry.clock_in_date, entry.clock_in_time, entry.clock_out_date, entry.clock_out_time);
       const shiftId = 'SH' + Date.now() + Math.random().toString(36).slice(2,6);
+      // Shifts always use HH:MM (no seconds) everywhere else in the app —
+      // the extra precision only matters for clock_entries' own same-minute
+      // validation, not for the resulting payroll record.
       const newShift = { id: shiftId, staff: entry.staff_id, date: entry.clock_in_date,
-                          start: entry.clock_in_time, end: entry.clock_out_time,
+                          start: entry.clock_in_time.slice(0,5), end: entry.clock_out_time.slice(0,5),
                           location: finalLocation, hours: Math.round(hours * 100) / 100 };
       const shiftSource = entry.overridden ? 'clock_in_override' : 'clock_in';
 
