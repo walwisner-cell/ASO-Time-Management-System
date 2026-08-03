@@ -2194,6 +2194,12 @@
           <div class="report-summary" id="pr-summary"></div>
           <div class="table-wrap" id="pr-table"></div>
 
+          <div class="card section-gap" id="pr-external-section" style="display:none">
+            <div class="card-title">🔗 External Payroll Entries</div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:14px">These staff are tracked in a separate payroll program under the same company and don't clock in/out here. Enter this period's amount from that program below — it flows into the same payroll run as everyone else.</p>
+            <div class="table-wrap" id="pr-external-list"></div>
+          </div>
+
           <div style="background:var(--surface2);border-radius:12px;padding:20px;margin-top:20px">
             <div style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px">Taxes &amp; Benefits</div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Applied automatically from your saved defaults (<a href="#" onclick="nav('taxbenefits', document.querySelector('[data-page=taxbenefits]')); return false;" style="color:var(--accent2)">edit defaults</a>). Adjust anything below for this period only — changes here don't affect your saved defaults.</div>
@@ -3549,7 +3555,16 @@
           <option>Active</option><option>Inactive</option>
         </select>
       </div>
+      <div class="form-field"><label>Pay Type</label>
+        <select id="staff-edit-paytype" style="width:100%" onchange="onStaffPayTypeChange()">
+          <option value="hourly">Hourly (clock in/out or manual shifts)</option>
+          <option value="salary">Salary (fixed amount per pay period)</option>
+          <option value="external">External (tracked in a different payroll program, entered manually per period)</option>
+        </select>
+      </div>
+      <div class="form-field" id="staff-edit-salary-wrap" style="display:none"><label>Salary Amount ($ / pay period)</label><input type="number" id="staff-edit-salary" step="1" min="0" style="width:100%" placeholder="e.g. 2000"></div>
     </div>
+    <div id="staff-edit-external-note" style="display:none;font-size:11px;color:var(--text3);margin:-12px 0 20px">External staff don't use shift tracking or clock in/out here — their hours/pay for each period are entered on the Payroll page's "External Payroll Entries" section from whatever the other program reports.</div>
     <div style="font-family:var(--display);font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;padding-top:8px;border-top:1px solid var(--border)">Federal W-4 (for bracket-based withholding)</div>
     <div class="form-grid" style="margin-bottom:8px">
       <div class="form-field"><label>Filing Status</label>
@@ -3581,7 +3596,8 @@
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES,
+    EXTERNAL_PAYROLL_ENTRIES;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -3589,7 +3605,8 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: [],
+  EXTERNAL_PAYROLL_ENTRIES: []
 };
 
 function dbSave() {
@@ -3738,6 +3755,7 @@ async function loadAppData() {
   PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
   LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
   CLOCK_ENTRIES         = data.CLOCK_ENTRIES           || [];
+  EXTERNAL_PAYROLL_ENTRIES = data.EXTERNAL_PAYROLL_ENTRIES || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
@@ -5138,7 +5156,7 @@ async function renderMyClockWidget() {
   </div>
   <div style="font-size:11px;color:var(--text3);margin-bottom:12px;display:flex;gap:6px;align-items:flex-start">
     <span>📍</span>
-    <span>If your browser allows it, your location is recorded at the moment you clock in or out, to help verify shift location. It's a single snapshot, not ongoing tracking — you can decline the browser's location prompt and still clock in normally.</span>
+    <span><b>GPS location is required to clock in or out</b>, to verify shift location — your browser will ask for permission. It's a single snapshot at the moment you clock in/out, never ongoing tracking. If location services are off, turn them on for your browser before clocking in.</span>
   </div>
   <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockIn()">▶️ Clock In</button>`;
 
@@ -5183,16 +5201,33 @@ function updateMyClockOccupancyHint() {
 // null and the clock action proceeds exactly as if location wasn't asked
 // for at all. Deliberately a single snapshot at the moment of the action,
 // not continuous tracking.
-function getGeoLocationBestEffort() {
+// GPS is required to clock in/out — returns { success: true, lat, lng,
+// accuracy } or { success: false, reason } where reason is one of
+// 'unsupported' | 'denied' | 'timeout' | 'unavailable', so the caller can
+// show a specific, actionable message rather than a generic failure.
+function getGeoLocationRequired() {
   return new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    const timer = setTimeout(() => resolve(null), 6000);
+    if (!navigator.geolocation) { resolve({ success: false, reason: 'unsupported' }); return; }
+    const timer = setTimeout(() => resolve({ success: false, reason: 'timeout' }), 12000);
     navigator.geolocation.getCurrentPosition(
-      pos => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }); },
-      () => { clearTimeout(timer); resolve(null); },
-      { enableHighAccuracy: false, timeout: 5500, maximumAge: 60000 }
+      pos => { clearTimeout(timer); resolve({ success: true, lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }); },
+      err => {
+        clearTimeout(timer);
+        resolve({ success: false, reason: err.code === 1 ? 'denied' : (err.code === 3 ? 'timeout' : 'unavailable') });
+      },
+      { enableHighAccuracy: true, timeout: 11500, maximumAge: 0 }
     );
   });
+}
+
+function geoErrorMessage(reason) {
+  const messages = {
+    unsupported: 'Your browser doesn\'t support location services. GPS is required to clock in/out — try a different browser or device.',
+    denied: 'Location access is required to clock in/out. Please enable location permission for this site in your browser settings, then try again.',
+    timeout: 'Could not get a GPS location in time. Make sure location services are turned on for your device and browser, then try again.',
+    unavailable: 'Could not determine your location. Make sure GPS/location services are turned on for your device, then try again.'
+  };
+  return messages[reason] || 'Could not verify your location. GPS is required to clock in/out.';
 }
 
 async function doClockIn() {
@@ -5219,11 +5254,15 @@ async function doClockIn() {
   const date = todayLocalISO();
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  const geo = await getGeoLocationBestEffort();
+
+  showToast('📍 Getting your location…', 'info');
+  const geo = await getGeoLocationRequired();
+  if (!geo.success) { showToast(geoErrorMessage(geo.reason), 'danger'); return; }
+
   try {
     const res = await fetch('/api/clock/in', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ location, date, time, ...(geo || {}) })
+      body: JSON.stringify({ location, date, time, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy })
     });
     const body = await res.json();
     if (!res.ok) { showToast(body.error || 'Clock in failed', 'danger'); return; }
@@ -5260,11 +5299,15 @@ async function doClockOut() {
   const date = todayLocalISO();
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  const geo = await getGeoLocationBestEffort();
+
+  showToast('📍 Getting your location…', 'info');
+  const geo = await getGeoLocationRequired();
+  if (!geo.success) { showToast(geoErrorMessage(geo.reason), 'danger'); return; }
+
   try {
     const res = await fetch('/api/clock/out', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ date, time, notes, ...(geo || {}) })
+      body: JSON.stringify({ date, time, notes, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy })
     });
     const body = await res.json();
     if (!res.ok) { showToast(body.error || 'Clock out failed', 'danger'); return; }
@@ -7036,34 +7079,112 @@ function renderPayrollSetup() {
 
 // Groups shifts by staff + location ("House"), and splits regular/OT hours into
 // Week 1 / Week 2 of the pay period — matching ASO's payroll report format.
-function buildPayrollDetailRows(label) {
+function renderExternalPayrollSection(periodStart) {
+  const section = document.getElementById('pr-external-section');
+  const externalStaff = STAFF.filter(s => s.status === 'Active' && s.payType === 'external');
+  if (!externalStaff.length || !periodStart) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  let html = '<table><thead><tr><th>Staff</th><th>Hours</th><th>Amount ($)</th><th>Notes</th><th></th></tr></thead><tbody>';
+  externalStaff.forEach(s => {
+    const entry = (EXTERNAL_PAYROLL_ENTRIES || []).find(e => e.staffId === s.id && e.periodStart === periodStart);
+    html += `<tr>
+      <td style="color:var(--text);font-weight:500">${esc(s.last)}, ${esc(s.first)}${!entry ? ' <span class="badge badge-danger" style="font-size:9px">NEEDS ENTRY</span>' : ''}</td>
+      <td><input type="number" id="ext-hours-${s.id}" value="${entry ? entry.hours : ''}" step="0.5" min="0" style="width:90px" placeholder="0"></td>
+      <td><input type="number" id="ext-amount-${s.id}" value="${entry ? entry.amount : ''}" step="0.01" min="0" style="width:110px" placeholder="0.00"></td>
+      <td><input type="text" id="ext-notes-${s.id}" value="${entry ? esc(entry.notes) : ''}" maxlength="300" placeholder="e.g. from ADP export" style="width:100%"></td>
+      <td><button class="btn btn-primary" style="font-size:11px;padding:6px 12px;white-space:nowrap" onclick="saveExternalPayrollEntry('${s.id}','${periodStart}')">💾 Save</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('pr-external-list').innerHTML = html;
+}
+
+async function saveExternalPayrollEntry(staffId, periodStart) {
+  const hours = parseFloat(document.getElementById(`ext-hours-${staffId}`).value) || 0;
+  const amount = parseFloat(document.getElementById(`ext-amount-${staffId}`).value);
+  const notes = document.getElementById(`ext-notes-${staffId}`).value;
+  if (!Number.isFinite(amount) || amount < 0) { showToast('Enter a valid amount', 'danger'); return; }
+  try {
+    const res = await fetch('/api/external-payroll', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ staffId, periodStart, hours, amount, notes })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not save', 'danger'); return; }
+    const idx = (EXTERNAL_PAYROLL_ENTRIES||[]).findIndex(e => e.staffId === staffId && e.periodStart === periodStart);
+    const updated = { id: body.id, staffId, periodStart, hours, amount, notes, enteredBy: _currentUser.name, enteredAt: new Date().toISOString() };
+    if (idx >= 0) EXTERNAL_PAYROLL_ENTRIES[idx] = updated; else EXTERNAL_PAYROLL_ENTRIES.push(updated);
+    showToast('✅ External payroll entry saved');
+    renderPayrollPage();
+  } catch (e) {
+    showToast('Could not save — check your connection', 'danger');
+  }
+}
+
+function buildPayrollDetailRows(label, periodStart) {
   const shifts = excludeInactiveUnapproved(computeShiftsWithOT().filter(s => s.period === label));
-  if (shifts.length === 0) return [];
-  const { start } = getPeriodForDate(shifts[0].date);
-  const startMs = start.getTime();
 
   const groups = {};
-  shifts.forEach(s => {
-    const staffMember = STAFF.find(x => x.id === s.staff);
-    const key = s.staff + '|' + s.location;
-    if (!groups[key]) {
-      groups[key] = {
-        staffId: s.staff,
-        name: staffMember ? `${staffMember.last}, ${staffMember.first}` : s.staff,
-        location: s.location || '\u2014',
-        rate: s.locRate,
-        wk1Reg:0, wk2Reg:0, wk1OT:0, wk2OT:0,
-        regPay:0, otPay:0, shifts:0
-      };
-    }
-    const g = groups[key];
-    const dayOffset = Math.floor((new Date(s.date + 'T00:00:00').getTime() - startMs) / 86400000);
-    const wk = dayOffset < 7 ? 1 : 2;
-    if (wk === 1) { g.wk1Reg += s.regHrs; g.wk1OT += s.otHrs; }
-    else         { g.wk2Reg += s.regHrs; g.wk2OT += s.otHrs; }
-    g.regPay += s.regPay;
-    g.otPay  += s.otPay;
-    g.shifts++;
+
+  // Hourly staff: existing shift-based grouping, unchanged. Only runs if
+  // there's at least one shift to derive the period's start-of-week
+  // boundary from.
+  if (shifts.length > 0) {
+    const { start } = getPeriodForDate(shifts[0].date);
+    const startMs = start.getTime();
+    shifts.forEach(s => {
+      const staffMember = STAFF.find(x => x.id === s.staff);
+      const key = s.staff + '|' + s.location;
+      if (!groups[key]) {
+        groups[key] = {
+          staffId: s.staff,
+          name: staffMember ? `${staffMember.last}, ${staffMember.first}` : s.staff,
+          location: s.location || '\u2014',
+          rate: s.locRate,
+          wk1Reg:0, wk2Reg:0, wk1OT:0, wk2OT:0,
+          regPay:0, otPay:0, shifts:0, payType: 'hourly'
+        };
+      }
+      const g = groups[key];
+      const dayOffset = Math.floor((new Date(s.date + 'T00:00:00').getTime() - startMs) / 86400000);
+      const wk = dayOffset < 7 ? 1 : 2;
+      if (wk === 1) { g.wk1Reg += s.regHrs; g.wk1OT += s.otHrs; }
+      else         { g.wk2Reg += s.regHrs; g.wk2OT += s.otHrs; }
+      g.regPay += s.regPay;
+      g.otPay  += s.otPay;
+      g.shifts++;
+    });
+  }
+
+  // Salary staff have no shifts at all by design — without this, they'd be
+  // completely invisible in payroll whenever a period happened to have zero
+  // hourly shifts (or even when it doesn't, since they were never grouped
+  // by the loop above in the first place). Every Active salaried staff
+  // member gets a synthetic row every period, unconditionally.
+  STAFF.filter(s => s.status === 'Active' && s.payType === 'salary').forEach(s => {
+    const key = s.id + '|salary';
+    groups[key] = {
+      staffId: s.id, name: `${s.last}, ${s.first}`, location: s.loc || '\u2014',
+      rate: null, wk1Reg:0, wk2Reg:0, wk1OT:0, wk2OT:0,
+      regPay: s.salaryAmount || 0, otPay: 0, shifts: 0, payType: 'salary'
+    };
+  });
+
+  // External staff similarly have no shifts here at all — their hours live
+  // in a different program entirely. If nobody has entered this period's
+  // amount yet, they still appear (with $0 and needsEntry:true) so a
+  // missing entry is visibly obvious on the payroll screen rather than the
+  // person just silently not being paid.
+  STAFF.filter(s => s.status === 'Active' && s.payType === 'external').forEach(s => {
+    const entry = (EXTERNAL_PAYROLL_ENTRIES || []).find(e => e.staffId === s.id && e.periodStart === periodStart);
+    const key = s.id + '|external';
+    groups[key] = {
+      staffId: s.id, name: `${s.last}, ${s.first}`, location: s.loc || '\u2014',
+      rate: null, wk1Reg: entry ? entry.hours : 0, wk2Reg: 0, wk1OT:0, wk2OT:0,
+      regPay: entry ? entry.amount : 0, otPay: 0, shifts: 0, payType: 'external',
+      needsEntry: !entry
+    };
   });
 
   return Object.values(groups).map(g => ({
@@ -7078,7 +7199,7 @@ function renderPayrollPage() {
   const periodStart = getPrSelectedStart();
   if (!label) return;
 
-  const detailRows = buildPayrollDetailRows(label);
+  const detailRows = buildPayrollDetailRows(label, periodStart);
   const rec = periodStart ? findPayrollRecord(periodStart) : null;
 
   const banner = document.getElementById('pr-status-banner');
@@ -7110,19 +7231,23 @@ function renderPayrollPage() {
 
   let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
   detailRows.forEach(d => {
+    const payTypeBadge = d.payType === 'salary' ? ' <span class="badge badge-info" style="font-size:9px">SALARY</span>'
+      : d.payType === 'external' ? (d.needsEntry ? ' <span class="badge badge-danger" style="font-size:9px" title="No amount entered yet for this period">⚠️ NEEDS ENTRY</span>' : ' <span class="badge badge-muted" style="font-size:9px">EXTERNAL</span>')
+      : '';
     html += `<tr>
       <td style="color:var(--text3)">${esc(d.location)}</td>
-      <td style="color:var(--text);font-weight:500">${esc(d.name)}</td>
-      <td class="mono">${d.wk1Reg > 0 ? numFmt(d.wk1Reg) : '\u2014'}</td>
-      <td class="mono">${d.wk2Reg > 0 ? numFmt(d.wk2Reg) : '\u2014'}</td>
+      <td style="color:var(--text);font-weight:500">${esc(d.name)}${payTypeBadge}</td>
+      <td class="mono">${d.payType === 'salary' ? '\u2014' : (d.wk1Reg > 0 ? numFmt(d.wk1Reg) : '\u2014')}</td>
+      <td class="mono">${d.payType === 'salary' ? '\u2014' : (d.wk2Reg > 0 ? numFmt(d.wk2Reg) : '\u2014')}</td>
       <td class="mono" style="color:${d.wk1OT>0?'var(--warn)':'var(--text3)'}">${d.wk1OT > 0 ? numFmt(d.wk1OT) : '\u2014'}</td>
       <td class="mono" style="color:${d.wk2OT>0?'var(--warn)':'var(--text3)'}">${d.wk2OT > 0 ? numFmt(d.wk2OT) : '\u2014'}</td>
-      <td class="mono">${numFmt(d.totalHrs)}</td>
+      <td class="mono">${d.payType === 'salary' ? '\u2014' : numFmt(d.totalHrs)}</td>
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(d.gross)}</td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('pr-table').innerHTML = html;
+  renderExternalPayrollSection(periodStart);
 
   const step1 = document.getElementById('pr-step1');
   const step2 = document.getElementById('pr-step2');
@@ -7696,8 +7821,14 @@ function confirmAndRunPayroll() {
   const periodStart = getPrSelectedStart();
   if (!periodStart) { showToast('Cannot determine this period\'s date range', 'danger'); return; }
 
-  const detailRows = buildPayrollDetailRows(label);
+  const detailRows = buildPayrollDetailRows(label, periodStart);
   if (!detailRows.length) { showToast('No shifts recorded for this period yet', 'warn'); return; }
+
+  const missingExternal = detailRows.filter(d => d.payType === 'external' && d.needsEntry);
+  if (missingExternal.length) {
+    showToast(`⚠️ ${missingExternal.length} External staff member${missingExternal.length!==1?'s are':' is'} missing their amount for this period (${missingExternal.map(d=>d.name).join(', ')}) — enter it below before running payroll, or they'll be paid $0.`, 'danger');
+    return;
+  }
 
   const payDate = document.getElementById('pr-pay-date').value;
   if (!payDate) { showToast('Enter a pay date before running payroll', 'danger'); return; }
@@ -8195,6 +8326,9 @@ function openEditStaffModal(id) {
   document.getElementById('staff-edit-w4step4a').value = s.w4Step4a || '';
   document.getElementById('staff-edit-w4step4b').value = s.w4Step4b || '';
   document.getElementById('staff-edit-w4step4c').value = s.w4Step4c || '';
+  document.getElementById('staff-edit-paytype').value = s.payType || 'hourly';
+  document.getElementById('staff-edit-salary').value = s.salaryAmount || '';
+  onStaffPayTypeChange();
 
   // Populate location dropdown and pre-select current value
   const locSel = document.getElementById('staff-edit-loc');
@@ -8211,6 +8345,12 @@ function openEditStaffModal(id) {
   Array.from(statusEl.options).forEach(opt => { opt.selected = (opt.value === s.status); });
 
   document.getElementById('staff-edit-modal').classList.remove('hidden');
+}
+
+function onStaffPayTypeChange() {
+  const payType = document.getElementById('staff-edit-paytype').value;
+  document.getElementById('staff-edit-salary-wrap').style.display = payType === 'salary' ? '' : 'none';
+  document.getElementById('staff-edit-external-note').style.display = payType === 'external' ? '' : 'none';
 }
 
 function closeStaffEditModal() {
@@ -8237,6 +8377,8 @@ function saveEditStaff() {
   s.start  = document.getElementById('staff-edit-start').value || s.start;
   s.status = document.getElementById('staff-edit-status').value;
   s.filingStatus = document.getElementById('staff-edit-filingstatus').value;
+  s.payType = document.getElementById('staff-edit-paytype').value;
+  s.salaryAmount = parseFloat(document.getElementById('staff-edit-salary').value) || 0;
   s.w4Step3  = parseFloat(document.getElementById('staff-edit-w4step3').value) || 0;
   s.w4Step4a = parseFloat(document.getElementById('staff-edit-w4step4a').value) || 0;
   s.w4Step4b = parseFloat(document.getElementById('staff-edit-w4step4b').value) || 0;

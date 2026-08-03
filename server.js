@@ -345,6 +345,24 @@ function createSchema() {
     pto_balance REAL DEFAULT 0
   )`);
   try { db.run(`ALTER TABLE staff ADD COLUMN pto_balance REAL DEFAULT 0`); } catch (e) { /* already exists */ }
+  // pay_type: 'hourly' (default, existing shift/OT-based calculation),
+  // 'salary' (a fixed amount every pay period, no shift entry needed),
+  // 'external' (hours tracked in a different system entirely — e.g. a
+  // separate biweekly payroll program for another group under the same
+  // company — entered manually per period so it still lands in the same
+  // final payroll run as everyone else).
+  ['pay_type TEXT DEFAULT \'hourly\'', 'salary_amount REAL DEFAULT 0'].forEach(colDef => {
+    try { db.run(`ALTER TABLE staff ADD COLUMN ${colDef}`); } catch (e) { /* already exists */ }
+  });
+  // One row per external-payroll staff member per pay period — the actual
+  // number entered by an admin from whatever the other program reports,
+  // since there's no shift data in this system to compute it from.
+  db.run(`CREATE TABLE IF NOT EXISTS external_payroll_entries (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, period_start TEXT NOT NULL,
+    hours REAL DEFAULT 0, amount REAL NOT NULL DEFAULT 0, notes TEXT DEFAULT '',
+    entered_by TEXT DEFAULT '', entered_at TEXT NOT NULL,
+    UNIQUE(staff_id, period_start)
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS shifts (
     id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, date TEXT NOT NULL,
     time_in TEXT NOT NULL, time_out TEXT NOT NULL, loc TEXT DEFAULT '',
@@ -473,7 +491,11 @@ function loadDB() {
   const STAFF = all('SELECT * FROM staff').map(r => ({
     id: r.id, first: r.first, last: r.last, title: r.title,
     type: r.type, loc: r.loc, rate: r.rate, start: r.start, status: r.status,
-    ptoBalance: r.pto_balance || 0
+    ptoBalance: r.pto_balance || 0, payType: r.pay_type || 'hourly', salaryAmount: r.salary_amount || 0
+  }));
+  const EXTERNAL_PAYROLL_ENTRIES = all('SELECT * FROM external_payroll_entries').map(r => ({
+    id: r.id, staffId: r.staff_id, periodStart: r.period_start, hours: r.hours || 0,
+    amount: r.amount, notes: r.notes, enteredBy: r.entered_by, enteredAt: r.entered_at
   }));
   const SHIFTS = all('SELECT * FROM shifts').map(r => {
     const extra = JSON.parse(r.extra_data || '{}');
@@ -512,7 +534,8 @@ function loadDB() {
 
   return { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
            PENDING_APPROVALS, APPROVED_EXCEPTIONS,
-           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES };
+           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES,
+           EXTERNAL_PAYROLL_ENTRIES };
 }
 
 function saveDB(data) {
@@ -563,8 +586,9 @@ function saveDB(data) {
   run('DELETE FROM staff');
   for (const s of (STAFF || [])) {
     const ptoBalance = existingPtoBalances[s.id] !== undefined ? existingPtoBalances[s.id] : (s.ptoBalance || 0);
-    run('INSERT INTO staff (id,first,last,title,type,loc,rate,start,status,pto_balance) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active', ptoBalance]);
+    const payType = ['hourly','salary','external'].includes(s.payType) ? s.payType : 'hourly';
+    run('INSERT INTO staff (id,first,last,title,type,loc,rate,start,status,pto_balance,pay_type,salary_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [s.id, s.first, s.last, s.title||'DSP', s.type||'Full-Time', s.loc||'', s.rate, s.start, s.status||'Active', ptoBalance, payType, s.salaryAmount||0]);
   }
 
   // SHIFTS
@@ -1081,6 +1105,61 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── External payroll entries ───────────────────────────────
+  // For staff whose hours are tracked in a completely separate program
+  // (a different group under the same company, biweekly, no clock in/out
+  // in this system at all) but whose pay still needs to land in the same
+  // final payroll run as everyone else. One entry per staff+period,
+  // entered manually from whatever the other program reports.
+  app.post('/api/external-payroll', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'payroll_run')) {
+      return res.status(403).json({ error: 'Not authorized to enter external payroll amounts' });
+    }
+    try {
+      const { staffId, periodStart, hours, amount, notes } = req.body || {};
+      const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
+      if (!staff) return res.status(400).json({ error: 'Unknown staff member' });
+      if (staff.pay_type !== 'external') return res.status(400).json({ error: 'This staff member is not set to External pay type' });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) return res.status(400).json({ error: 'Invalid period' });
+      const numAmount = Number(amount);
+      if (!Number.isFinite(numAmount) || numAmount < 0 || numAmount > 100000) {
+        return res.status(400).json({ error: 'Amount must be a number from 0 to 100,000' });
+      }
+      const numHours = Number(hours) || 0;
+      if (numHours < 0 || numHours > 400) return res.status(400).json({ error: 'Hours must be 0 to 400' });
+      const safeNotes = typeof notes === 'string' ? notes.slice(0, 300) : '';
+
+      const existing = get('SELECT id FROM external_payroll_entries WHERE staff_id = ? AND period_start = ?', [staffId, periodStart]);
+      const now = new Date().toISOString();
+      if (existing) {
+        run('UPDATE external_payroll_entries SET hours = ?, amount = ?, notes = ?, entered_by = ?, entered_at = ? WHERE id = ?',
+          [numHours, numAmount, safeNotes, req.user.name, now, existing.id]);
+        writeAuditLog('EXTERNAL_PAYROLL_UPDATED', `${req.user.name} updated ${staff.first} ${staff.last}'s external payroll entry for period ${periodStart}: $${numAmount.toFixed(2)}`, req.user);
+        persistDB();
+        return res.json({ ok: true, id: existing.id });
+      }
+      const id = 'EXT' + Date.now() + Math.random().toString(36).slice(2,6);
+      run('INSERT INTO external_payroll_entries (id,staff_id,period_start,hours,amount,notes,entered_by,entered_at) VALUES (?,?,?,?,?,?,?,?)',
+        [id, staffId, periodStart, numHours, numAmount, safeNotes, req.user.name, now]);
+      writeAuditLog('EXTERNAL_PAYROLL_ENTERED', `${req.user.name} entered ${staff.first} ${staff.last}'s external payroll for period ${periodStart}: $${numAmount.toFixed(2)}`, req.user);
+      persistDB();
+      res.json({ ok: true, id });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/external-payroll', requireAuth, (req, res) => {
+    if (!hasPermission(req.user, 'payroll_run') && !hasPermission(req.user, 'payroll_view')) {
+      return res.status(403).json({ error: 'Not authorized to view external payroll entries' });
+    }
+    try {
+      const rows = all('SELECT * FROM external_payroll_entries ORDER BY period_start DESC');
+      res.json({ entries: rows.map(r => ({
+        id: r.id, staffId: r.staff_id, periodStart: r.period_start, hours: r.hours || 0,
+        amount: r.amount, notes: r.notes, enteredBy: r.entered_by, enteredAt: r.entered_at
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/permissions', requireAuth, (req, res) => {
     // The full taxonomy and what the built-in roles have, so the client can
     // render a real permission matrix instead of a hardcoded guess.
@@ -1426,8 +1505,9 @@ async function main() {
   }
 
   // Returns [lat, lng, accuracy] as numbers if the payload includes valid
-  // coordinates, or [null, null, null] otherwise. Never rejects the whole
-  // request over bad/missing location data — it's always optional.
+  // coordinates, or [null, null, null] otherwise. Used for admin-driven
+  // paths (admin-in/admin-out) where GPS enforcement doesn't make sense —
+  // the admin doing the override obviously isn't physically at the house.
   function extractGeoOrNull(body) {
     const lat = Number(body && body.lat);
     const lng = Number(body && body.lng);
@@ -1436,6 +1516,18 @@ async function main() {
       return [null, null, null];
     }
     return [lat, lng, Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : null];
+  }
+
+  // Same validation, but returns null on anything invalid/missing instead
+  // of [null,null,null] — used by the actual self-service clock in/out
+  // endpoints, where GPS is a hard requirement, not best-effort. The client
+  // already blocks the action before ever making this request; this is the
+  // real enforcement, since a client-side check alone can be bypassed by
+  // anyone calling the API directly.
+  function requireValidGeo(body) {
+    const [lat, lng, accuracy] = extractGeoOrNull(body);
+    if (lat === null) return null;
+    return [lat, lng, accuracy];
   }
 
   app.post('/api/clock/in', requireAuth, writeLimiter, (req, res) => {
@@ -1448,7 +1540,9 @@ async function main() {
       if (!get('SELECT id FROM locations WHERE name = ?', [safeLocation])) {
         return res.status(400).json({ error: 'Unknown location' });
       }
-      const [lat, lng, accuracy] = extractGeoOrNull(req.body);
+      const geo = requireValidGeo(req.body);
+      if (!geo) return res.status(400).json({ error: 'A valid GPS location is required to clock in. Please enable location services and try again.' });
+      const [lat, lng, accuracy] = geo;
 
       // The staffing cap and the "no double clock-in" rule both live inside
       // the WHERE clause of the INSERT itself, not a separate check beforehand.
@@ -1504,7 +1598,9 @@ async function main() {
       if (!Number.isFinite(hours) || hours <= 0) {
         return res.status(400).json({ error: 'Clock-out time must be after your clock-in time. If you clocked in by mistake, use "Cancel Clock-In" instead of clocking out.' });
       }
-      const [lat, lng, accuracy] = extractGeoOrNull(req.body);
+      const geoOut = requireValidGeo(req.body);
+      if (!geoOut) return res.status(400).json({ error: 'A valid GPS location is required to clock out. Please enable location services and try again.' });
+      const [lat, lng, accuracy] = geoOut;
 
       run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, notes = ?, status = 'pending', clock_out_lat = ?, clock_out_lng = ?, clock_out_accuracy = ? WHERE id = ?`,
         [date, time, safeNotes, lat, lng, accuracy, openEntry.id]);

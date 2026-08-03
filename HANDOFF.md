@@ -23,7 +23,26 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION — geo-location built for real, inactive-staff flagging rebuilt, clock history clarified
+## THIS SESSION — mandatory GPS enforcement, salary/external pay types wired into real payroll
+
+### GPS is now genuinely required, not optional — enforced server-side, not just in the UI
+The user explicitly asked for this (a reversal of the prior session's opt-in design, which was a deliberate choice at the time; the business decision to require it is the user's call to make). Verified directly: clocking in/out with zero location fields, or with garbage out-of-range coordinates, is now rejected with a clear message at the server level — not just hidden behind a disabled button, which a technical user could bypass by calling the API directly. Valid coordinates succeed normally. Gave a brief, appropriate compliance note (some US states require documented consent before location tracking becomes a condition of employment) without holding up implementation — this is a legitimate operational decision within the user's purview, not something to refuse.
+
+**A real regression caught immediately, not shipped**: making GPS mandatory broke several *existing* tests written before this policy existed, which called clock-in without coordinates expecting success. Found this by actually running the test suite rather than assuming the change was isolated — updated every affected test to either provide valid coordinates (where success is still the correct expectation) or to expect rejection (the two tests that were specifically testing the old "optional GPS" behavior, which is no longer correct).
+
+### Salary and External pay types — built and proven to actually flow into payroll, not just tracked as a label
+For the fixed-salary staff and the separate biweekly group tracked in a different payroll program under the same company, both needing to land in the same final payroll run:
+- `staff.payType`: 'hourly' (existing, unchanged) | 'salary' (fixed $ per pay period) | 'external' (hours/amount entered manually per period from the other program).
+- **Found and fixed a real structural bug before it could cause silent missing pay**: the payroll-row-building function used to return an empty result immediately whenever a period had zero hourly shifts. Since Salary and External staff have *no shifts at all* by design, they would have been completely invisible in payroll under the old logic — not just in edge cases, but potentially every single period. Restructured so Salary and External staff are added unconditionally, independent of whether any hourly shifts exist.
+- **Proved this with the exact scenario that would have been silently broken**: extracted the real production payroll function and ran it with a salaried staff member who has zero shift records anywhere in the system — confirmed they still appear with their correct fixed gross pay. Also confirmed an Inactive staff member marked as salary correctly does *not* appear (the existing inactive-staff exclusion applies universally, not just to hourly staff), and that an External staff member with no entry yet for a *different* period still shows up flagged "NEEDS ENTRY" rather than silently vanishing.
+- Payroll finalization now blocks (not just warns) if any External staff member is missing their period's entry, naming exactly who, rather than silently finalizing them at $0.
+- A dedicated "External Payroll Entries" section appears directly on the Payroll page for periods where External staff exist, so entering their numbers from the other program happens in the same place as running payroll — not a separate disconnected screen.
+
+### Two more real mistakes caught and fixed during this work, worth remembering
+1. Forgot to update `patch_html.py` when adding the new `EXTERNAL_PAYROLL_ENTRIES` client-side global — caught by the sync-check ritual, not skipped.
+2. The sync-check ritual itself has a real trap documented in this file already, and it happened again here: ran the diff-check once before both files were actually fixed, which silently overwrote the in-progress client-side edits with the (still-broken) `patch_html.py` output. Caught by checking the actual file content directly (`grep -c` for the new field) rather than trusting a stale snapshot comparison — worth remembering that a "confirmed in sync" result is only meaningful if both files were genuinely finished first.
+
+
 
 ### Recent Clock History table — clarity fix
 Was a single ambiguous "9:16 PM–9:16 PM" range. Now separate, icon-labeled Clock In / Clock Out columns with the house shown as its own prominent column, on both the employee's own view and the admin's.
@@ -93,7 +112,7 @@ This was explicitly asked to be "as sensitive as possible" for a payroll system,
 - **The actual UI is built and works** — a Roles & Permissions page where you create a role, check boxes across a real permission matrix, and it's immediately assignable from the Add User form's role dropdown (custom roles appear in their own group below the built-in four).
 - **Verified with a real, complete browser walkthrough, not just API calls**: created a "Billing Clerk" role through the actual form, granted it exactly `dashboard_view` + `staff_view` + `reports_view`, created a user through the actual Add User form, logged in as that user, and confirmed their visible/enabled navigation matched *exactly* those three permissions — including that pages sharing a permission (all four Reports-section pages map to `reports_view`) correctly all became accessible together. The restricted Payroll link wasn't just visually dimmed — Playwright's own click-simulation refused to force a click through it because it has real `pointer-events: none`, which is about as strong a confirmation of "not just hidden, genuinely blocked" as a browser test can give.
 
-
+## EARLIER THIS SESSION — validation gaps closed, a real pre-existing mobile bug finally fixed
 
 The user asked for a general "check through and fix all gaps" pass. Found and fixed three genuine issues:
 

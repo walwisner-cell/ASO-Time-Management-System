@@ -218,10 +218,10 @@ async function main() {
     const cap2Login = await request('POST', '/api/auth/login', { body: { username: 'capworker2', password: 'cappass2' } });
     const cap2Cookie = cap2Login.cookie;
 
-    const firstIn = await request('POST', '/api/clock/in', { cookie: cap1Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:00' } });
+    const firstIn = await request('POST', '/api/clock/in', { cookie: cap1Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:00', lat: 39.95, lng: -75.16, accuracy: 10 } });
     check('first clock-in at a 1-person house succeeds', firstIn.status === 200);
 
-    const secondIn = await request('POST', '/api/clock/in', { cookie: cap2Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:05' } });
+    const secondIn = await request('POST', '/api/clock/in', { cookie: cap2Cookie, body: { location: 'Cap Test House', date: '2026-05-10', time: '08:05', lat: 39.95, lng: -75.16, accuracy: 10 } });
     check('second clock-in at the same house is blocked at capacity', secondIn.status === 400 && secondIn.body.atCapacity === true);
 
     const overrideNoAuth = await request('POST', '/api/clock/admin-in', { cookie: cap2Cookie, body: { staffId: 'S921', location: 'Cap Test House', date: '2026-05-10', time: '08:05', reason: 'test' } });
@@ -262,7 +262,7 @@ async function main() {
 
     // Fire all 5 clock-in requests at once — genuinely concurrent, not sequential awaits.
     const raceResults = await Promise.all(raceCookies.map(cookie =>
-      request('POST', '/api/clock/in', { cookie, body: { location: 'Race Condition House', date: '2026-05-10', time: '08:00' } })
+      request('POST', '/api/clock/in', { cookie, body: { location: 'Race Condition House', date: '2026-05-10', time: '08:00', lat: 39.95, lng: -75.16, accuracy: 10 } })
     ));
     const raceSuccesses = raceResults.filter(r => r.status === 200).length;
     check('exactly capacity (2) succeed out of 5 truly simultaneous clock-ins, never more', raceSuccesses === 2);
@@ -278,7 +278,7 @@ async function main() {
     await request('POST', '/api/db/save', { body: dblSetup, cookie: adminCookie });
     const dblLogin = await request('POST', '/api/auth/login', { body: { username: 'dblclick', password: 'dblpass1' } });
     const dblResults = await Promise.all(Array(5).fill(0).map(() =>
-      request('POST', '/api/clock/in', { cookie: dblLogin.cookie, body: { location: 'Usene House', date: '2026-05-10', time: '08:00' } })
+      request('POST', '/api/clock/in', { cookie: dblLogin.cookie, body: { location: 'Usene House', date: '2026-05-10', time: '08:00', lat: 39.95, lng: -75.16, accuracy: 10 } })
     ));
     check('exactly 1 of 5 simultaneous clock-ins from the same person succeeds', dblResults.filter(r => r.status === 200).length === 1);
 
@@ -318,7 +318,7 @@ async function main() {
     await request('POST', '/api/db/save', { body: invalidGeoSetup, cookie: adminCookie });
     const invalidGeoLogin = await request('POST', '/api/auth/login', { body: { username: 'invalidgeo', password: 'invpass1' } });
     const invalidGeoIn = await request('POST', '/api/clock/in', { cookie: invalidGeoLogin.cookie, body: { location: 'Usene House', date: '2026-08-04', time: '08:00:00', lat: 999, lng: -9999, accuracy: -5 } });
-    check('out-of-range coordinates are silently ignored, clock-in still succeeds', invalidGeoIn.status === 200);
+    check('out-of-range coordinates are rejected (GPS is required, not best-effort)', invalidGeoIn.status === 400);
 
     const noGeoSetup = { ...raceBase.body };
     noGeoSetup.STAFF = [...noGeoSetup.STAFF, { id: 'SGT3', first: 'No', last: 'Geo', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
@@ -326,7 +326,9 @@ async function main() {
     await request('POST', '/api/db/save', { body: noGeoSetup, cookie: adminCookie });
     const noGeoLogin = await request('POST', '/api/auth/login', { body: { username: 'nogeo', password: 'nogeopass1' } });
     const noGeoIn = await request('POST', '/api/clock/in', { cookie: noGeoLogin.cookie, body: { location: 'Usene House', date: '2026-08-04', time: '09:00:00' } });
-    check('clock-in with zero location fields works fine (location is truly optional)', noGeoIn.status === 200);
+    check('clock-in with zero location fields is rejected (GPS is required)', noGeoIn.status === 400);
+    const noGeoInWithCoords = await request('POST', '/api/clock/in', { cookie: noGeoLogin.cookie, body: { location: 'Usene House', date: '2026-08-04', time: '09:00:00', lat: 39.95, lng: -75.16, accuracy: 10 } });
+    check('the same clock-in succeeds once valid coordinates are provided', noGeoInWithCoords.status === 200);
 
     console.log('\nSame-minute clock in/out (previously left people permanently stuck):');
     const sameMinSetup = { ...raceBase.body };
@@ -334,12 +336,12 @@ async function main() {
     sameMinSetup.USERS = [...sameMinSetup.USERS, { id: 'USM1', username: 'sameminute', password: 'samepass1', name: 'Same Minute', role: 'employee', staffId: 'SSM1' }];
     await request('POST', '/api/db/save', { body: sameMinSetup, cookie: adminCookie });
     const sameMinLogin = await request('POST', '/api/auth/login', { body: { username: 'sameminute', password: 'samepass1' } });
-    await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '22:11:05' } });
-    const sameMinOut = await request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '22:11:45', notes: '' } });
+    await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '22:11:05', lat: 39.95, lng: -75.16, accuracy: 10 } });
+    const sameMinOut = await request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '22:11:45', notes: '', lat: 39.95, lng: -75.16, accuracy: 10 } });
     check('clocking out 40 seconds later in the same minute now succeeds', sameMinOut.status === 200 && sameMinOut.body.hours === 0.01);
 
-    const trueZeroOut = await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '23:00:00' } })
-      .then(() => request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '23:00:00', notes: '' } }));
+    const trueZeroOut = await request('POST', '/api/clock/in', { cookie: sameMinLogin.cookie, body: { location: 'Usene House', date: '2026-08-02', time: '23:00:00', lat: 39.95, lng: -75.16, accuracy: 10 } })
+      .then(() => request('POST', '/api/clock/out', { cookie: sameMinLogin.cookie, body: { date: '2026-08-02', time: '23:00:00', notes: '', lat: 39.95, lng: -75.16, accuracy: 10 } }));
     check('genuine zero-duration (exact same second) is still correctly rejected', trueZeroOut.status === 400);
 
     const cancelResult = await request('POST', '/api/clock/cancel', { cookie: sameMinLogin.cookie });
@@ -368,6 +370,49 @@ async function main() {
     const afterRestore = await request('GET', '/api/db/load', { cookie: adminCookie });
     const restoredShift = afterRestore.body.SHIFTS.find(s => s.id === 'SHRJ1');
     check('restored shift is active again', restoredShift && restoredShift.shiftStatus === 'active');
+
+    console.log('\nGPS enforcement for clock in/out:');
+    const gpsSetup = { ...raceBase.body };
+    gpsSetup.STAFF = [...gpsSetup.STAFF, { id: 'SGPS1', first: 'Gps', last: 'Enforce', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    gpsSetup.USERS = [...gpsSetup.USERS, { id: 'UGPS1', username: 'gpsenforce', password: 'gpspass1', name: 'Gps Enforce', role: 'employee', staffId: 'SGPS1' }];
+    await request('POST', '/api/db/save', { body: gpsSetup, cookie: adminCookie });
+    const gpsLogin = await request('POST', '/api/auth/login', { body: { username: 'gpsenforce', password: 'gpspass1' } });
+    const gpsNoCoords = await request('POST', '/api/clock/in', { cookie: gpsLogin.cookie, body: { location: 'Usene House', date: '2026-08-05', time: '08:00:00' } });
+    check('clock-in with no GPS data at all is rejected', gpsNoCoords.status === 400);
+    const gpsGoodIn = await request('POST', '/api/clock/in', { cookie: gpsLogin.cookie, body: { location: 'Usene House', date: '2026-08-05', time: '08:00:00', lat: 39.95, lng: -75.16, accuracy: 10 } });
+    check('clock-in with valid GPS succeeds', gpsGoodIn.status === 200);
+    const gpsNoCoordsOut = await request('POST', '/api/clock/out', { cookie: gpsLogin.cookie, body: { date: '2026-08-05', time: '16:00:00', notes: '' } });
+    check('clock-out with no GPS data is rejected', gpsNoCoordsOut.status === 400);
+    const gpsGoodOut = await request('POST', '/api/clock/out', { cookie: gpsLogin.cookie, body: { date: '2026-08-05', time: '16:00:00', notes: '', lat: 39.95, lng: -75.16, accuracy: 10 } });
+    check('clock-out with valid GPS succeeds', gpsGoodOut.status === 200);
+
+    console.log('\nSalary and External pay types:');
+    const payTypeSetup = { ...raceBase.body };
+    payTypeSetup.STAFF = [...payTypeSetup.STAFF,
+      { id: 'SSAL2', first: 'Sal', last: 'Aried', title: 'Manager', type: 'Full-Time', loc: 'Usene House', rate: 0, start: '2026-01-01', status: 'Active', payType: 'salary', salaryAmount: 2000 },
+      { id: 'SEXT2', first: 'Ext', last: 'Ernal', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 15, start: '2026-01-01', status: 'Active', payType: 'external' }];
+    await request('POST', '/api/db/save', { body: payTypeSetup, cookie: adminCookie });
+
+    const extOnHourly = await request('POST', '/api/external-payroll', { cookie: adminCookie, body: { staffId: 'S001', periodStart: '2026-08-01', hours: 80, amount: 1200 } });
+    check('entering external payroll for an Hourly staff member is rejected', extOnHourly.status === 400);
+
+    const extOk = await request('POST', '/api/external-payroll', { cookie: adminCookie, body: { staffId: 'SEXT2', periodStart: '2026-08-01', hours: 80, amount: 1200, notes: 'From other program' } });
+    check('entering external payroll for the correct External staff member succeeds', extOk.status === 200);
+
+    const extUpdate = await request('POST', '/api/external-payroll', { cookie: adminCookie, body: { staffId: 'SEXT2', periodStart: '2026-08-01', hours: 82, amount: 1230, notes: 'Corrected' } });
+    check('re-submitting the same staff+period updates rather than duplicates', extUpdate.status === 200 && extUpdate.body.id === extOk.body.id);
+
+    const extAbsurd = await request('POST', '/api/external-payroll', { cookie: adminCookie, body: { staffId: 'SEXT2', periodStart: '2026-08-01', hours: 80, amount: 9999999 } });
+    check('an absurd external payroll amount is rejected', extAbsurd.status === 400);
+
+    const extList = await request('GET', '/api/external-payroll', { cookie: adminCookie });
+    const extEntry = extList.body.entries.find(e => e.staffId === 'SEXT2');
+    check('the external payroll entry reflects the update, not the original', extEntry && extEntry.amount === 1230 && extEntry.notes === 'Corrected');
+
+    const payTypeCheck = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const salStaff = payTypeCheck.body.STAFF.find(s => s.id === 'SSAL2');
+    const extStaff = payTypeCheck.body.STAFF.find(s => s.id === 'SEXT2');
+    check('staff pay types and salary amount persist correctly', salStaff && salStaff.payType === 'salary' && salStaff.salaryAmount === 2000 && extStaff && extStaff.payType === 'external');
 
     console.log('\nInactive staff with worked hours (payroll flag/review):');
     const inactiveSetup = { ...raceBase.body };
@@ -399,7 +444,7 @@ async function main() {
     stuckSetup.USERS = [...stuckSetup.USERS, { id: 'USTUCK', username: 'stuckemployee', password: 'stuckpass1', name: 'Stuck Employee', role: 'employee', staffId: 'SSTUCK' }];
     await request('POST', '/api/db/save', { body: stuckSetup, cookie: adminCookie });
     const stuckLogin = await request('POST', '/api/auth/login', { body: { username: 'stuckemployee', password: 'stuckpass1' } });
-    await request('POST', '/api/clock/in', { cookie: stuckLogin.cookie, body: { location: 'Usene House', date: '2026-05-08', time: '08:00' } });
+    await request('POST', '/api/clock/in', { cookie: stuckLogin.cookie, body: { location: 'Usene House', date: '2026-05-08', time: '08:00', lat: 39.95, lng: -75.16, accuracy: 10 } });
 
     const adminOutNoAuth = await request('POST', '/api/clock/admin-out', { cookie: stuckLogin.cookie, body: { staffId: 'SSTUCK', date: '2026-05-08', time: '16:00', reason: 'test' } });
     check('non-admin cannot use admin clock-out', adminOutNoAuth.status === 403);
@@ -421,7 +466,7 @@ async function main() {
     check('the admin-closed entry can still go through normal approval afterward', adminOutApprove.status === 200 && !!adminOutApprove.body.shiftId);
 
     console.log('\nAdmin-facing clock entry review:');
-    await request('POST', '/api/clock/out', { cookie: cap1Cookie, body: { date: '2026-05-10', time: '16:00', notes: '' } });
+    await request('POST', '/api/clock/out', { cookie: cap1Cookie, body: { date: '2026-05-10', time: '16:00', notes: '', lat: 39.95, lng: -75.16, accuracy: 10 } });
     const pendingClockList = await request('GET', '/api/clock-entries', { cookie: adminCookie });
     const pendingClockEntry = pendingClockList.body.clockEntries.find(c => c.staffId === 'S920' && c.status === 'pending');
     check('clocked-out entry appears as pending for admin review', !!pendingClockEntry);

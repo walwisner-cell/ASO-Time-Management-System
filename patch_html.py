@@ -71,7 +71,8 @@ NEW_DB_LAYER = r"""<script>
 // ══════════════════════════════════════════════════════════
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
-    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES;
+    APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES,
+    EXTERNAL_PAYROLL_ENTRIES;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -79,7 +80,8 @@ const DB_DEFAULTS = {
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
-  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: []
+  DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: [],
+  EXTERNAL_PAYROLL_ENTRIES: []
 };
 
 function dbSave() {
@@ -228,6 +230,7 @@ async function loadAppData() {
   PAYROLL_RECORDS       = data.PAYROLL_RECORDS       || [];
   LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
   CLOCK_ENTRIES         = data.CLOCK_ENTRIES           || [];
+  EXTERNAL_PAYROLL_ENTRIES = data.EXTERNAL_PAYROLL_ENTRIES || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
