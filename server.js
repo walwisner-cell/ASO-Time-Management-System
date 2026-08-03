@@ -791,6 +791,30 @@ function validateLocations(incomingLocations) {
   return null;
 }
 
+// Same class of gap as maxStaff and external payroll amounts: pay rate and
+// salary amount drive every payroll calculation for a staff member, so a
+// negative or absurd value here isn't a cosmetic issue — it would either
+// pay someone nothing/negative or silently blow up a payroll total. $500/hr
+// and $100,000/period are deliberately generous ceilings (this isn't meant
+// to second-guess a legitimately high rate, just catch a typo or a
+// fabricated value — an extra zero is the realistic failure mode here).
+function validateStaff(incomingStaff) {
+  for (const s of (incomingStaff || [])) {
+    const displayName = (s.first && s.last) ? `${s.first} ${s.last}` : 'A staff member';
+    const rate = Number(s.rate);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 500) {
+      return `${displayName}'s pay rate must be a number from 0 to 500`;
+    }
+    if (s.salaryAmount !== undefined && s.salaryAmount !== null && s.salaryAmount !== 0) {
+      const salary = Number(s.salaryAmount);
+      if (!Number.isFinite(salary) || salary < 0 || salary > 100000) {
+        return `${displayName}'s salary amount must be a number from 0 to 100,000`;
+      }
+    }
+  }
+  return null;
+}
+
 // Catches the exact failure mode a typo would cause: assigning someone to a
 // role name that doesn't exist (built-in or custom) doesn't grant them
 // nothing dangerous — hasPermission() fails closed — but it silently locks
@@ -859,6 +883,9 @@ function authorizeSave(existing, incoming, user) {
   const staffIds = new Set((incoming.STAFF || existing.STAFF || []).map(s => s.id));
   const shiftValidationError = validateShifts(incoming.SHIFTS, staffIds);
   if (shiftValidationError) return shiftValidationError;
+
+  const staffValidationError = validateStaff(incoming.STAFF);
+  if (staffValidationError) return staffValidationError;
 
   const locationValidationError = validateLocations(incoming.LOCATIONS);
   if (locationValidationError) return locationValidationError;

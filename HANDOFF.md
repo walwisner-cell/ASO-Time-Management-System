@@ -23,7 +23,38 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION — admin flagging for missed meal breaks, closing the last item from the previous outstanding list
+## THIS SESSION — a genuinely important gap found by testing feature interactions, not just re-checking known areas
+
+Asked to "fix all gaps" again. Rather than re-verify things already covered, deliberately looked at how the *newer* features (salary/external pay types, the inactive-staff-flag system) interact with each other — that's reliably where gaps hide, since each feature gets tested in isolation but the intersection often doesn't.
+
+### Salary/External staff who go Inactive were being silently erased from payroll entirely — worse than the bug the flag system was built to prevent
+Confirmed with a direct test before touching any code: an Inactive salaried or externally-paid staff member produced **no row at all** in the payroll table. Not $0, not a flag, not a warning — nothing. The reason: `buildPayrollDetailRows()` generated rows for these two pay types only when `status === 'Active'`, since they have no shift records to derive a row from the way hourly staff do. The entire inactive-staff-flag system that exists specifically to prevent silent inclusion/exclusion never even got a chance to run for these two pay types.
+
+Fixed by generating a row regardless of Active/Inactive status, holding pay at $0 with a visible "⚠️ INACTIVE — NEEDS REVIEW" badge until an admin explicitly approves it via the same flag mechanism hourly staff already use, and extending `detectAndFlagInactiveStaff()` to actually detect these two pay types (salary staff get flagged for the current period, since their pay isn't period-specific the way a worked shift is; external staff get flagged for whatever period they already have a real entry for). Payroll finalization now blocks on this too, matching hourly.
+
+Verified at three levels: an extracted-function test reproducing the exact broken scenario (now fixed), the full test suite (110 passing, zero regression), and a real browser confirming the badge and $0 actually render — not just that the underlying data is correct. Added a new permanent `test-payroll-inactive-interaction.js` (9 checks) covering this specifically, including an edge case worth calling out: a *denied* flag must still hold pay at $0 exactly like a missing one — denied and approved are not the same thing, and it would be easy to accidentally treat "reviewed" as equivalent to "approved."
+
+### Two more real validation gaps, same class of bug as before
+Negative or absurd values for a staff member's **pay rate** and **salary amount** were both silently accepted and stored — same pattern already fixed for max-staff-per-house and external payroll amounts, just not yet applied to these two fields. Added both server-side (`validateStaff()`) and matching client-side validation on both Add Staff and Edit Staff. Tested five scenarios directly, including the specific edge case that a genuinely valid $0 rate (used by salary/external staff, who don't have an hourly rate at all) must not be rejected as if it were the negative case.
+
+## EARLIER THIS SESSION — the visual polish pass, done as concrete fixes rather than a guess-based redesign
+
+The user asked to "just fix best practice" after I offered to clarify specifics. Rather than redesign anything based on assumptions, took actual screenshots of the live app first and looked for objective, fixable issues — not subjective color opinions.
+
+### The Timesheet Log had grown to 18 columns — a real, measurable usability problem
+Every feature added this build (source badges, rejection status, meal-break warnings) landed as its own new column, and nobody had stepped back to look at the cumulative effect. Confirmed by counting the actual header cells, not a guess. Consolidated to 14 columns without losing any information:
+- Staff ID moved from its own column to a small subtitle under the name (still visible, just not competing for a whole column)
+- Start/End merged into one "Time" column
+- The per-row "Pay Period" label removed entirely — it's already shown clearly by the period filter dropdown above the table, so repeating it on every row was pure redundancy
+- Source badge, approval/rejection status, and the meal-break warning combined into a single "Info" column, since they're all answering the same underlying question ("what's going on with this row")
+
+Checked the Payroll table and Approvals page for the same problem — Payroll's table is 8-9 columns (reasonable, left alone), and Approvals' stacked review cards are a legitimate pattern for multiple distinct queues, not the same kind of bloat.
+
+### Two genuine accessibility gaps, not previously covered
+- **Buttons had no deliberate keyboard-focus style at all.** Inputs already had a proper visible focus glow, but buttons were relying on whatever the browser happened to do by default. Added an explicit `:focus-visible` outline (keyboard navigation only, never shows on a mouse click) in the same accent color already used for inputs. Verified this actually renders, not just that the CSS parses — checked computed styles after tabbing to a real button and confirmed a visible, correctly-colored outline. Deliberately targeted the raw `<button>` element rather than just the `.btn` class, since testing found at least one button (the print button) that doesn't use that class and would have been missed.
+- **Reduced-motion was only handled in one place.** The count-up number animation already checked `prefers-reduced-motion` in JS and skipped straight to the final value, but every CSS hover-lift and transition elsewhere in the app didn't respect it at all. Added a proper `@media (prefers-reduced-motion: reduce)` rule covering all of it.
+
+## EARLIER THIS SESSION — admin flagging for missed meal breaks, closing the last item from the previous outstanding list
 
 ### Missed-meal-break warnings — visibility, not enforcement, by deliberate design
 Built as a natural follow-on to last session's break tracking: a configurable threshold (`PAY_CONFIG.mealBreakThresholdHours`, defaulting to 5 to match California's trigger, adjustable per organization on the Pay Period Setup page) and a warning badge — "⚠️ No meal break recorded" — shown on both the admin Clock In/Out Entries table and the Timesheet Log whenever a clock-tracked shift meets or exceeds that length with no completed meal break logged.
@@ -230,8 +261,7 @@ The clock-in dropdown already let an employee pick any location in the UI, but t
 - PA state tax note added to the Taxes & Benefits page: PA's flat state rate is correctly represented by the existing "% of Gross" deduction type (not a gap). Local PA Earned Income Tax (Act 32) is explicitly flagged as unhandled — municipalities/school districts set their own local EIT rates.
 
 ## STILL OUTSTANDING
-1. **A visual/UX "human touch" polish pass** — flagged multiple sessions ago as the user's phrasing suggesting the current look feels functional but not fully "professional" yet. Still not started, and still worth clarifying specifics with the user rather than guessing at what to change.
-2. ~~No admin visibility/compliance flagging for missed meal breaks~~ — **done this session**.
+Nothing specific is currently open. Worth noting for whoever does the next "fix all gaps" pass: this session's approach (deliberately testing how features interact with each other, rather than re-verifying each in isolation) is where the real find came from. The salary/external + inactive-staff bug wouldn't have been caught by testing either feature alone — both worked correctly on their own. If continuing this pattern, other interaction points worth a look: how the granular permissions system interacts with the newer endpoints (external-payroll, clock-breaks) added after it was built, and whether the meal-break threshold setting has any edge case with periods that span a `PAY_CONFIG` change mid-period.
 
 ## Known limitations, stated honestly
 - W-4 Step 2 checkbox (multiple jobs) isn't modeled — the calculation always uses the Standard Withholding Rate Schedule. If any staff checked that box on their real W-4, this understates their withholding relative to their actual election. Would need a `w4Step2Checked` boolean and the Step 2 Checkbox tables (Pub 15-T publishes both).

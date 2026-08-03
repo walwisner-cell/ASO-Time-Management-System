@@ -188,6 +188,20 @@ async function main() {
     const typoResult = await request('POST', '/api/db/save', { body: roleTypoSetup, cookie: adminCookie });
     check('assigning a nonexistent role name is rejected', typoResult.status === 403);
 
+    console.log('\nStaff pay rate and salary amount validation:');
+    const staffValBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    async function tryStaffField(extra) {
+      const body = { ...staffValBase.body };
+      body.STAFF = [...body.STAFF, { id: 'SVAL' + Date.now(), first: 'Val', last: 'Test', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 15, start: '2026-01-01', status: 'Active', ...extra }];
+      return request('POST', '/api/db/save', { body, cookie: adminCookie });
+    }
+    check('negative pay rate is rejected', (await tryStaffField({ rate: -50 })).status === 403);
+    check('absurd pay rate is rejected', (await tryStaffField({ rate: 999999 })).status === 403);
+    check('negative salary amount is rejected', (await tryStaffField({ rate: 0, payType: 'salary', salaryAmount: -5000 })).status === 403);
+    check('absurd salary amount is rejected', (await tryStaffField({ rate: 0, payType: 'salary', salaryAmount: 99999999 })).status === 403);
+    check('valid pay rate succeeds', (await tryStaffField({ rate: 18.5 })).status === 200);
+    check('rate of exactly 0 (salary/external staff) is accepted, not treated as invalid', (await tryStaffField({ rate: 0, payType: 'external' })).status === 200);
+
     console.log('\nMax Staff / Shift validation:');
     const maxStaffBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     async function tryMaxStaff(value) {

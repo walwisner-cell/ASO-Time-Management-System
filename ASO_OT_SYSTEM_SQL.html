@@ -716,6 +716,14 @@
     transition:all .2s;
     letter-spacing:0.3px;
   }
+  /* :focus-visible only shows for keyboard navigation, not mouse clicks —
+     the modern accessible pattern. Targets every actual <button> element
+     rather than just .btn, since several button-like elements in this app
+     (print-btn, and others) don't use that class. */
+  button:focus-visible, .nav-item:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent2);
+    outline-offset: 2px;
+  }
   .btn-primary { background:linear-gradient(135deg, var(--accent), #0A4C86); color:#fff; }
   .btn-primary:hover { background:linear-gradient(135deg, #1670BE, var(--accent)); transform:translateY(-1px); box-shadow:0 6px 20px rgba(46,138,232,0.4); }
   .btn-success { background:linear-gradient(135deg, var(--success), #075E42); color:#fff; }
@@ -1478,6 +1486,20 @@
   .rs-card, .stat-card { transition:transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s, border-color .25s; }
   .rs-card:hover, .stat-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--border2); }
   .count-up { display:inline-block; }
+
+  /* The count-up number animation already checks this in JS and skips
+     straight to the final value. This covers everything else — hover
+     lifts, transitions — for anyone with reduced-motion turned on at the
+     OS level, without having to hunt down every transition individually. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .btn:hover, .rs-card:hover, .stat-card:hover { transform: none !important; }
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2448,7 +2470,7 @@
             <div class="form-field"><label>Staff Type</label>
               <select id="st-type"><option>Full-Time</option><option>Part-Time</option><option>PRN</option></select></div>
             <div class="form-field"><label>Primary Location</label><select id="st-loc"></select></div>
-            <div class="form-field"><label>Pay Rate ($/hr)</label><input type="number" id="st-rate" step="0.25" placeholder="0.00"></div>
+            <div class="form-field"><label>Pay Rate ($/hr)</label><input type="number" id="st-rate" step="0.25" min="0" max="500" placeholder="0.00"></div>
             <div class="form-field"><label>Start Date</label><input type="date" id="st-start"></div>
             <div class="form-field"><label>Status</label>
               <select id="st-status"><option>Active</option><option>Inactive</option></select></div>
@@ -2458,7 +2480,7 @@
                 <option value="salary">Salary (fixed per period)</option>
                 <option value="external">External (different payroll program)</option>
               </select></div>
-            <div class="form-field" id="st-salary-wrap" style="display:none"><label>Salary Amount ($/period)</label><input type="number" id="st-salary" step="1" min="0" placeholder="e.g. 2000"></div>
+            <div class="form-field" id="st-salary-wrap" style="display:none"><label>Salary Amount ($/period)</label><input type="number" id="st-salary" step="1" min="0" max="100000" placeholder="e.g. 2000"></div>
           </div>
           <button class="btn btn-primary" style="margin-top:14px" onclick="addStaff()">+ Add Staff Member</button>
         </div>
@@ -3560,7 +3582,7 @@
       <div class="form-field"><label>Primary Location</label>
         <select id="staff-edit-loc" style="width:100%"></select>
       </div>
-      <div class="form-field"><label>Pay Rate ($/hr)</label><input type="number" id="staff-edit-rate" step="0.25" style="width:100%"></div>
+      <div class="form-field"><label>Pay Rate ($/hr)</label><input type="number" id="staff-edit-rate" step="0.25" min="0" max="500" style="width:100%"></div>
       <div class="form-field"><label>Start Date</label><input type="date" id="staff-edit-start" style="width:100%"></div>
       <div class="form-field"><label>Status</label>
         <select id="staff-edit-status" style="width:100%">
@@ -3574,7 +3596,7 @@
           <option value="external">External (tracked in a different payroll program, entered manually per period)</option>
         </select>
       </div>
-      <div class="form-field" id="staff-edit-salary-wrap" style="display:none"><label>Salary Amount ($ / pay period)</label><input type="number" id="staff-edit-salary" step="1" min="0" style="width:100%" placeholder="e.g. 2000"></div>
+      <div class="form-field" id="staff-edit-salary-wrap" style="display:none"><label>Salary Amount ($ / pay period)</label><input type="number" id="staff-edit-salary" step="1" min="0" max="100000" style="width:100%" placeholder="e.g. 2000"></div>
     </div>
     <div id="staff-edit-external-note" style="display:none;font-size:11px;color:var(--text3);margin:-12px 0 20px">External staff don't use shift tracking or clock in/out here — their hours/pay for each period are entered on the Payroll page's "External Payroll Entries" section from whatever the other program reports.</div>
     <div style="font-family:var(--display);font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;padding-top:8px;border-top:1px solid var(--border)">Federal W-4 (for bracket-based withholding)</div>
@@ -5873,11 +5895,29 @@ async function detectAndFlagInactiveStaff() {
     computed.forEach(s => {
       const st = STAFF.find(x => x.id === s.staff);
       if (!st || st.status !== 'Inactive') return;
+      if (s.shiftStatus === 'rejected' || !(s.hours > 0)) return; // already excluded from payroll, or nothing to flag
       const key = s.staff + '|' + s.periodKey;
-      if (!byStaffPeriod[key]) byStaffPeriod[key] = { staffId: s.staff, periodStart: s.periodKey, hours: 0 };
-      byStaffPeriod[key].hours += s.hours;
+      if (!byStaffPeriod[key]) byStaffPeriod[key] = { staffId: s.staff, periodStart: s.periodKey };
     });
-    const candidates = Object.values(byStaffPeriod).filter(c => c.hours > 0);
+
+    // Salary staff have no shifts to detect from — their pay is an ongoing
+    // configured amount, not tied to any specific worked period, so the
+    // only period that's actually actionable to flag is the current one
+    // (the one about to be paid). External staff, by contrast, already
+    // have real period-specific entries once someone's recorded their
+    // hours from the other program, so those are checked directly instead.
+    const { start: curStart } = getPeriodForDate(todayLocalISO());
+    const curPeriodKey = curStart.toISOString().split('T')[0];
+    STAFF.filter(s => s.status === 'Inactive' && s.payType === 'salary').forEach(s => {
+      byStaffPeriod[s.id + '|' + curPeriodKey] = { staffId: s.id, periodStart: curPeriodKey };
+    });
+    (EXTERNAL_PAYROLL_ENTRIES || []).forEach(e => {
+      const st = STAFF.find(x => x.id === e.staffId);
+      if (!st || st.status !== 'Inactive') return;
+      byStaffPeriod[e.staffId + '|' + e.periodStart] = { staffId: e.staffId, periodStart: e.periodStart };
+    });
+
+    const candidates = Object.values(byStaffPeriod);
     for (const c of candidates) {
       await fetch('/api/inactive-flags', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -6571,10 +6611,10 @@ function renderTimesheetTable() {
 
   let html = `<table>
     <thead><tr>
-      <th>#</th><th>Date</th><th>Staff</th><th>ID</th><th>Location</th>
-      <th>Start</th><th>End</th><th>Hrs</th><th>Rate</th>
+      <th>#</th><th>Date</th><th>Staff</th><th>Location</th>
+      <th>Time</th><th>Hrs</th><th>Rate</th>
       <th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th>Shift Pay</th>
-      <th>Period Hrs</th><th>Status</th><th>Source</th><th>Pay Period</th><th></th>
+      <th>Period Hrs</th><th>Info</th><th></th>
     </tr></thead><tbody>`;
 
   data.forEach((s, i) => {
@@ -6586,11 +6626,9 @@ function renderTimesheetTable() {
     html += `<tr class="${s._new?'new-row':''}" style="${isRejected?'opacity:0.55':(hasOT?'background:rgba(194,74,70,0.04)':'')}">
       <td class="mono" style="color:var(--text3)">${i+1}</td>
       <td class="mono">${esc(formatDateDisplay(s.date))}</td>
-      <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}</td>
-      <td class="mono" style="color:var(--text3)">${esc(s.staff)}</td>
+      <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}<div style="font-size:10px;color:var(--text3);font-weight:400">${esc(s.staff)}</div></td>
       <td style="color:var(--text2)">${esc(s.location)}</td>
-      <td class="mono">${esc(s.start)}</td>
-      <td class="mono">${esc(s.end)}</td>
+      <td class="mono">${esc(s.start)}\u2013${esc(s.end)}</td>
       <td class="mono" style="color:var(--accent2);font-weight:600">${numFmt(s.hours)}</td>
       <td class="mono">${$fmt(s.locRate)}</td>
       <td class="mono">${$fmt(s.regPay)}</td>
@@ -6598,9 +6636,7 @@ function renderTimesheetTable() {
       <td class="mono" style="color:${hasOT?'var(--danger)':'var(--text3)'}">${hasOT?$fmt(s.otPay):'—'}</td>
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(s.shiftPay)}</td>
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
-      <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}${shiftMissingMealBreak(s) ? `<div style="font-size:10px;color:var(--danger2);margin-top:2px" title="Shift is at or above the ${(PAY_CONFIG.mealBreakThresholdHours||5)}h threshold with no meal break recorded">⚠️ No meal break</div>` : ''}</td>
-      <td>${sourceBadge(s.source)}</td>
-      <td style="font-size:11px;color:var(--text3);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${s.period}</td>
+      <td style="white-space:nowrap">${sourceBadge(s.source)}<div style="margin-top:3px">${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}${shiftMissingMealBreak(s) ? `<div style="font-size:10px;color:var(--danger2);margin-top:2px" title="Shift is at or above the ${(PAY_CONFIG.mealBreakThresholdHours||5)}h threshold with no meal break recorded">⚠️ No meal break</div>` : ''}</div></td>
       <td style="white-space:nowrap">${userCan('editShift') && !isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('approveShifts') ? (isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="restoreShift('${s.id}')" title="Undo the rejection">↩️ Restore</button>` : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(194,74,70,0.35);color:var(--danger2);margin-right:4px" onclick="rejectShift('${s.id}')" title="Reject this shift — excludes it from payroll, employee still sees it and why">✕ Reject</button>`) : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift entirely">🗑️</button>` : ''}</td>
     </tr>`;
   });
@@ -7259,14 +7295,24 @@ function buildPayrollDetailRows(label, periodStart) {
   // Salary staff have no shifts at all by design — without this, they'd be
   // completely invisible in payroll whenever a period happened to have zero
   // hourly shifts (or even when it doesn't, since they were never grouped
-  // by the loop above in the first place). Every Active salaried staff
-  // member gets a synthetic row every period, unconditionally.
-  STAFF.filter(s => s.status === 'Active' && s.payType === 'salary').forEach(s => {
+  // by the loop above in the first place). Every salaried staff member gets
+  // a synthetic row every period. If Inactive, the same rule that governs
+  // hourly staff applies here too: no approved flag means $0 and a visible
+  // "needs review" flag, never a silent inclusion OR a silent drop — this
+  // row still appears even when unpaid, specifically so it can't vanish
+  // without anyone noticing the way it used to when Inactive staff were
+  // filtered out before a row was ever created.
+  STAFF.filter(s => s.payType === 'salary').forEach(s => {
     const key = s.id + '|salary';
+    const inactiveFlag = s.status === 'Inactive'
+      ? (window._inactiveFlagsCache || []).find(f => f.staffId === s.id && f.periodStart === periodStart)
+      : null;
+    const isBlocked = s.status === 'Inactive' && (!inactiveFlag || inactiveFlag.status !== 'approved');
     groups[key] = {
       staffId: s.id, name: `${s.last}, ${s.first}`, location: s.loc || '\u2014',
       rate: null, wk1Reg:0, wk2Reg:0, wk1OT:0, wk2OT:0,
-      regPay: s.salaryAmount || 0, otPay: 0, shifts: 0, payType: 'salary'
+      regPay: isBlocked ? 0 : (s.salaryAmount || 0), otPay: 0, shifts: 0, payType: 'salary',
+      inactiveNeedsReview: isBlocked
     };
   });
 
@@ -7274,15 +7320,22 @@ function buildPayrollDetailRows(label, periodStart) {
   // in a different program entirely. If nobody has entered this period's
   // amount yet, they still appear (with $0 and needsEntry:true) so a
   // missing entry is visibly obvious on the payroll screen rather than the
-  // person just silently not being paid.
-  STAFF.filter(s => s.status === 'Active' && s.payType === 'external').forEach(s => {
+  // person just silently not being paid. Same Inactive-staff rule as above:
+  // an entry exists but isn't paid without an approved flag, and the row
+  // still shows so it can't disappear silently.
+  STAFF.filter(s => s.payType === 'external').forEach(s => {
     const entry = (EXTERNAL_PAYROLL_ENTRIES || []).find(e => e.staffId === s.id && e.periodStart === periodStart);
+    if (s.status === 'Inactive' && !entry) return; // nothing configured and nothing worked — genuinely nothing to flag
     const key = s.id + '|external';
+    const inactiveFlag = s.status === 'Inactive'
+      ? (window._inactiveFlagsCache || []).find(f => f.staffId === s.id && f.periodStart === periodStart)
+      : null;
+    const isBlocked = s.status === 'Inactive' && (!inactiveFlag || inactiveFlag.status !== 'approved');
     groups[key] = {
       staffId: s.id, name: `${s.last}, ${s.first}`, location: s.loc || '\u2014',
-      rate: null, wk1Reg: entry ? entry.hours : 0, wk2Reg: 0, wk1OT:0, wk2OT:0,
-      regPay: entry ? entry.amount : 0, otPay: 0, shifts: 0, payType: 'external',
-      needsEntry: !entry
+      rate: null, wk1Reg: (entry && !isBlocked) ? entry.hours : 0, wk2Reg: 0, wk1OT:0, wk2OT:0,
+      regPay: (entry && !isBlocked) ? entry.amount : 0, otPay: 0, shifts: 0, payType: 'external',
+      needsEntry: !entry, inactiveNeedsReview: isBlocked
     };
   });
 
@@ -7330,7 +7383,8 @@ function renderPayrollPage() {
 
   let html = '<table><thead><tr><th>House</th><th>Staff Name</th><th>Reg Wk1</th><th>Reg Wk2</th><th>OT Wk1</th><th>OT Wk2</th><th>Total Hrs</th><th>Gross Pay</th></tr></thead><tbody>';
   detailRows.forEach(d => {
-    const payTypeBadge = d.payType === 'salary' ? ' <span class="badge badge-info" style="font-size:9px">SALARY</span>'
+    const payTypeBadge = d.inactiveNeedsReview ? ' <span class="badge badge-danger" style="font-size:9px" title="This staff member is Inactive — their pay is held until reviewed on the Approvals page">⚠️ INACTIVE — NEEDS REVIEW</span>'
+      : d.payType === 'salary' ? ' <span class="badge badge-info" style="font-size:9px">SALARY</span>'
       : d.payType === 'external' ? (d.needsEntry ? ' <span class="badge badge-danger" style="font-size:9px" title="No amount entered yet for this period">⚠️ NEEDS ENTRY</span>' : ' <span class="badge badge-muted" style="font-size:9px">EXTERNAL</span>')
       : '';
     html += `<tr>
@@ -7923,9 +7977,15 @@ function confirmAndRunPayroll() {
   const detailRows = buildPayrollDetailRows(label, periodStart);
   if (!detailRows.length) { showToast('No shifts recorded for this period yet', 'warn'); return; }
 
-  const missingExternal = detailRows.filter(d => d.payType === 'external' && d.needsEntry);
+  const missingExternal = detailRows.filter(d => d.payType === 'external' && d.needsEntry && !d.inactiveNeedsReview);
   if (missingExternal.length) {
     showToast(`⚠️ ${missingExternal.length} External staff member${missingExternal.length!==1?'s are':' is'} missing their amount for this period (${missingExternal.map(d=>d.name).join(', ')}) — enter it below before running payroll, or they'll be paid $0.`, 'danger');
+    return;
+  }
+
+  const inactiveNeedsReview = detailRows.filter(d => d.inactiveNeedsReview);
+  if (inactiveNeedsReview.length) {
+    showToast(`⚠️ ${inactiveNeedsReview.length} Inactive staff member${inactiveNeedsReview.length!==1?'s have':' has'} unreviewed pay for this period (${inactiveNeedsReview.map(d=>d.name).join(', ')}) — review it on the Approvals page before running payroll.`, 'danger');
     return;
   }
 
@@ -8351,6 +8411,10 @@ function addStaff() {
   const first = document.getElementById('st-first').value.trim();
   const last = document.getElementById('st-last').value.trim();
   if (!first || !last) { showToast('Name is required', 'danger'); return; }
+  const rate = parseFloat(document.getElementById('st-rate').value) || 0;
+  if (rate < 0 || rate > 500) { showToast('Pay rate must be 0 to 500', 'danger'); return; }
+  const salaryAmount = parseFloat(document.getElementById('st-salary').value) || 0;
+  if (salaryAmount < 0 || salaryAmount > 100000) { showToast('Salary amount must be 0 to 100,000', 'danger'); return; }
   const maxNum = STAFF.reduce((max, s) => { const n = parseInt(s.id.replace(/\D/g,''), 10); return n > max ? n : max; }, 0);
   const num = maxNum + 1;
   const id = 'S' + String(num).padStart(3,'0');
@@ -8359,11 +8423,11 @@ function addStaff() {
     title: document.getElementById('st-title').value,
     type: document.getElementById('st-type').value,
     loc: document.getElementById('st-loc').value,
-    rate: parseFloat(document.getElementById('st-rate').value) || 0,
+    rate,
     start: document.getElementById('st-start').value || todayLocalISO(),
     status: document.getElementById('st-status').value,
     payType: document.getElementById('st-paytype').value,
-    salaryAmount: parseFloat(document.getElementById('st-salary').value) || 0
+    salaryAmount
   });
   ['st-first','st-last','st-rate','st-start','st-salary'].forEach(id => document.getElementById(id).value='');
   document.getElementById('st-title').value = 'DSP';
@@ -8472,6 +8536,10 @@ function saveEditStaff() {
   const first = document.getElementById('staff-edit-first').value.trim();
   const last  = document.getElementById('staff-edit-last').value.trim();
   if (!first || !last) { showToast('Name is required', 'danger'); return; }
+  const newRate = parseFloat(document.getElementById('staff-edit-rate').value);
+  if (Number.isFinite(newRate) && (newRate < 0 || newRate > 500)) { showToast('Pay rate must be 0 to 500', 'danger'); return; }
+  const newSalary = parseFloat(document.getElementById('staff-edit-salary').value) || 0;
+  if (newSalary < 0 || newSalary > 100000) { showToast('Salary amount must be 0 to 100,000', 'danger'); return; }
 
   s.first  = first;
   s.last   = last;
@@ -8480,12 +8548,12 @@ function saveEditStaff() {
   s.title  = document.getElementById('staff-edit-title').value.trim();
   s.type   = document.getElementById('staff-edit-type').value;
   s.loc    = document.getElementById('staff-edit-loc').value;
-  s.rate   = parseFloat(document.getElementById('staff-edit-rate').value) || s.rate;
+  s.rate   = Number.isFinite(newRate) ? newRate : s.rate;
   s.start  = document.getElementById('staff-edit-start').value || s.start;
   s.status = document.getElementById('staff-edit-status').value;
   s.filingStatus = document.getElementById('staff-edit-filingstatus').value;
   s.payType = document.getElementById('staff-edit-paytype').value;
-  s.salaryAmount = parseFloat(document.getElementById('staff-edit-salary').value) || 0;
+  s.salaryAmount = newSalary;
   s.w4Step3  = parseFloat(document.getElementById('staff-edit-w4step3').value) || 0;
   s.w4Step4a = parseFloat(document.getElementById('staff-edit-w4step4a').value) || 0;
   s.w4Step4b = parseFloat(document.getElementById('staff-edit-w4step4b').value) || 0;
