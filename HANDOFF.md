@@ -23,7 +23,32 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION — the highest-risk authorization function finally converted, plus a small but real UX gap closed
+## THIS SESSION — admin flagging for missed meal breaks, closing the last item from the previous outstanding list
+
+### Missed-meal-break warnings — visibility, not enforcement, by deliberate design
+Built as a natural follow-on to last session's break tracking: a configurable threshold (`PAY_CONFIG.mealBreakThresholdHours`, defaulting to 5 to match California's trigger, adjustable per organization on the Pay Period Setup page) and a warning badge — "⚠️ No meal break recorded" — shown on both the admin Clock In/Out Entries table and the Timesheet Log whenever a clock-tracked shift meets or exceeds that length with no completed meal break logged.
+
+Deliberately **never blocking** — whether and how to handle a missed break (a premium payment, a policy conversation with the employee) is a real employer decision this system shouldn't make unilaterally on its own, especially since exact requirements vary significantly by state and this isn't legal advice. The system's job is to make sure it's actually visible, not to auto-resolve it.
+
+**Tested thoroughly, including the subtle edge cases that would be easy to get wrong**: a rest break does NOT satisfy the meal-break requirement (tested directly — a 6-hour shift with only a rest break logged still warns), an incomplete break that was started but never ended does not count as taken, a shift below the threshold never warns even with zero breaks, a still-open (not yet clocked out) entry is never evaluated since there's nothing to check yet, and — importantly — manually-entered shifts are never flagged at all, since there's no break data to check for those in the first place (not a gap in the logic, a genuine absence of anything to verify). 8 extracted-function tests cover all of this in a new permanent `test-meal-breaks.js`, mirroring the same pattern already used for the tax-bracket math.
+
+**Verified through the real UI, not just the underlying logic**: set up a genuine 6-hour clock-tracked shift with no meal break (via the existing admin override, avoiding the known GPS-mocking flakiness in this sandbox), and confirmed the warning correctly appears on both the Clock In/Out Entries table *and* the Timesheet Log once the entry is approved into a shift — the same underlying detection, shown consistently in both places an admin would actually look.
+
+## EARLIER THIS SESSION — server-side payroll enforcement (with a real bug caught), meal/rest break tracking
+
+### Server-side enforcement for the Inactive-staff payroll exclusion — the defense-in-depth gap flagged last session
+Previously, unapproved Inactive-staff hours were excluded from payroll only via a client-side cache. Added a real server-side check that blocks a payroll record from transitioning to finalized if it includes gross pay for anyone currently Inactive without an explicitly approved flag for that exact period.
+
+**Caught and fixed a real bug in my own first attempt, before shipping it**: the initial version checked staff status by querying the database — but if the staff record and the payroll finalization are submitted in the *same* save request (a very normal thing to do), the database hasn't been updated yet when the check runs, so it was silently reading stale data and never actually blocking anything. Found this by testing the exact scenario directly rather than assuming the logic worked, fixed it to check the submitted request data instead of the database, and re-verified: blocked without an approved flag, succeeds once approved, and — importantly — does *not* re-trigger on a later, unrelated save touching the same already-finalized record (only checks the actual pending→finalized transition, not every subsequent save forever).
+
+### Meal and rest break tracking — a real compliance gap, now closed
+- Self-service Start/End for both meal (unpaid) and rest (paid) breaks, only available while genuinely clocked in, one break at a time.
+- **The part that actually matters, proven correct with real numbers**: clocked in at 8am, took a 30-minute meal break, clocked out at 4pm — confirmed the resulting shift correctly shows **7.5 paid hours**, not 8, while the shift's recorded start/end times still correctly show the full 08:00–16:00 clock-in/out range. Rest breaks are tracked but deliberately not subtracted, matching how most jurisdictions treat the two differently.
+- Clock Out is disabled while a break is in progress — verified this is a genuine disabled state (not just visual) via the browser's own `isDisabled()` check, not just eyeballing a screenshot.
+- **A real sandbox-specific testing quirk, found and worked around, not just given up on**: this Chromium build hangs indefinitely on `waitUntil: 'networkidle'` specifically when a geolocation permission is granted to the browser context — confirmed by isolating the exact variable (a single-page load succeeded with `waitUntil: 'load'`, but the full multi-page flow still hung even then). Rather than keep fighting this specific combination, verified the actual UI behavior a different way: set up an already-open clock-in via the existing admin-in endpoint (which doesn't need GPS), then exercised the real Start Break / End Break buttons directly — genuinely confirming the button states, the disabled Clock Out, and the full round-trip, without needing the flaky combination at all.
+- 9 new permanent tests covering both features, all passing (103 total now).
+
+
 
 ### `authorizeSave()` converted to granular permissions — the piece deliberately deferred across multiple prior sessions
 This is the largest, most complex, highest-stakes authorization function in the app — it gates every bulk save of staff, locations, users, payroll records, shifts, pending approvals, and the audit-adjacent logs. Previous sessions explicitly chose not to touch it alongside other work, reasoning that rushing the single riskiest piece of security logic in a payroll system wasn't worth the time pressure. Converted carefully this session, one check at a time, preserving identical structure:
@@ -35,6 +60,9 @@ This is the largest, most complex, highest-stakes authorization function in the 
 
 ### Add Staff form now has Pay Type — closing a gap from last session
 Last session added Pay Type (Hourly/Salary/External) to the *Edit* Staff modal but not the *Add* form, meaning a new salaried or external hire needed an extra edit step right after creation. Added the same field (with the same conditional Salary Amount field) to Add Staff, verified through a real browser: selecting Salary reveals the amount field, and the new staff member persists with the correct pay type and amount on the very first save.
+
+## EARLIER THIS SESSION — the highest-risk authorization function finally converted, plus a small but real UX gap closed
+`authorizeSave()` — the largest, most complex authorization function in the app, gating every bulk save of staff/locations/users/payroll/shifts — was converted from hardcoded admin/supervisor checks to the granular permission system. Proven with zero regression (full test suite stayed green) and genuine fine-grained control (a custom role granted only `staff_manage` could edit staff but was correctly blocked from adding a location or a shift). Also added Pay Type to the Add Staff form, which previously only existed on the Edit modal.
 
 ## EARLIER THIS SESSION — mandatory GPS enforcement, salary/external pay types wired into real payroll
 
@@ -203,10 +231,7 @@ The clock-in dropdown already let an employee pick any location in the UI, but t
 
 ## STILL OUTSTANDING
 1. **A visual/UX "human touch" polish pass** — flagged multiple sessions ago as the user's phrasing suggesting the current look feels functional but not fully "professional" yet. Still not started, and still worth clarifying specifics with the user rather than guessing at what to change.
-2. **Meal/rest break tracking** — flagged as a real compliance gap (California and other jurisdictions require this separately from clock in/out). Not built.
-3. **Server-side enforcement at payroll finalization for the Inactive-staff-hours exclusion** — currently relies on a client-side cache (refreshed on Payroll/Approvals page entry, defaults to excluding when empty). Genuine defense-in-depth would add a server-side check at the actual finalization endpoint. Not done.
-4. ~~Extending granular permissions to `authorizeSave()`~~ — **done this session**, with real custom-role testing proving fine-grained control, not just a relabeled admin check.
-5. ~~Add Staff form missing Pay Type~~ — **done this session**.
+2. ~~No admin visibility/compliance flagging for missed meal breaks~~ — **done this session**.
 
 ## Known limitations, stated honestly
 - W-4 Step 2 checkbox (multiple jobs) isn't modeled — the calculation always uses the Standard Withholding Rate Schedule. If any staff checked that box on their real W-4, this understates their withholding relative to their actual election. Would need a `w4Step2Checked` boolean and the Step 2 Checkbox tables (Pub 15-T publishes both).

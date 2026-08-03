@@ -302,10 +302,14 @@ function createSchema() {
     anchor_date TEXT NOT NULL,
     period_days INTEGER NOT NULL DEFAULT 14,
     ot_threshold INTEGER NOT NULL DEFAULT 80,
-    default_deductions TEXT DEFAULT '[]'
+    default_deductions TEXT DEFAULT '[]',
+    meal_break_threshold_hours REAL DEFAULT 5
   )`);
   // Safe migration for databases created before default_deductions existed
   try { db.run(`ALTER TABLE pay_config ADD COLUMN default_deductions TEXT DEFAULT '[]'`); } catch (e) { /* already exists */ }
+  // 5 hours matches California's meal-break trigger, a reasonable default —
+  // adjustable per organization since exact thresholds vary by jurisdiction.
+  try { db.run(`ALTER TABLE pay_config ADD COLUMN meal_break_threshold_hours REAL DEFAULT 5`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer',
@@ -441,6 +445,17 @@ function createSchema() {
     reviewed_by TEXT DEFAULT '', reviewed_at TEXT DEFAULT '', created_at TEXT NOT NULL,
     UNIQUE(staff_id, period_start)
   )`);
+  // Meal breaks are unpaid and get subtracted from the shift's paid hours
+  // when the clock entry is approved; rest breaks are logged but remain
+  // paid (the norm in most jurisdictions — a short rest break isn't an
+  // unpaid deduction the way a meal break is). One row per break taken
+  // during a single clock-in; a shift can have more than one.
+  db.run(`CREATE TABLE IF NOT EXISTS clock_breaks (
+    id TEXT PRIMARY KEY, clock_entry_id TEXT NOT NULL, break_type TEXT NOT NULL DEFAULT 'meal',
+    start_date TEXT NOT NULL, start_time TEXT NOT NULL,
+    end_date TEXT DEFAULT '', end_time TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL,
@@ -477,7 +492,8 @@ function loadDB() {
   const pcRow = get('SELECT * FROM pay_config WHERE id=1');
   const PAY_CONFIG = pcRow
     ? { anchorDate: pcRow.anchor_date, periodDays: pcRow.period_days, otThreshold: pcRow.ot_threshold,
-        defaultDeductions: JSON.parse(pcRow.default_deductions || '[]') }
+        defaultDeductions: JSON.parse(pcRow.default_deductions || '[]'),
+        mealBreakThresholdHours: pcRow.meal_break_threshold_hours || 5 }
     : DEFAULT_SEED.PAY_CONFIG;
 
   // Password hashes never leave the server — the client has no legitimate use for them.
@@ -531,11 +547,16 @@ function loadDB() {
     shiftId: r.shift_id || null,
     overridden: !!r.overridden, overrideReason: r.override_reason || '', overrideBy: r.override_by || ''
   }));
+  const CLOCK_BREAKS = all('SELECT * FROM clock_breaks ORDER BY created_at DESC').map(r => ({
+    id: r.id, clockEntryId: r.clock_entry_id, breakType: r.break_type,
+    startDate: r.start_date, startTime: r.start_time,
+    endDate: r.end_date || null, endTime: r.end_time || null
+  }));
 
   return { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
            PENDING_APPROVALS, APPROVED_EXCEPTIONS,
            DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES,
-           EXTERNAL_PAYROLL_ENTRIES };
+           EXTERNAL_PAYROLL_ENTRIES, CLOCK_BREAKS };
 }
 
 function saveDB(data) {
@@ -544,12 +565,12 @@ function saveDB(data) {
           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS } = data;
 
   // PAY_CONFIG
-  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions) VALUES (1,?,?,?,?)
+  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions,meal_break_threshold_hours) VALUES (1,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET anchor_date=excluded.anchor_date,
        period_days=excluded.period_days, ot_threshold=excluded.ot_threshold,
-       default_deductions=excluded.default_deductions`,
+       default_deductions=excluded.default_deductions, meal_break_threshold_hours=excluded.meal_break_threshold_hours`,
     [PAY_CONFIG.anchorDate, PAY_CONFIG.periodDays, PAY_CONFIG.otThreshold,
-     JSON.stringify(PAY_CONFIG.defaultDeductions || [])]);
+     JSON.stringify(PAY_CONFIG.defaultDeductions || []), PAY_CONFIG.mealBreakThresholdHours || 5]);
 
   // USERS — passwords are managed exclusively through /api/auth/login (self-migration)
   // and /api/users/:id/password. Bulk saves NEVER overwrite an existing user's password
@@ -784,6 +805,40 @@ function validateUsers(incomingUsers) {
   return null;
 }
 
+// The client already excludes unapproved Inactive-staff hours from payroll
+// using a cache that's refreshed when the Approvals/Payroll pages load —
+// but that's a client-side convenience, not real enforcement. This is the
+// actual enforcement: independent of whatever the client claims, no
+// payroll record can transition to finalized while it includes gross pay
+// for a staff member who is currently Inactive and doesn't have an
+// explicitly 'approved' flag for that exact period. Runs at the moment of
+// finalization specifically (existing.finalized false, incoming true) —
+// an already-finalized record isn't re-checked on every subsequent save,
+// since by then it's historical record, not something newly being created.
+function validatePayrollFinalization(existingRecords, incomingRecords, staffList) {
+  const existingByPeriod = {};
+  (existingRecords || []).forEach(r => { existingByPeriod[r.periodStart] = r; });
+  const staffById = {};
+  (staffList || []).forEach(s => { staffById[s.id] = s; });
+
+  for (const rec of (incomingRecords || [])) {
+    const was = existingByPeriod[rec.periodStart];
+    const isNewlyFinalizing = rec.finalized && (!was || !was.finalized);
+    if (!isNewlyFinalizing) continue;
+
+    for (const emp of (rec.employeeRows || [])) {
+      if (!emp.gross || emp.gross <= 0) continue;
+      const staff = staffById[emp.staffId];
+      if (!staff || staff.status !== 'Inactive') continue;
+      const flag = get(`SELECT status FROM payroll_inactive_flags WHERE staff_id = ? AND period_start = ?`, [emp.staffId, rec.periodStart]);
+      if (!flag || flag.status !== 'approved') {
+        return `Cannot finalize this payroll — ${emp.name} is marked Inactive and doesn't have an approved payroll flag for this period. Review it on the Approvals page first.`;
+      }
+    }
+  }
+  return null;
+}
+
 function authorizeSave(existing, incoming, user) {
   // hasPermission(user, 'x') for the built-in roles resolves to EXACTLY the
   // same admin/supervisor checks this function used before conversion —
@@ -826,6 +881,9 @@ function authorizeSave(existing, incoming, user) {
   if (deepChanged(sortedById((incoming.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart}))),
                    sortedById((existing.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart})))) && !canPayroll)
     return 'Payroll can only be managed by an admin account';
+
+  const payrollFinalizationError = validatePayrollFinalization(existing.PAYROLL_RECORDS, incoming.PAYROLL_RECORDS, incoming.STAFF || existing.STAFF);
+  if (payrollFinalizationError) return payrollFinalizationError;
 
   const existingShiftsById = {}; (existing.SHIFTS||[]).forEach(s => { existingShiftsById[s.id] = s; });
   const incomingShiftsById = {}; (incoming.SHIFTS||[]).forEach(s => { incomingShiftsById[s.id] = s; });
@@ -1641,6 +1699,56 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Meal breaks are unpaid (subtracted from the shift's hours once the clock
+  // entry is approved); rest breaks are logged but stay paid, matching how
+  // most jurisdictions actually treat the two differently. Only makes sense
+  // while genuinely clocked in — you can't take a break from a shift that
+  // hasn't started, and only one break can be open at a time per person.
+  app.post('/api/clock/break/start', requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!req.user.staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+      const { breakType, date, time } = req.body || {};
+      const safeBreakType = ['meal','rest'].includes(breakType) ? breakType : 'meal';
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+
+      const openEntry = get(`SELECT * FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+      if (!openEntry) return res.status(400).json({ error: 'You are not currently clocked in' });
+      const openBreak = get(`SELECT id FROM clock_breaks WHERE clock_entry_id = ? AND end_time = ''`, [openEntry.id]);
+      if (openBreak) return res.status(400).json({ error: 'You already have a break in progress' });
+
+      const id = 'BRK' + Date.now() + Math.random().toString(36).slice(2,6);
+      run('INSERT INTO clock_breaks (id,clock_entry_id,break_type,start_date,start_time,created_at) VALUES (?,?,?,?,?,?)',
+        [id, openEntry.id, safeBreakType, date, time, new Date().toISOString()]);
+      writeAuditLog('BREAK_STARTED', `${req.user.name} started a ${safeBreakType} break at ${time}`, req.user);
+      persistDB();
+      res.json({ ok: true, id, breakType: safeBreakType });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/clock/break/end', requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!req.user.staffId) return res.status(400).json({ error: 'No staff record linked to this account' });
+      const { date, time } = req.body || {};
+      if (!ISO_DATE_RE_CLOCK.test(date)) return res.status(400).json({ error: 'Invalid date' });
+      if (!TIME_RE_CLOCK.test(time)) return res.status(400).json({ error: 'Invalid time' });
+
+      const openEntry = get(`SELECT * FROM clock_entries WHERE staff_id = ? AND status = 'open'`, [req.user.staffId]);
+      if (!openEntry) return res.status(400).json({ error: 'You are not currently clocked in' });
+      const openBreak = get(`SELECT * FROM clock_breaks WHERE clock_entry_id = ? AND end_time = ''`, [openEntry.id]);
+      if (!openBreak) return res.status(400).json({ error: 'You do not have a break in progress' });
+
+      const hours = computeClockHours(openBreak.start_date, openBreak.start_time, date, time);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return res.status(400).json({ error: 'Break end time must be after it started' });
+      }
+      run('UPDATE clock_breaks SET end_date = ?, end_time = ? WHERE id = ?', [date, time, openBreak.id]);
+      writeAuditLog('BREAK_ENDED', `${req.user.name} ended a ${openBreak.break_type} break at ${time} (${hours.toFixed(2)}h)`, req.user);
+      persistDB();
+      res.json({ ok: true, hours: Math.round(hours * 100) / 100, breakType: openBreak.break_type });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   // Rejecting a shift never deletes it — it stays fully visible to the
   // employee, with the reason, and is excluded from payroll (computeShiftsWithOT
   // filters shiftStatus !== 'active' out before any hours/pay math runs).
@@ -1796,7 +1904,17 @@ async function main() {
       // the same SHIFTS row, so it gets the same scrutiny before it can
       // affect payroll.
       const finalLocation = (typeof location === 'string' && location.trim()) ? location.trim() : (entry.location || (staff ? staff.loc : ''));
-      const hours = computeClockHours(entry.clock_in_date, entry.clock_in_time, entry.clock_out_date, entry.clock_out_time);
+      const rawHours = computeClockHours(entry.clock_in_date, entry.clock_in_time, entry.clock_out_date, entry.clock_out_time);
+      // Meal breaks are unpaid time and come out of the shift's paid hours;
+      // rest breaks are logged but stay paid, so they're deliberately not
+      // subtracted here. Only completed breaks (both a start and an end)
+      // count — an accidentally-still-open break is neither counted as
+      // worked nor deducted, since there's no real end time to measure.
+      const mealBreakMinutes = all(
+        `SELECT start_date, start_time, end_date, end_time FROM clock_breaks WHERE clock_entry_id = ? AND break_type = 'meal' AND end_time != ''`,
+        [entry.id]
+      ).reduce((total, b) => total + computeClockHours(b.start_date, b.start_time, b.end_date, b.end_time) * 60, 0);
+      const hours = Math.max(0, rawHours - mealBreakMinutes / 60);
       const shiftId = 'SH' + Date.now() + Math.random().toString(36).slice(2,6);
       // Shifts always use HH:MM (no seconds) everywhere else in the app —
       // the extra precision only matters for clock_entries' own same-minute

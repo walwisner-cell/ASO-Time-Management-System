@@ -2348,6 +2348,11 @@
                   <label>OT Threshold (hrs per period)</label>
                   <input type="number" id="cfg-ot-threshold" step="1" min="1" value="80">
                 </div>
+                <div class="form-field">
+                  <label>Meal Break Warning Threshold (hrs)</label>
+                  <input type="number" id="cfg-meal-break-threshold" step="0.5" min="0" value="5">
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px">Clock-tracked shifts at or above this length with no meal break logged show a warning on the Timesheet and Approvals pages. 5 hours matches California's trigger — adjust for your state.</div>
+                </div>
               </div>
               <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button class="btn btn-success" onclick="applyPayConfig()">✓ Save &amp; Apply</button>
@@ -3604,7 +3609,7 @@
 const DB_KEY = 'ASO_OT_DB_v7';
 var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
     APPROVED_EXCEPTIONS, DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES,
-    EXTERNAL_PAYROLL_ENTRIES;
+    EXTERNAL_PAYROLL_ENTRIES, CLOCK_BREAKS;
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
@@ -3613,7 +3618,7 @@ const DB_DEFAULTS = {
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
   DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [], PAYROLL_RECORDS: [], LEAVE_REQUESTS: [], CLOCK_ENTRIES: [],
-  EXTERNAL_PAYROLL_ENTRIES: []
+  EXTERNAL_PAYROLL_ENTRIES: [], CLOCK_BREAKS: []
 };
 
 function dbSave() {
@@ -3763,6 +3768,7 @@ async function loadAppData() {
   LEAVE_REQUESTS        = data.LEAVE_REQUESTS         || [];
   CLOCK_ENTRIES         = data.CLOCK_ENTRIES           || [];
   EXTERNAL_PAYROLL_ENTRIES = data.EXTERNAL_PAYROLL_ENTRIES || [];
+  CLOCK_BREAKS = data.CLOCK_BREAKS || [];
 
   LOCATIONS.forEach(l => {
     if (!l.rateHistory || l.rateHistory.length === 0)
@@ -4002,6 +4008,32 @@ function calcClockHours(inDate, inTime, outDate, outTime) {
   const inMs = new Date(`${inDate}T${norm(inTime)}`).getTime();
   const outMs = new Date(`${outDate}T${norm(outTime)}`).getTime();
   return (outMs - inMs) / 3600000;
+}
+
+// Only meaningful for clock-in-derived entries, since manually-entered
+// shifts have no break data to check at all — there's genuinely nothing to
+// verify for those, not a gap in the check itself. Purely a visibility
+// flag, never blocking: whether and how to handle a missed break (a
+// premium payment, a policy conversation) is a real employer decision this
+// system shouldn't make unilaterally, but the admin needs to actually see
+// it happened to make that decision at all.
+function clockEntryMissingMealBreak(entry) {
+  if (!entry.clockOutTime) return false; // still open, nothing to evaluate yet
+  const rawHours = calcClockHours(entry.clockInDate, entry.clockInTime, entry.clockOutDate, entry.clockOutTime);
+  const threshold = (PAY_CONFIG && PAY_CONFIG.mealBreakThresholdHours) || 5;
+  if (rawHours === null || rawHours < threshold) return false;
+  const hasMealBreak = (CLOCK_BREAKS || []).some(b => b.clockEntryId === entry.id && b.breakType === 'meal' && b.endTime);
+  return !hasMealBreak;
+}
+
+// Shifts don't carry break data directly — only the clock entry that
+// created them does. Manually-entered shifts (source 'manual') have no
+// clock entry to check at all, so there's genuinely nothing to flag for
+// those, not a gap in the logic.
+function shiftMissingMealBreak(shift) {
+  if (shift.source !== 'clock_in' && shift.source !== 'clock_in_override') return false;
+  const entry = (CLOCK_ENTRIES || []).find(c => c.shiftId === shift.id);
+  return entry ? clockEntryMissingMealBreak(entry) : false;
 }
 
 function getLocRate(locName, date) {
@@ -4605,6 +4637,7 @@ function renderPayConfig() {
   document.getElementById('cfg-anchor-date').value = PAY_CONFIG.anchorDate;
   document.getElementById('cfg-period-type').value = String(PAY_CONFIG.periodDays);
   document.getElementById('cfg-ot-threshold').value = PAY_CONFIG.otThreshold;
+  document.getElementById('cfg-meal-break-threshold').value = PAY_CONFIG.mealBreakThresholdHours || 5;
   updatePeriodPreview();
   renderPayConfigStatusBanner();
   populateCorrShiftDropdown();
@@ -4687,8 +4720,10 @@ function applyPayConfig() {
   const anchor = document.getElementById('cfg-anchor-date').value;
   const days = parseInt(document.getElementById('cfg-period-type').value);
   const ot = parseFloat(document.getElementById('cfg-ot-threshold').value);
+  const mealBreakThreshold = parseFloat(document.getElementById('cfg-meal-break-threshold').value);
   if (!anchor || !days || !ot) { showToast('Please fill all fields', 'danger'); return; }
-  PAY_CONFIG = { anchorDate: anchor, periodDays: days, otThreshold: ot };
+  if (!Number.isFinite(mealBreakThreshold) || mealBreakThreshold < 0) { showToast('Meal break threshold must be 0 or greater', 'danger'); return; }
+  PAY_CONFIG = { ...PAY_CONFIG, anchorDate: anchor, periodDays: days, otThreshold: ot, mealBreakThresholdHours: mealBreakThreshold };
   dbSave();
   updateTopbarPeriod();
   updatePeriodPreview();
@@ -5128,13 +5163,28 @@ async function renderMyClockWidget() {
 
   let html = '';
   if (openEntry) {
+    const openBreak = (CLOCK_BREAKS || []).find(b => b.clockEntryId === openEntry.id && !b.endTime);
     html += `<div style="background:rgba(14,143,94,0.1);border:1px solid var(--success);border-radius:10px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
       <span style="font-size:22px">🟢</span>
       <div><div style="font-size:14px;font-weight:600;color:var(--text)">Clocked in since ${esc(formatTimeDisplay(openEntry.clockInTime))} on ${esc(formatDateDisplay(openEntry.clockInDate))}</div>
       <div style="font-size:12px;color:var(--text2)">${esc(openEntry.location || 'No location noted')}</div></div>
-    </div>
-    <div class="form-field" style="margin-bottom:12px"><label>Notes (optional)</label><input type="text" id="mp-clock-out-notes" maxlength="500" placeholder="Anything worth noting about this shift"></div>
-    <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700;margin-bottom:8px" onclick="doClockOut()">⏹️ Clock Out</button>
+    </div>`;
+
+    if (openBreak) {
+      html += `<div style="background:rgba(198,138,30,0.1);border:1px solid var(--warn);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">☕</span>
+        <div style="font-size:13px;color:var(--text)">On a <b>${openBreak.breakType}</b> break since ${esc(formatTimeDisplay(openBreak.startTime))}${openBreak.breakType==='meal' ? ' — unpaid, subtracted from your hours' : ' — paid'}</div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;font-weight:700;margin-bottom:12px" onclick="doEndBreak()">▶️ End Break, Resume Working</button>`;
+    } else {
+      html += `<div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-ghost" style="flex:1;padding:10px;font-size:12px" onclick="doStartBreak('meal')">🍽️ Start Meal Break</button>
+        <button class="btn btn-ghost" style="flex:1;padding:10px;font-size:12px" onclick="doStartBreak('rest')">☕ Start Rest Break</button>
+      </div>`;
+    }
+
+    html += `<div class="form-field" style="margin-bottom:12px"><label>Notes (optional)</label><input type="text" id="mp-clock-out-notes" maxlength="500" placeholder="Anything worth noting about this shift"></div>
+    <button class="btn btn-danger" style="width:100%;padding:14px;font-size:15px;font-weight:700;margin-bottom:8px" onclick="doClockOut()"${openBreak?' disabled title="End your break first"':''}>⏹️ Clock Out</button>
     <button class="btn btn-ghost" style="width:100%;padding:10px;font-size:12px" onclick="doCancelClockIn()">Clocked in by mistake? Cancel this clock-in</button>`;
     el.innerHTML = html;
     return;
@@ -5298,6 +5348,47 @@ async function doCancelClockIn() {
     renderMyClockWidget();
   } catch (e) {
     showToast('Could not cancel — check your connection', 'danger');
+  }
+}
+
+async function doStartBreak(breakType) {
+  const date = todayLocalISO();
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  try {
+    const res = await fetch('/api/clock/break/start', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ breakType, date, time })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not start break', 'danger'); return; }
+    const openEntry = CLOCK_ENTRIES.find(c => c.staffId === _currentUser.staffId && c.status === 'open');
+    if (openEntry) CLOCK_BREAKS.unshift({ id: body.id, clockEntryId: openEntry.id, breakType, startDate: date, startTime: time, endDate: null, endTime: null });
+    showToast(`${breakType === 'meal' ? '🍽️' : '☕'} ${breakType === 'meal' ? 'Meal' : 'Rest'} break started`);
+    renderMyClockWidget();
+  } catch (e) {
+    showToast('Could not start break — check your connection', 'danger');
+  }
+}
+
+async function doEndBreak() {
+  const date = todayLocalISO();
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  try {
+    const res = await fetch('/api/clock/break/end', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date, time })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Could not end break', 'danger'); return; }
+    const openEntry = CLOCK_ENTRIES.find(c => c.staffId === _currentUser.staffId && c.status === 'open');
+    const openBreak = openEntry && CLOCK_BREAKS.find(b => b.clockEntryId === openEntry.id && !b.endTime);
+    if (openBreak) { openBreak.endDate = date; openBreak.endTime = time; }
+    showToast(`✅ Break ended (${numFmt(body.hours)}h)`);
+    renderMyClockWidget();
+  } catch (e) {
+    showToast('Could not end break — check your connection', 'danger');
   }
 }
 
@@ -5938,8 +6029,9 @@ function renderClockEntriesAdmin() {
          <button class="btn btn-danger" style="font-size:11px;padding:5px 10px" onclick="reviewClockEntry('${c.id}','deny')">✕ Deny</button>`
       : `<span style="font-size:11px;color:var(--text3)">${esc(c.reviewedBy||'')}</span>`;
     const overrideNote = c.overridden ? `<div style="font-size:11px;color:var(--warn);margin-top:2px">⚠️ Override by ${esc(c.overrideBy||'')}: ${esc(c.overrideReason||'')}</div>` : '';
+    const mealBreakWarning = clockEntryMissingMealBreak(c) ? `<div style="font-size:11px;color:var(--danger2);margin-top:2px" title="Shift is ${numFmt(hrs)}h, at or above the ${(PAY_CONFIG.mealBreakThresholdHours||5)}h threshold, with no meal break recorded">⚠️ No meal break recorded</div>` : '';
     html += `<tr>
-      <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}${c.notes ? `<div style="font-size:11px;color:var(--text3);font-weight:400;margin-top:2px">${esc(c.notes)}</div>` : ''}</td>
+      <td style="color:var(--text);font-weight:500">${esc(name)}${overrideNote}${mealBreakWarning}${c.notes ? `<div style="font-size:11px;color:var(--text3);font-weight:400;margin-top:2px">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(c.location||'\u2014')}</td>
       <td class="mono">${formatDateDisplay(c.clockInDate)} ${formatTimeDisplay(c.clockInTime)}</td>
       <td class="mono">${c.clockOutDate ? formatDateDisplay(c.clockOutDate) + ' ' + formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
@@ -6506,7 +6598,7 @@ function renderTimesheetTable() {
       <td class="mono" style="color:${hasOT?'var(--danger)':'var(--text3)'}">${hasOT?$fmt(s.otPay):'—'}</td>
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(s.shiftPay)}</td>
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
-      <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}</td>
+      <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}${shiftMissingMealBreak(s) ? `<div style="font-size:10px;color:var(--danger2);margin-top:2px" title="Shift is at or above the ${(PAY_CONFIG.mealBreakThresholdHours||5)}h threshold with no meal break recorded">⚠️ No meal break</div>` : ''}</td>
       <td>${sourceBadge(s.source)}</td>
       <td style="font-size:11px;color:var(--text3);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">${s.period}</td>
       <td style="white-space:nowrap">${userCan('editShift') && !isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('approveShifts') ? (isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="restoreShift('${s.id}')" title="Undo the rejection">↩️ Restore</button>` : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(194,74,70,0.35);color:var(--danger2);margin-right:4px" onclick="rejectShift('${s.id}')" title="Reject this shift — excludes it from payroll, employee still sees it and why">✕ Reject</button>`) : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift entirely">🗑️</button>` : ''}</td>

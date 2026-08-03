@@ -371,6 +371,79 @@ async function main() {
     const restoredShift = afterRestore.body.SHIFTS.find(s => s.id === 'SHRJ1');
     check('restored shift is active again', restoredShift && restoredShift.shiftStatus === 'active');
 
+    console.log('\nMeal break warning threshold persists correctly:');
+    const mbtBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const mbtSetup = { ...mbtBase.body, PAY_CONFIG: { ...mbtBase.body.PAY_CONFIG, mealBreakThresholdHours: 6 } };
+    await request('POST', '/api/db/save', { body: mbtSetup, cookie: adminCookie });
+    const mbtCheck = await request('GET', '/api/db/load', { cookie: adminCookie });
+    check('meal break threshold saves and reloads correctly', mbtCheck.body.PAY_CONFIG.mealBreakThresholdHours === 6);
+    // Reset to default so it doesn't affect any other test relying on the 5-hour default
+    await request('POST', '/api/db/save', { body: { ...mbtCheck.body, PAY_CONFIG: { ...mbtCheck.body.PAY_CONFIG, mealBreakThresholdHours: 5 } }, cookie: adminCookie });
+
+    console.log('\nMeal/rest break tracking, with meal breaks correctly deducted from paid hours:');
+    const brkSetup = { ...raceBase.body };
+    brkSetup.STAFF = [...brkSetup.STAFF, { id: 'SBRKT1', first: 'Break', last: 'Tester', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 20, start: '2026-01-01', status: 'Active' }];
+    brkSetup.USERS = [...brkSetup.USERS, { id: 'UBRKT1', username: 'breaktester', password: 'brkpass1', name: 'Break Tester', role: 'employee', staffId: 'SBRKT1' }];
+    await request('POST', '/api/db/save', { body: brkSetup, cookie: adminCookie });
+    const brkLogin = await request('POST', '/api/auth/login', { body: { username: 'breaktester', password: 'brkpass1' } });
+
+    await request('POST', '/api/clock/in', { cookie: brkLogin.cookie, body: { location: 'Usene House', date: '2026-08-03', time: '08:00:00', lat: 39.95, lng: -75.16, accuracy: 10 } });
+
+    const endNoBreak = await request('POST', '/api/clock/break/end', { cookie: brkLogin.cookie, body: { date: '2026-08-03', time: '12:30:00' } });
+    check('ending a break with none started is rejected', endNoBreak.status === 400);
+
+    const startBreak = await request('POST', '/api/clock/break/start', { cookie: brkLogin.cookie, body: { breakType: 'meal', date: '2026-08-03', time: '12:00:00' } });
+    check('starting a meal break succeeds', startBreak.status === 200 && startBreak.body.breakType === 'meal');
+
+    const doubleBreak = await request('POST', '/api/clock/break/start', { cookie: brkLogin.cookie, body: { breakType: 'rest', date: '2026-08-03', time: '12:10:00' } });
+    check('starting a second break while one is open is rejected', doubleBreak.status === 400);
+
+    const endBreak = await request('POST', '/api/clock/break/end', { cookie: brkLogin.cookie, body: { date: '2026-08-03', time: '12:30:00' } });
+    check('ending the break computes the correct duration (30 min = 0.5h)', endBreak.status === 200 && endBreak.body.hours === 0.5);
+
+    await request('POST', '/api/clock/out', { cookie: brkLogin.cookie, body: { date: '2026-08-03', time: '16:00:00', notes: '', lat: 39.95, lng: -75.16, accuracy: 10 } });
+    const brkEntriesList = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const brkEntry = brkEntriesList.body.clockEntries.find(c => c.staffId === 'SBRKT1');
+    const brkApprove = await request('POST', `/api/clock-entries/${brkEntry.id}/review`, { cookie: adminCookie, body: { action: 'approve' } });
+    check('approving the clock entry succeeds', brkApprove.status === 200);
+
+    const afterBrkApprove = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const brkShift = afterBrkApprove.body.SHIFTS.find(s => s.id === brkApprove.body.shiftId);
+    check('the resulting shift correctly shows 7.5 paid hours (8 total minus the 30-min unpaid meal break)', brkShift && brkShift.hours === 7.5 && brkShift.start === '08:00' && brkShift.end === '16:00');
+
+    console.log('\nServer-side payroll finalization enforcement for Inactive-staff hours (real defense-in-depth, not just a client cache):');
+    const pfBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const pfSetup = { ...pfBase.body };
+    pfSetup.STAFF = [...pfSetup.STAFF, { id: 'SPFT1', first: 'Inactive', last: 'PayrollTest', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 15, start: '2026-01-01', status: 'Inactive' }];
+    pfSetup.SHIFTS = [...pfSetup.SHIFTS, { id: 'SHPFT1', staff: 'SPFT1', date: '2026-08-03', start: '08:00', end: '16:00', location: 'Usene House', hours: 8, source: 'manual' }];
+    const pfSetupResult = await request('POST', '/api/db/save', { body: pfSetup, cookie: adminCookie });
+    check('setting up the inactive staff + shift succeeds', pfSetupResult.status === 200);
+
+    const pfAttemptBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const pfAttempt = { ...pfAttemptBase.body };
+    pfAttempt.PAYROLL_RECORDS = [{
+      periodStart: '2026-08-01', periodLabel: 'Aug 1 - Aug 14, 2026 (Bi-Weekly)',
+      confirmed: true, confirmedBy: 'Admin', confirmedAt: 'now', finalized: true, finalizedBy: 'Admin', finalizedAt: 'now',
+      employeeRows: [{ staffId: 'SPFT1', name: 'PayrollTest, Inactive', gross: 120, deductions: [], totalDeductions: 0, net: 120 }],
+      rows: []
+    }];
+    const pfBlockedResult = await request('POST', '/api/db/save', { body: pfAttempt, cookie: adminCookie });
+    check('finalizing payroll with unapproved Inactive-staff hours is blocked server-side', pfBlockedResult.status === 403 && pfBlockedResult.body.error.includes('Inactive'));
+
+    await request('POST', '/api/inactive-flags', { cookie: adminCookie, body: { staffId: 'SPFT1', periodStart: '2026-08-01' } });
+    const pfFlagsList = await request('GET', '/api/inactive-flags', { cookie: adminCookie });
+    const pfFlag = pfFlagsList.body.flags.find(f => f.staffId === 'SPFT1' && f.periodStart === '2026-08-01');
+    await request('POST', `/api/inactive-flags/${pfFlag.id}/review`, { cookie: adminCookie, body: { action: 'approve' } });
+
+    const pfApprovedResult = await request('POST', '/api/db/save', { body: pfAttempt, cookie: adminCookie });
+    check('the SAME finalization succeeds once the flag is approved', pfApprovedResult.status === 200);
+
+    const pfUnrelatedBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const pfUnrelated = { ...pfUnrelatedBase.body };
+    pfUnrelated.LOCATIONS = pfUnrelated.LOCATIONS.map(l => l.id === pfUnrelated.LOCATIONS[0].id ? { ...l, notes: 'unrelated tweak' } : l);
+    const pfUnrelatedResult = await request('POST', '/api/db/save', { body: pfUnrelated, cookie: adminCookie });
+    check('an unrelated save touching the same already-finalized record is not re-blocked', pfUnrelatedResult.status === 200);
+
     console.log('\nauthorizeSave converted to granular permissions (the highest-stakes authorization logic in the app):');
     const authSaveBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Staff Only Manager', permissions: ['dashboard_view','staff_view','staff_manage'] } });
