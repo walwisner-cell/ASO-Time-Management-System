@@ -188,6 +188,69 @@ async function main() {
     const typoResult = await request('POST', '/api/db/save', { body: roleTypoSetup, cookie: adminCookie });
     check('assigning a nonexistent role name is rejected', typoResult.status === 403);
 
+    console.log('\nGranular permissions actually enforced, not just offered in the taxonomy (found this session by auditing every permission for real usage):');
+    const permAuditBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+
+    // taxes_manage: previously the Taxes & Benefits page was gated by taxes_manage
+    // client-side, but the server checked payroll_run for the actual save — a role
+    // granted only taxes_manage could see the page but never actually save.
+    await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Tax Manager', permissions: ['dashboard_view', 'taxes_manage'] } });
+    const taxSetup = { ...permAuditBase.body };
+    taxSetup.USERS = [...taxSetup.USERS, { id: 'UTXM1', username: 'taxmgrtest', password: 'taxpass1', name: 'Tax Manager Test', role: 'Tax Manager' }];
+    await request('POST', '/api/db/save', { body: taxSetup, cookie: adminCookie });
+    const taxLogin = await request('POST', '/api/auth/login', { body: { username: 'taxmgrtest', password: 'taxpass1' } });
+    const taxBase = await request('GET', '/api/db/load', { cookie: taxLogin.cookie });
+    const taxEditBody = { ...taxBase.body, PAY_CONFIG: { ...taxBase.body.PAY_CONFIG, defaultDeductions: [{ name: 'FICA', type: 'pct', value: 7.65 }] } };
+    const taxSaveResult = await request('POST', '/api/db/save', { body: taxEditBody, cookie: taxLogin.cookie });
+    check('a role with ONLY taxes_manage can now actually save tax defaults', taxSaveResult.status === 200);
+    const taxPeriodBody = { ...taxBase.body, PAY_CONFIG: { ...taxBase.body.PAY_CONFIG, periodDays: 7 } };
+    const taxPeriodResult = await request('POST', '/api/db/save', { body: taxPeriodBody, cookie: taxLogin.cookie });
+    check('the SAME role is still correctly blocked from pay period settings (precise, not overly broad)', taxPeriodResult.status === 403);
+
+    // payroll_unlock: unlocking a finalized period now requires its own permission,
+    // separate from payroll_run (running a new period shouldn't imply undoing one).
+    await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Payroll Runner', permissions: ['dashboard_view', 'payroll_view', 'payroll_run'] } });
+    const unlockSetup = { ...permAuditBase.body };
+    unlockSetup.USERS = [...unlockSetup.USERS, { id: 'UPRT1', username: 'payrolltest', password: 'prpass1', name: 'Payroll Runner Test', role: 'Payroll Runner' }];
+    unlockSetup.PAYROLL_RECORDS = [{ periodStart: '2026-08-01', periodLabel: 'Aug 1 - Aug 14, 2026', confirmed: true, confirmedBy: 'Admin', confirmedAt: 'now', finalized: true, finalizedBy: 'Admin', finalizedAt: 'now', employeeRows: [], rows: [] }];
+    await request('POST', '/api/db/save', { body: unlockSetup, cookie: adminCookie });
+    const unlockLogin = await request('POST', '/api/auth/login', { body: { username: 'payrolltest', password: 'prpass1' } });
+    const unlockBase = await request('GET', '/api/db/load', { cookie: unlockLogin.cookie });
+    const unlockBody = { ...unlockBase.body, PAYROLL_RECORDS: unlockBase.body.PAYROLL_RECORDS.map(r => ({ ...r, finalized: false })) };
+    const unlockResult = await request('POST', '/api/db/save', { body: unlockBody, cookie: unlockLogin.cookie });
+    check('a role with payroll_run but NOT payroll_unlock cannot unlock a finalized period', unlockResult.status === 403);
+
+    // audit_verify: was hard-coded to admin-only despite being a read-only,
+    // low-risk action reasonable to delegate to an auditor-type role.
+    const auditVerifyDenied = await request('GET', '/api/audit-log/verify', { cookie: unlockLogin.cookie });
+    check('a role without audit_verify is correctly denied', auditVerifyDenied.status === 403);
+    await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Auditor', permissions: ['dashboard_view', 'audit_verify'] } });
+    const auditorSetup = { ...permAuditBase.body };
+    auditorSetup.USERS = [...auditorSetup.USERS, { id: 'UAUD1', username: 'auditortest', password: 'audpass1', name: 'Auditor Test', role: 'Auditor' }];
+    await request('POST', '/api/db/save', { body: auditorSetup, cookie: adminCookie });
+    const auditorLogin = await request('POST', '/api/auth/login', { body: { username: 'auditortest', password: 'audpass1' } });
+    const auditVerifyAllowed = await request('GET', '/api/audit-log/verify', { cookie: auditorLogin.cookie });
+    check('a role WITH audit_verify can now actually verify the audit trail', auditVerifyAllowed.status === 200);
+
+    // data_reset/data_import: deliberately removed from the assignable taxonomy
+    // entirely, since they were never actually enforced by permission (both
+    // endpoints stay hard-coded to true admin only) and offering them as a
+    // grantable checkbox was misleading.
+    const deadPermsResult = await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Sneaky Role', permissions: ['dashboard_view', 'data_reset', 'data_import'] } });
+    const deadPermsList = await request('GET', '/api/roles', { cookie: adminCookie });
+    const sneakyRole = deadPermsList.body.roles.find(r => r.name === 'Sneaky Role');
+    check('data_reset and data_import can never be granted to any role (filtered out entirely)', sneakyRole && !sneakyRole.permissions.includes('data_reset') && !sneakyRole.permissions.includes('data_import'));
+
+    // staff_pto_adjust and data_backup: same class of gap, fixed the same way.
+    await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'HR Assistant', permissions: ['dashboard_view', 'staff_view', 'staff_pto_adjust'] } });
+    const hrSetup = { ...permAuditBase.body };
+    hrSetup.STAFF = [...hrSetup.STAFF, { id: 'SPTOTEST', first: 'Pto', last: 'TestTarget', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 15, start: '2026-01-01', status: 'Active' }];
+    hrSetup.USERS = [...hrSetup.USERS, { id: 'UHR1', username: 'hrassisttest', password: 'hrpass1', name: 'HR Assistant Test', role: 'HR Assistant' }];
+    await request('POST', '/api/db/save', { body: hrSetup, cookie: adminCookie });
+    const hrLogin = await request('POST', '/api/auth/login', { body: { username: 'hrassisttest', password: 'hrpass1' } });
+    const ptoResult = await request('POST', '/api/staff/SPTOTEST/pto-adjust', { cookie: hrLogin.cookie, body: { delta: 8, reason: 'test' } });
+    check('a role with staff_pto_adjust can now actually adjust PTO (previously hard-coded admin-only)', ptoResult.status === 200);
+
     console.log('\nStaff pay rate and salary amount validation:');
     const staffValBase = await request('GET', '/api/db/load', { cookie: adminCookie });
     async function tryStaffField(extra) {

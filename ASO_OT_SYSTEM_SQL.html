@@ -2461,7 +2461,7 @@
           </div>
           <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Staff List</button>
         </div>
-        <div class="card section-gap">
+        <div class="card section-gap" id="add-staff-card">
           <div class="card-title">Add New Staff</div>
           <div class="form-grid">
             <div class="form-field"><label>First Name</label><input type="text" id="st-first" placeholder="First name"></div>
@@ -3929,6 +3929,7 @@ function userCan(action) {
     approveShifts: ['admin','supervisor'],
     dataManager:   ['admin'],
     payConfig:     ['admin'],
+    adjustPto:     ['admin'],
   };
   if (BUILTIN_ROLE_NAMES.includes(role)) return (map[action] || ['admin']).includes(role);
   // Custom role: the same actions, expressed as permission keys instead.
@@ -3936,6 +3937,7 @@ function userCan(action) {
     addShift: 'shifts_add', deleteShift: 'shifts_delete', editShift: 'shifts_edit',
     manageStaff: 'staff_manage', manageLocations: 'locations_manage', manageUsers: 'users_manage',
     approveShifts: 'approvals_review_shifts', dataManager: 'data_export', payConfig: 'payroll_run',
+    adjustPto: 'staff_pto_adjust',
   };
   return _myPermissions.includes(permMap[action] || '__unmapped__');
 }
@@ -8350,6 +8352,8 @@ function renderLeaderboard() {
 function renderStaffPage() {
   const locSel = document.getElementById('st-loc');
   locSel.innerHTML = LOCATIONS.map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
+  const addCard = document.getElementById('add-staff-card');
+  if (addCard) addCard.style.display = userCan('manageStaff') ? '' : 'none';
   renderStaffTable();
 }
 
@@ -8366,13 +8370,13 @@ function renderStaffTable() {
       <td class="mono">${$fmt(s.rate)}</td>
       <td class="mono" style="color:var(--text3)">${s.start}</td>
       <td class="mono" style="color:${bal<0?'var(--danger)':'var(--success)'}">${numFmt(bal)}h
-        <button class="btn btn-ghost" style="padding:2px 8px;font-size:10px;margin-left:4px" onclick="adjustPtoBalance('${s.id}','${esc(s.first)} ${esc(s.last)}')">Adjust</button>
+        ${userCan('adjustPto') ? `<button class="btn btn-ghost" style="padding:2px 8px;font-size:10px;margin-left:4px" onclick="adjustPtoBalance('${s.id}','${esc(s.first)} ${esc(s.last)}')">Adjust</button>` : ''}
       </td>
       <td><span class="badge ${s.status==='Active'?'badge-success':'badge-muted'}">${s.status}</span></td>
       <td style="white-space:nowrap">
-        <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openEditStaffModal('${s.id}')">✏️ Edit</button>
+        ${userCan('manageStaff') ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openEditStaffModal('${s.id}')">✏️ Edit</button>
         <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="toggleStaffStatus('${s.id}')">${s.status==='Active'?'Deactivate':'Activate'}</button>
-        <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteStaff('${s.id}')">✕</button>
+        <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteStaff('${s.id}')">✕</button>` : '<span style="font-size:11px;color:var(--text3)">View only</span>'}
       </td>
     </tr>`;
   });
@@ -8859,7 +8863,7 @@ const PERMISSION_GROUPS = [
   { title: 'Staff', perms: { staff_view: 'View staff list', staff_manage: 'Add/edit/deactivate staff', staff_view_wage: 'View pay rates', staff_pto_adjust: 'Manually adjust PTO balances' } },
   { title: 'Locations', perms: { locations_view: 'View locations', locations_manage: 'Add/edit/delete locations' } },
   { title: 'Users & Roles', perms: { users_view: 'View user accounts', users_manage: 'Create/edit/delete user accounts', roles_manage: 'Create/edit custom roles' } },
-  { title: 'Data Manager', perms: { data_export: 'Export data', data_import: 'Import data', data_backup: 'Create/download backups', data_reset: 'Factory reset (delete all data)' } },
+  { title: 'Data Manager', perms: { data_export: 'Export data', data_backup: 'Create/download backups' } },
   { title: 'Reports & Audit', perms: { reports_view: 'View reports', audit_view: 'View audit trail', audit_verify: 'Verify audit trail integrity' } },
 ];
 

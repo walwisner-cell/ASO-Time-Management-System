@@ -208,9 +208,17 @@ const ALL_PERMISSIONS = [
   'staff_view', 'staff_manage', 'staff_view_wage', 'staff_pto_adjust',
   'locations_view', 'locations_manage',
   'users_view', 'users_manage', 'roles_manage',
-  'data_export', 'data_import', 'data_backup', 'data_reset',
+  'data_export', 'data_backup',
   'reports_view', 'audit_view', 'audit_verify',
 ];
+// Importing a whole new database or factory-resetting are deliberately NOT
+// in ALL_PERMISSIONS at all — both endpoints stay hard-coded to requireAdmin
+// (true admin only, no custom role can ever be granted around it) as a
+// safety backstop for the two most destructive actions in the system.
+// Keeping them out of the assignable list entirely, rather than defining
+// them here and simply never checking them, means an admin creating a
+// custom role can never be shown a checkbox that looks like it grants
+// something it actually doesn't.
 
 // The four original roles are "built-in": their permissions are fixed here
 // in code, not in the database, specifically so nothing (a bug, a bad
@@ -749,6 +757,22 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Same shape as requireAdmin, but checks a specific granular permission
+// instead of hardcoding admin — for actions that are reasonable to delegate
+// to a custom role (adjusting PTO, creating a backup, exporting data)
+// rather than requiring true admin. Deliberately NOT used for the more
+// destructive database actions (factory reset, importing a whole new
+// database) — those stay on requireAdmin as an intentional, hard-coded
+// safety backstop that no custom role can ever be granted around.
+function requirePermission(key) {
+  return (req, res, next) => {
+    if (!hasPermission(req.user, key)) {
+      return res.status(403).json({ error: 'You do not have permission for this action' });
+    }
+    next();
+  };
+}
+
 // ── Write authorization for the generic /api/db/save endpoint ──────
 // Session auth alone only proves *who* is asking — it says nothing about
 // *what* they're allowed to change. This checks the incoming payload against
@@ -870,6 +894,7 @@ function authorizeSave(existing, incoming, user) {
   // only actual change in behavior is that a custom role can now be granted
   // these same permissions individually, which it couldn't do at all before.
   const canPayConfig = hasPermission(user, 'payroll_run');
+  const canTaxDefaults = hasPermission(user, 'taxes_manage');
   const canLocations = hasPermission(user, 'locations_manage');
   const canStaff = hasPermission(user, 'staff_manage');
   const canUsers = hasPermission(user, 'users_manage');
@@ -893,8 +918,24 @@ function authorizeSave(existing, incoming, user) {
   const userValidationError = validateUsers(incoming.USERS);
   if (userValidationError) return userValidationError;
 
-  if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !canPayConfig)
+  // PAY_CONFIG bundles two genuinely different pages' settings into one
+  // object — Pay Period Setup (anchor date, period length, OT threshold,
+  // meal-break threshold) and Taxes & Benefits (default deductions). They're
+  // checked separately here so a custom role granted only taxes_manage can
+  // actually save what the Taxes & Benefits page lets them edit, instead of
+  // being able to see the page but have every save silently rejected
+  // because the server was checking payroll_run for both regardless of
+  // which page the change actually came from.
+  const incomingPC = incoming.PAY_CONFIG || {}, existingPC = existing.PAY_CONFIG || {};
+  const payPeriodFieldsChanged = incomingPC.anchorDate !== existingPC.anchorDate
+    || incomingPC.periodDays !== existingPC.periodDays
+    || incomingPC.otThreshold !== existingPC.otThreshold
+    || incomingPC.mealBreakThresholdHours !== existingPC.mealBreakThresholdHours;
+  if (payPeriodFieldsChanged && !canPayConfig)
     return 'Pay period settings can only be changed by an admin account';
+
+  if (deepChanged(incomingPC.defaultDeductions, existingPC.defaultDeductions) && !canPayConfig && !canTaxDefaults)
+    return 'Tax and benefit defaults can only be changed by an admin account';
 
   if (deepChanged(sortedById(incoming.LOCATIONS), sortedById(existing.LOCATIONS)) && !canLocations)
     return 'Locations can only be managed by an admin account';
@@ -908,6 +949,22 @@ function authorizeSave(existing, incoming, user) {
   if (deepChanged(sortedById((incoming.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart}))),
                    sortedById((existing.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart})))) && !canPayroll)
     return 'Payroll can only be managed by an admin account';
+
+  // Unlocking a finalized period is deliberately its own permission, not
+  // just "can run payroll" — a role that can confirm and run a new payroll
+  // period shouldn't automatically also be able to undo a period someone
+  // else already finalized. Checked as its own transition (finalized true
+  // to false) so this doesn't interfere with the normal run/finalize flow.
+  const canUnlockPayroll = hasPermission(user, 'payroll_unlock');
+  const existingPayrollByPeriod = {};
+  (existing.PAYROLL_RECORDS || []).forEach(r => { existingPayrollByPeriod[r.periodStart] = r; });
+  for (const rec of (incoming.PAYROLL_RECORDS || [])) {
+    const was = existingPayrollByPeriod[rec.periodStart];
+    const isUnlocking = was && was.finalized && !rec.finalized;
+    if (isUnlocking && !canUnlockPayroll) {
+      return `Unlocking a finalized payroll period requires the "Unlock Payroll" permission, separate from being able to run payroll`;
+    }
+  }
 
   const payrollFinalizationError = validatePayrollFinalization(existing.PAYROLL_RECORDS, incoming.PAYROLL_RECORDS, incoming.STAFF || existing.STAFF);
   if (payrollFinalizationError) return payrollFinalizationError;
@@ -1388,7 +1445,7 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.get('/api/db/export', requireAuth, requireAdmin, (req, res) => {
+  app.get('/api/db/export', requireAuth, requirePermission('data_export'), (req, res) => {
     try {
       const data = { ...loadDB(), exportedAt: new Date().toISOString(), version: 10 };
       const now = new Date();
@@ -1971,7 +2028,7 @@ async function main() {
   // allotment or correcting a mistake. Writes directly to the database (same
   // pattern as leave-request review) so it's never at risk of being reverted
   // by a stale bulk save, and always leaves an audit trail entry.
-  app.post('/api/staff/:id/pto-adjust', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  app.post('/api/staff/:id/pto-adjust', requireAuth, requirePermission('staff_pto_adjust'), writeLimiter, (req, res) => {
     try {
       const delta = Number(req.body && req.body.delta);
       const reason = typeof (req.body && req.body.reason) === 'string' ? req.body.reason.slice(0, 300) : '';
@@ -1998,7 +2055,7 @@ async function main() {
   // it. Any mismatch — an edited detail, a deleted entry, a reordered one —
   // is detected here, pinpointing exactly where the chain breaks, rather
   // than just trusting that append-only merging was never bypassed.
-  app.get('/api/audit-log/verify', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  app.get('/api/audit-log/verify', requireAuth, requirePermission('audit_verify'), writeLimiter, (req, res) => {
     try {
       const entries = all('SELECT id,type,detail,by,by_role AS byRole,at,ts,hash FROM audit_log ORDER BY ts ASC');
       let prevHash = AUDIT_CHAIN_GENESIS;
@@ -2022,7 +2079,7 @@ async function main() {
     catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/backups', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  app.post('/api/backups', requireAuth, requirePermission('data_backup'), writeLimiter, (req, res) => {
     try {
       const filename = createBackup('manual');
       res.json({ ok: true, filename });
