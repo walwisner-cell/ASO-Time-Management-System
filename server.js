@@ -201,7 +201,7 @@ function writeAuditLog(type, detail, user, meta) {
 // isn't a real, recognized permission.
 const ALL_PERMISSIONS = [
   'dashboard_view',
-  'shifts_view', 'shifts_add', 'shifts_edit', 'shifts_delete',
+  'shifts_view', 'shifts_add', 'shifts_edit', 'shifts_delete', 'shifts_date_correction',
   'approvals_view', 'approvals_review_shifts', 'approvals_review_leave', 'approvals_review_clock', 'clock_override',
   'clock_locations_view',
   'payroll_view', 'payroll_run', 'payroll_unlock', 'taxes_manage',
@@ -785,8 +785,21 @@ function validateUsers(incomingUsers) {
 }
 
 function authorizeSave(existing, incoming, user) {
-  const isAdmin = user.role === 'admin';
-  const canShift = user.role === 'admin' || user.role === 'supervisor';
+  // hasPermission(user, 'x') for the built-in roles resolves to EXACTLY the
+  // same admin/supervisor checks this function used before conversion —
+  // BUILTIN_ROLE_PERMISSIONS was deliberately built to preserve that. The
+  // only actual change in behavior is that a custom role can now be granted
+  // these same permissions individually, which it couldn't do at all before.
+  const canPayConfig = hasPermission(user, 'payroll_run');
+  const canLocations = hasPermission(user, 'locations_manage');
+  const canStaff = hasPermission(user, 'staff_manage');
+  const canUsers = hasPermission(user, 'users_manage');
+  const canPayroll = hasPermission(user, 'payroll_run');
+  const canAddShift = hasPermission(user, 'shifts_add');
+  const canEditShift = hasPermission(user, 'shifts_edit');
+  const canDeleteShift = hasPermission(user, 'shifts_delete');
+  const canApprovals = hasPermission(user, 'approvals_review_shifts');
+  const canDateCorrection = hasPermission(user, 'shifts_date_correction');
 
   const staffIds = new Set((incoming.STAFF || existing.STAFF || []).map(s => s.id));
   const shiftValidationError = validateShifts(incoming.SHIFTS, staffIds);
@@ -798,31 +811,31 @@ function authorizeSave(existing, incoming, user) {
   const userValidationError = validateUsers(incoming.USERS);
   if (userValidationError) return userValidationError;
 
-  if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !isAdmin)
+  if (deepChanged(incoming.PAY_CONFIG, existing.PAY_CONFIG) && !canPayConfig)
     return 'Pay period settings can only be changed by an admin account';
 
-  if (deepChanged(sortedById(incoming.LOCATIONS), sortedById(existing.LOCATIONS)) && !isAdmin)
+  if (deepChanged(sortedById(incoming.LOCATIONS), sortedById(existing.LOCATIONS)) && !canLocations)
     return 'Locations can only be managed by an admin account';
 
-  if (deepChanged(sortedById(incoming.STAFF), sortedById(existing.STAFF)) && !isAdmin)
+  if (deepChanged(sortedById(incoming.STAFF), sortedById(existing.STAFF)) && !canStaff)
     return 'Staff records can only be managed by an admin account';
 
-  if (deepChanged(stripPasswords(incoming.USERS), stripPasswords(existing.USERS)) && !isAdmin)
+  if (deepChanged(stripPasswords(incoming.USERS), stripPasswords(existing.USERS)) && !canUsers)
     return 'User accounts can only be managed by an admin account';
 
   if (deepChanged(sortedById((incoming.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart}))),
-                   sortedById((existing.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart})))) && !isAdmin)
+                   sortedById((existing.PAYROLL_RECORDS||[]).map(r=>({...r, id:r.periodStart})))) && !canPayroll)
     return 'Payroll can only be managed by an admin account';
 
   const existingShiftsById = {}; (existing.SHIFTS||[]).forEach(s => { existingShiftsById[s.id] = s; });
   const incomingShiftsById = {}; (incoming.SHIFTS||[]).forEach(s => { incomingShiftsById[s.id] = s; });
   for (const id in incomingShiftsById) {
     const ex = existingShiftsById[id];
-    if (!ex) { if (!canShift) return 'Adding shifts requires an admin or supervisor account'; }
-    else if (deepChanged(incomingShiftsById[id], ex) && !canShift) return 'Editing shifts requires an admin or supervisor account';
+    if (!ex) { if (!canAddShift) return 'Adding shifts requires an admin or supervisor account'; }
+    else if (deepChanged(incomingShiftsById[id], ex) && !canEditShift) return 'Editing shifts requires an admin or supervisor account';
   }
   for (const id in existingShiftsById) {
-    if (!incomingShiftsById[id] && user.role !== 'admin') return 'Deleting shifts requires an admin account';
+    if (!incomingShiftsById[id] && !canDeleteShift) return 'Deleting shifts requires an admin account';
   }
 
   // These were previously unchecked entirely — any authenticated role, including
@@ -830,20 +843,20 @@ function authorizeSave(existing, incoming, user) {
   // exception or silently wipe a pending 24-hour violation via a raw API call
   // that never touched the UI. Matches the same admin/supervisor gate the
   // Approvals page itself uses.
-  if (deepChanged(sortedById(incoming.PENDING_APPROVALS), sortedById(existing.PENDING_APPROVALS)) && !canShift)
+  if (deepChanged(sortedById(incoming.PENDING_APPROVALS), sortedById(existing.PENDING_APPROVALS)) && !canApprovals)
     return 'Managing pending approvals requires an admin or supervisor account';
 
-  if (deepChanged(sortedById(incoming.APPROVED_EXCEPTIONS), sortedById(existing.APPROVED_EXCEPTIONS)) && !canShift)
+  if (deepChanged(sortedById(incoming.APPROVED_EXCEPTIONS), sortedById(existing.APPROVED_EXCEPTIONS)) && !canApprovals)
     return 'Managing approved exceptions requires an admin or supervisor account';
 
   // Date corrections and deletion history are only ever legitimately created by
   // admin-only actions (Pay Period Setup's date-correction tool, and shift
   // deletion) — same reasoning as above, a lower-severity but real gap since
   // these logs weren't checked at all before.
-  if ((incoming.DATE_CORRECTION_LOG||[]).length > (existing.DATE_CORRECTION_LOG||[]).length && !isAdmin)
+  if ((incoming.DATE_CORRECTION_LOG||[]).length > (existing.DATE_CORRECTION_LOG||[]).length && !canDateCorrection)
     return 'Date corrections require an admin account';
 
-  if ((incoming.DELETION_LOG||[]).length > (existing.DELETION_LOG||[]).length && !isAdmin)
+  if ((incoming.DELETION_LOG||[]).length > (existing.DELETION_LOG||[]).length && !canDeleteShift)
     return 'Recording a deletion requires an admin account';
 
   return null; // authorized

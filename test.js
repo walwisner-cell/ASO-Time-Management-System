@@ -371,6 +371,36 @@ async function main() {
     const restoredShift = afterRestore.body.SHIFTS.find(s => s.id === 'SHRJ1');
     check('restored shift is active again', restoredShift && restoredShift.shiftStatus === 'active');
 
+    console.log('\nauthorizeSave converted to granular permissions (the highest-stakes authorization logic in the app):');
+    const authSaveBase = await request('GET', '/api/db/load', { cookie: adminCookie });
+    await request('POST', '/api/roles', { cookie: adminCookie, body: { name: 'Staff Only Manager', permissions: ['dashboard_view','staff_view','staff_manage'] } });
+    const authSaveSetup = { ...authSaveBase.body };
+    authSaveSetup.USERS = [...authSaveSetup.USERS, { id: 'USOM2', username: 'staffonlytest', password: 'staffpass1', name: 'Staff Only', role: 'Staff Only Manager' }];
+    await request('POST', '/api/db/save', { body: authSaveSetup, cookie: adminCookie });
+    const staffOnlyLogin = await request('POST', '/api/auth/login', { body: { username: 'staffonlytest', password: 'staffpass1' } });
+
+    const staffOnlyBase = await request('GET', '/api/db/load', { cookie: staffOnlyLogin.cookie });
+    const editStaffBody = { ...staffOnlyBase.body };
+    editStaffBody.STAFF = editStaffBody.STAFF.map(s => s.id === 'S001' ? { ...s, title: 'Updated Title' } : s);
+    const editStaffResult = await request('POST', '/api/db/save', { body: editStaffBody, cookie: staffOnlyLogin.cookie });
+    check('custom role WITH staff_manage can edit staff', editStaffResult.status === 200);
+
+    const addLocBody = { ...staffOnlyBase.body };
+    addLocBody.LOCATIONS = [...addLocBody.LOCATIONS, { id: 'LSNEAK', name: 'Sneaky House', rate: 10, mult: 1.5, notes: '', rateHistory: [], maxStaff: 0 }];
+    const addLocResult = await request('POST', '/api/db/save', { body: addLocBody, cookie: staffOnlyLogin.cookie });
+    check('the SAME role WITHOUT locations_manage cannot add a location', addLocResult.status === 403);
+
+    const addShiftBody = { ...staffOnlyBase.body };
+    addShiftBody.SHIFTS = [...addShiftBody.SHIFTS, { id: 'SHSNEAK', staff: 'S001', date: '2026-08-05', start: '08:00', end: '16:00', location: 'Usene House', hours: 8, source: 'manual' }];
+    const addShiftResult = await request('POST', '/api/db/save', { body: addShiftBody, cookie: staffOnlyLogin.cookie });
+    check('the SAME role WITHOUT shifts_add cannot add a shift', addShiftResult.status === 403);
+
+    // Re-confirm the original documented security concern still holds after conversion
+    const viewerBody = { ...staffOnlyBase.body };
+    viewerBody.APPROVED_EXCEPTIONS = [...viewerBody.APPROVED_EXCEPTIONS, { shiftId: 'FAKE1', approvedBy: 'Someone', reason: 'fabricated' }];
+    const viewerFabResult = await request('POST', '/api/db/save', { body: viewerBody, cookie: viewerCookie });
+    check('viewer role still cannot fabricate an approved exception (original security fix intact)', viewerFabResult.status === 403);
+
     console.log('\nGPS enforcement for clock in/out:');
     const gpsSetup = { ...raceBase.body };
     gpsSetup.STAFF = [...gpsSetup.STAFF, { id: 'SGPS1', first: 'Gps', last: 'Enforce', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];

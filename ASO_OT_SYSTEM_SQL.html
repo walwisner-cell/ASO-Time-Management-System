@@ -2447,6 +2447,13 @@
             <div class="form-field"><label>Start Date</label><input type="date" id="st-start"></div>
             <div class="form-field"><label>Status</label>
               <select id="st-status"><option>Active</option><option>Inactive</option></select></div>
+            <div class="form-field"><label>Pay Type</label>
+              <select id="st-paytype" onchange="onAddStaffPayTypeChange()">
+                <option value="hourly">Hourly</option>
+                <option value="salary">Salary (fixed per period)</option>
+                <option value="external">External (different payroll program)</option>
+              </select></div>
+            <div class="form-field" id="st-salary-wrap" style="display:none"><label>Salary Amount ($/period)</label><input type="number" id="st-salary" step="1" min="0" placeholder="e.g. 2000"></div>
           </div>
           <button class="btn btn-primary" style="margin-top:14px" onclick="addStaff()">+ Add Staff Member</button>
         </div>
@@ -8244,6 +8251,10 @@ async function adjustPtoBalance(staffId, staffName) {
   }
 }
 
+function onAddStaffPayTypeChange() {
+  document.getElementById('st-salary-wrap').style.display = document.getElementById('st-paytype').value === 'salary' ? '' : 'none';
+}
+
 function addStaff() {
   const first = document.getElementById('st-first').value.trim();
   const last = document.getElementById('st-last').value.trim();
@@ -8258,10 +8269,14 @@ function addStaff() {
     loc: document.getElementById('st-loc').value,
     rate: parseFloat(document.getElementById('st-rate').value) || 0,
     start: document.getElementById('st-start').value || todayLocalISO(),
-    status: document.getElementById('st-status').value
+    status: document.getElementById('st-status').value,
+    payType: document.getElementById('st-paytype').value,
+    salaryAmount: parseFloat(document.getElementById('st-salary').value) || 0
   });
-  ['st-first','st-last','st-rate','st-start'].forEach(id => document.getElementById(id).value='');
+  ['st-first','st-last','st-rate','st-start','st-salary'].forEach(id => document.getElementById(id).value='');
   document.getElementById('st-title').value = 'DSP';
+  document.getElementById('st-paytype').value = 'hourly';
+  onAddStaffPayTypeChange();
   auditLog('ADD_STAFF', `Staff added: ${last}, ${first} (${id})`,
     `Title: ${document.getElementById('st-title').value||'DSP'} · Location: ${document.getElementById('st-loc').value} · Rate: ${document.getElementById('st-rate').value}`);
   dbSave();
@@ -8678,7 +8693,7 @@ function saveEditLocation() {
 // presentational, doesn't affect what's actually enforced server-side.
 const PERMISSION_GROUPS = [
   { title: 'General', perms: { dashboard_view: 'View Dashboard' } },
-  { title: 'Timesheet / Shifts', perms: { shifts_view: 'View shifts', shifts_add: 'Add shifts', shifts_edit: 'Edit shifts', shifts_delete: 'Delete shifts' } },
+  { title: 'Timesheet / Shifts', perms: { shifts_view: 'View shifts', shifts_add: 'Add shifts', shifts_edit: 'Edit shifts', shifts_delete: 'Delete shifts', shifts_date_correction: 'Use the date-correction tool (Pay Period Setup)' } },
   { title: 'Approvals', perms: { approvals_view: 'View Approvals page', approvals_review_shifts: 'Approve/deny 24hr shift exceptions', approvals_review_leave: 'Approve/deny time-off requests', approvals_review_clock: 'Approve/deny clock in/out entries', clock_override: 'Override clock-in/out past capacity' } },
   { title: 'Payroll & Taxes', perms: { payroll_view: 'View payroll', payroll_run: 'Confirm & run payroll', payroll_unlock: 'Unlock a finalized payroll period', taxes_manage: 'Manage tax & benefit defaults' } },
   { title: 'Staff', perms: { staff_view: 'View staff list', staff_manage: 'Add/edit/deactivate staff', staff_view_wage: 'View pay rates', staff_pto_adjust: 'Manually adjust PTO balances' } },
