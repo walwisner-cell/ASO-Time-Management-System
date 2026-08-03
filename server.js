@@ -203,6 +203,7 @@ const ALL_PERMISSIONS = [
   'dashboard_view',
   'shifts_view', 'shifts_add', 'shifts_edit', 'shifts_delete',
   'approvals_view', 'approvals_review_shifts', 'approvals_review_leave', 'approvals_review_clock', 'clock_override',
+  'clock_locations_view',
   'payroll_view', 'payroll_run', 'payroll_unlock', 'taxes_manage',
   'staff_view', 'staff_manage', 'staff_view_wage', 'staff_pto_adjust',
   'locations_view', 'locations_manage',
@@ -399,9 +400,29 @@ function createSchema() {
     shift_id TEXT DEFAULT '', created_at TEXT NOT NULL,
     overridden INTEGER DEFAULT 0, override_reason TEXT DEFAULT '', override_by TEXT DEFAULT ''
   )`);
-  ['overridden INTEGER DEFAULT 0', 'override_reason TEXT DEFAULT \'\'', 'override_by TEXT DEFAULT \'\''].forEach(colDef => {
+  [
+    'overridden INTEGER DEFAULT 0', 'override_reason TEXT DEFAULT \'\'', 'override_by TEXT DEFAULT \'\'',
+    // Geolocation is best-effort and point-in-time only — captured once at
+    // the moment of the clock action, never continuously tracked. Always
+    // NULL if the employee's browser didn't grant location permission or
+    // the request failed/timed out; clocking in/out never blocks on this.
+    'clock_in_lat REAL DEFAULT NULL', 'clock_in_lng REAL DEFAULT NULL', 'clock_in_accuracy REAL DEFAULT NULL',
+    'clock_out_lat REAL DEFAULT NULL', 'clock_out_lng REAL DEFAULT NULL', 'clock_out_accuracy REAL DEFAULT NULL'
+  ].forEach(colDef => {
     try { db.run(`ALTER TABLE clock_entries ADD COLUMN ${colDef}`); } catch (e) { /* already exists */ }
   });
+  // When a staff member is marked Inactive but still has shift hours on
+  // record for a pay period (they worked before being deactivated, or came
+  // back for a one-off shift), payroll should never silently either include
+  // or drop those hours. One row per staff+period combo once flagged;
+  // 'pending' is treated exactly like 'denied' by payroll — excluded and
+  // clearly called out as excluded — until an admin explicitly approves it.
+  db.run(`CREATE TABLE IF NOT EXISTS payroll_inactive_flags (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, period_start TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', notes TEXT DEFAULT '',
+    reviewed_by TEXT DEFAULT '', reviewed_at TEXT DEFAULT '', created_at TEXT NOT NULL,
+    UNIQUE(staff_id, period_start)
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, detail TEXT DEFAULT '',
     user_id TEXT DEFAULT '', created_at TEXT NOT NULL,
@@ -994,6 +1015,72 @@ async function main() {
   // Creating, editing, or deleting a role requires 'roles_manage' — held
   // only by admin among the built-in roles, and only grantable to a custom
   // role by an admin (see the privilege-escalation check in POST below).
+  // ── Inactive staff with worked shifts ─────────────────────
+  // A staff member marked Inactive who still has shift hours for a period
+  // (worked before deactivation, or came back for a one-off shift) needs an
+  // explicit decision before those hours can affect payroll — never a
+  // silent include or a silent drop. The client detects candidates using
+  // its own period logic and reports them here; the server independently
+  // re-verifies the staff member is actually Inactive before accepting a
+  // flag, rather than trusting the client's claim.
+  app.post('/api/inactive-flags', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'approvals_review_shifts')) {
+      return res.status(403).json({ error: 'Not authorized to flag payroll items' });
+    }
+    try {
+      const { staffId, periodStart } = req.body || {};
+      const staff = get('SELECT * FROM staff WHERE id = ?', [staffId]);
+      if (!staff) return res.status(400).json({ error: 'Unknown staff member' });
+      if (staff.status === 'Active') return res.status(400).json({ error: 'This staff member is Active \u2014 nothing to flag' });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) return res.status(400).json({ error: 'Invalid period' });
+
+      const existing = get('SELECT id FROM payroll_inactive_flags WHERE staff_id = ? AND period_start = ?', [staffId, periodStart]);
+      if (existing) return res.json({ ok: true, id: existing.id, alreadyExisted: true });
+
+      const id = 'FLAG' + Date.now() + Math.random().toString(36).slice(2,6);
+      run('INSERT INTO payroll_inactive_flags (id,staff_id,period_start,status,created_at) VALUES (?,?,?,\'pending\',?)',
+        [id, staffId, periodStart, new Date().toISOString()]);
+      writeAuditLog('INACTIVE_STAFF_FLAGGED', `${staff.first} ${staff.last} (Inactive) has shift hours in period starting ${periodStart} \u2014 flagged for payroll review`, req.user);
+      persistDB();
+      res.json({ ok: true, id, alreadyExisted: false });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/inactive-flags', requireAuth, (req, res) => {
+    if (!hasPermission(req.user, 'approvals_review_shifts')) {
+      return res.status(403).json({ error: 'Not authorized to view payroll flags' });
+    }
+    try {
+      const rows = all('SELECT * FROM payroll_inactive_flags ORDER BY created_at DESC');
+      res.json({ flags: rows.map(r => ({
+        id: r.id, staffId: r.staff_id, periodStart: r.period_start, status: r.status,
+        notes: r.notes, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at, createdAt: r.created_at
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/inactive-flags/:id/review', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'approvals_review_shifts')) {
+      return res.status(403).json({ error: 'Not authorized to review payroll flags' });
+    }
+    try {
+      const { action, notes } = req.body || {};
+      if (action !== 'approve' && action !== 'deny') return res.status(400).json({ error: 'Invalid action' });
+      const flag = get('SELECT * FROM payroll_inactive_flags WHERE id = ?', [req.params.id]);
+      if (!flag) return res.status(404).json({ error: 'Flag not found' });
+      const staff = get('SELECT * FROM staff WHERE id = ?', [flag.staff_id]);
+      const safeNotes = typeof notes === 'string' ? notes.slice(0, 500) : '';
+
+      run(`UPDATE payroll_inactive_flags SET status = ?, notes = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`,
+        [action === 'approve' ? 'approved' : 'denied', safeNotes, req.user.name, new Date().toISOString(), req.params.id]);
+      writeAuditLog(action === 'approve' ? 'INACTIVE_STAFF_PAYROLL_APPROVED' : 'INACTIVE_STAFF_PAYROLL_DENIED',
+        `${req.user.name} ${action === 'approve' ? 'approved including' : 'denied including'} ${staff ? staff.first+' '+staff.last : flag.staff_id}'s hours (Inactive) for period ${flag.period_start} in payroll${safeNotes ? ' \u2014 ' + safeNotes : ''}`,
+        req.user);
+      persistDB();
+      res.json({ ok: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/permissions', requireAuth, (req, res) => {
     // The full taxonomy and what the built-in roles have, so the client can
     // render a real permission matrix instead of a hardcoded guess.
@@ -1306,13 +1393,49 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Shared by /api/clock/in (blocks at capacity) and /api/clock/admin-in
-  // (shows the same numbers, but allows an explicit override past them).
+  // Deliberately its own endpoint, gated by its own permission
+  // (clock_locations_view), separate from ordinary clock-entry review
+  // access — someone who can approve/deny clock entries does not
+  // automatically see where those clock-ins physically came from. Only
+  // entries that actually captured a location (best-effort, never
+  // required) appear here; there is nothing to see for anyone who didn't
+  // grant their browser location access.
+  app.get('/api/clock-locations', requireAuth, (req, res) => {
+    if (!hasPermission(req.user, 'clock_locations_view')) {
+      return res.status(403).json({ error: 'Not authorized to view clock-in/out locations' });
+    }
+    try {
+      const rows = all(`SELECT * FROM clock_entries
+                         WHERE clock_in_lat IS NOT NULL OR clock_out_lat IS NOT NULL
+                         ORDER BY created_at DESC LIMIT 500`);
+      res.json({ entries: rows.map(r => ({
+        id: r.id, staffId: r.staff_id, location: r.location, status: r.status,
+        clockInDate: r.clock_in_date, clockInTime: r.clock_in_time,
+        clockOutDate: r.clock_out_date || null, clockOutTime: r.clock_out_time || null,
+        clockInLat: r.clock_in_lat, clockInLng: r.clock_in_lng, clockInAccuracy: r.clock_in_accuracy,
+        clockOutLat: r.clock_out_lat, clockOutLng: r.clock_out_lng, clockOutAccuracy: r.clock_out_accuracy
+      })) });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   function checkLocationCapacity(locationName) {
     const loc = get('SELECT max_staff FROM locations WHERE name = ?', [locationName]);
     const maxStaff = loc ? (loc.max_staff || 0) : 0;
     const occupancy = get(`SELECT COUNT(*) as c FROM clock_entries WHERE location = ? AND status = 'open'`, [locationName]).c;
     return { maxStaff, occupancy, atCapacity: maxStaff > 0 && occupancy >= maxStaff };
+  }
+
+  // Returns [lat, lng, accuracy] as numbers if the payload includes valid
+  // coordinates, or [null, null, null] otherwise. Never rejects the whole
+  // request over bad/missing location data — it's always optional.
+  function extractGeoOrNull(body) {
+    const lat = Number(body && body.lat);
+    const lng = Number(body && body.lng);
+    const accuracy = Number(body && body.accuracy);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return [null, null, null];
+    }
+    return [lat, lng, Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : null];
   }
 
   app.post('/api/clock/in', requireAuth, writeLimiter, (req, res) => {
@@ -1325,6 +1448,7 @@ async function main() {
       if (!get('SELECT id FROM locations WHERE name = ?', [safeLocation])) {
         return res.status(400).json({ error: 'Unknown location' });
       }
+      const [lat, lng, accuracy] = extractGeoOrNull(req.body);
 
       // The staffing cap and the "no double clock-in" rule both live inside
       // the WHERE clause of the INSERT itself, not a separate check beforehand.
@@ -1336,15 +1460,15 @@ async function main() {
       // itself is the single source of truth for whether the row goes in.
       const id = 'CE' + Date.now() + Math.random().toString(36).slice(2,6);
       const result = run(
-        `INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at)
-         SELECT ?,?,?,?,?,'open',?
+        `INSERT INTO clock_entries (id,staff_id,location,clock_in_date,clock_in_time,status,created_at,clock_in_lat,clock_in_lng,clock_in_accuracy)
+         SELECT ?,?,?,?,?,'open',?,?,?,?
          WHERE NOT EXISTS (SELECT 1 FROM clock_entries WHERE staff_id = ? AND status = 'open')
            AND (
              COALESCE((SELECT max_staff FROM locations WHERE name = ?), 0) = 0
              OR (SELECT COUNT(*) FROM clock_entries WHERE location = ? AND status = 'open')
                 < (SELECT max_staff FROM locations WHERE name = ?)
            )`,
-        [id, req.user.staffId, safeLocation, date, time, new Date().toISOString(),
+        [id, req.user.staffId, safeLocation, date, time, new Date().toISOString(), lat, lng, accuracy,
          req.user.staffId, safeLocation, safeLocation, safeLocation]
       );
 
@@ -1380,9 +1504,10 @@ async function main() {
       if (!Number.isFinite(hours) || hours <= 0) {
         return res.status(400).json({ error: 'Clock-out time must be after your clock-in time. If you clocked in by mistake, use "Cancel Clock-In" instead of clocking out.' });
       }
+      const [lat, lng, accuracy] = extractGeoOrNull(req.body);
 
-      run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, status = 'pending', notes = ? WHERE id = ?`,
-        [date, time, safeNotes, openEntry.id]);
+      run(`UPDATE clock_entries SET clock_out_date = ?, clock_out_time = ?, notes = ?, status = 'pending', clock_out_lat = ?, clock_out_lng = ?, clock_out_accuracy = ? WHERE id = ?`,
+        [date, time, safeNotes, lat, lng, accuracy, openEntry.id]);
       writeAuditLog('CLOCK_OUT', `${req.user.name} clocked out at ${time} on ${date} (${hours.toFixed(2)}h) — awaiting approval`, req.user);
       persistDB();
       res.json({ ok: true, hours: Math.round(hours * 100) / 100 });

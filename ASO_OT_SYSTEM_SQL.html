@@ -1662,6 +1662,7 @@
       <div class="nav-item" data-page="locations" onclick="nav('locations',this)"><span class="nav-icon">📍</span>Locations</div>
       <div class="nav-item" data-page="passwords" onclick="nav('passwords',this)"><span class="nav-icon">🔐</span>Passwords</div>
       <div class="nav-item" data-page="roles" onclick="nav('roles',this)"><span class="nav-icon">🛡️</span>Roles &amp; Permissions</div>
+      <div class="nav-item" data-page="clocklocations" onclick="nav('clocklocations',this)"><span class="nav-icon">📍</span>Clock Locations</div>
       <div class="nav-item" data-page="datamanager" onclick="nav('datamanager',this)"><span class="nav-icon">🗄️</span>Data Manager</div>
       <div class="nav-section">Help</div>
       <div class="nav-item" data-page="audittrail" onclick="nav('audittrail',this)"><span class="nav-icon">🔍</span>Audit Trail</div>
@@ -1678,6 +1679,8 @@
             <div class="page-sub" id="mp-welcome">Your shifts, pay stubs, and time off — visible only to you</div>
           </div>
         </div>
+
+        <div id="mp-period-banner" style="background:rgba(46,138,232,0.08);border:1px solid rgba(46,138,232,0.25);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start"></div>
 
         <div class="report-summary" id="mp-summary"></div>
 
@@ -2128,6 +2131,12 @@
           <div class="table-wrap" id="open-clock-entries-list" style="margin-bottom:24px"></div>
           <div style="font-family:var(--display);font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Awaiting Review / History</div>
           <div class="table-wrap" id="clock-entries-list"></div>
+        </div>
+
+        <div class="card section-gap">
+          <div class="card-title">⚠️ Inactive Staff With Shift Hours</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px">A staff member marked Inactive still has shift hours recorded for a pay period below. Their hours are <b style="color:var(--warn)">excluded from payroll by default</b> until you explicitly decide — this never happens silently.</p>
+          <div class="table-wrap" id="inactive-flags-list"></div>
         </div>
       </div>
 
@@ -2654,6 +2663,26 @@
         <div class="card section-gap">
           <div class="card-title">Existing Custom Roles</div>
           <div id="roles-list"></div>
+        </div>
+      </div>
+
+      <!-- CLOCK LOCATIONS -->
+      <div class="page" id="page-clocklocations">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">📍 Clock Locations</div>
+            <div class="page-sub">Where clock-ins and clock-outs actually came from — visible only here, never mixed into everyday shift review</div>
+          </div>
+        </div>
+
+        <div style="background:rgba(46,138,232,0.07);border:1px solid rgba(46,138,232,0.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:10px">
+          <span style="font-size:16px">🔒</span>
+          <div style="font-size:12px;color:var(--text2)">Location is <b style="color:var(--text)">best-effort and point-in-time only</b> — captured once at the moment someone clocks in or out, never continuously tracked. Anyone who declines their browser's location prompt still clocks in normally; there's simply nothing to show here for that entry. This page is deliberately gated by its own permission, separate from ordinary clock-entry approval access.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Entries With Location Data</div>
+          <div class="table-wrap" id="clock-locations-list"></div>
         </div>
       </div>
 
@@ -3803,7 +3832,7 @@ const PAGE_REQUIRED_PERMISSION = {
   monthly: 'reports_view', leaderboard: 'reports_view', payconfig: 'payroll_run',
   taxbenefits: 'taxes_manage', staff: 'staff_view', locations: 'locations_view',
   passwords: 'users_view', datamanager: 'data_export', audittrail: 'audit_view',
-  usermanual: 'dashboard_view', roles: 'roles_manage',
+  usermanual: 'dashboard_view', roles: 'roles_manage', clocklocations: 'clock_locations_view',
 };
 
 function canAccessPage(page) {
@@ -3829,6 +3858,7 @@ const PAGE_ROLES = {
   locations:     ['admin'],
   passwords:     ['admin'],
   roles:         ['admin'],
+  clocklocations:['admin'],
   datamanager:   ['admin'],
   audittrail:    ['admin','supervisor'],
   usermanual:    ['admin','supervisor','viewer'],
@@ -4250,7 +4280,8 @@ function nav(page, el) {
     datamanager: renderDataManager,
     audittrail: renderAuditTrail,
     reportbuilder: renderReportBuilder,
-    roles: renderRolesPage
+    roles: renderRolesPage,
+    clocklocations: renderClockLocationsPage
   };
   if (renders[page]) renders[page]();
 }
@@ -5105,19 +5136,24 @@ async function renderMyClockWidget() {
     <select id="mp-clock-location" onchange="updateMyClockOccupancyHint()">${LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name===defaultLoc?' selected':''}>${esc(locLabel(l))}</option>`).join('')}</select>
     <div id="mp-clock-occupancy-hint" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
   </div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:12px;display:flex;gap:6px;align-items:flex-start">
+    <span>📍</span>
+    <span>If your browser allows it, your location is recorded at the moment you clock in or out, to help verify shift location. It's a single snapshot, not ongoing tracking — you can decline the browser's location prompt and still clock in normally.</span>
+  </div>
   <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:700" onclick="doClockIn()">▶️ Clock In</button>`;
 
   const mine = (CLOCK_ENTRIES || []).filter(c => c.staffId === staffId && c.status !== 'open').slice(0, 8);
   if (mine.length) {
     html += `<div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">Recent Clock History</div>
-    <table><thead><tr><th>Date</th><th>Time</th><th>Location</th><th>Hours</th><th>Status</th></tr></thead><tbody>`;
+    <table><thead><tr><th>Date</th><th>House</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th></tr></thead><tbody>`;
     mine.forEach(c => {
       const hrs = calcClockHours(c.clockInDate, c.clockInTime, c.clockOutDate, c.clockOutTime);
       const badgeClass = c.status === 'approved' ? 'badge-success' : c.status === 'denied' ? 'badge-danger' : 'badge-warn';
       html += `<tr>
         <td class="mono">${formatDateDisplay(c.clockInDate)}</td>
-        <td class="mono">${formatTimeDisplay(c.clockInTime)}\u2013${c.clockOutTime ? formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
-        <td>${esc(c.location||'\u2014')}</td>
+        <td style="color:var(--text);font-weight:500">${esc(c.location||'\u2014')}</td>
+        <td class="mono" style="color:var(--success)">\u25b6 ${formatTimeDisplay(c.clockInTime)}</td>
+        <td class="mono" style="color:var(--danger2)">${c.clockOutTime ? '\u23f9 ' + formatTimeDisplay(c.clockOutTime) : '\u2014'}</td>
         <td class="mono">${hrs!==null ? numFmt(hrs) : '\u2014'}</td>
         <td><span class="badge ${badgeClass}">${esc(c.status)}</span></td>
       </tr>`;
@@ -5139,6 +5175,24 @@ function updateMyClockOccupancyHint() {
   hint.innerHTML = occ.atCapacity
     ? `<span style="color:var(--warn)">\u26A0\uFE0F This house is at capacity (${occ.occupancy}/${occ.maxStaff}) \u2014 you may be asked to have a supervisor override.</span>`
     : `${occ.occupancy}/${occ.maxStaff} currently clocked in \u2014 room for ${occ.maxStaff - occ.occupancy} more.`;
+}
+
+// Best-effort, point-in-time location capture — never blocks clocking in
+// or out. If the browser doesn't support geolocation, the person hasn't
+// granted permission, or the request times out, this just resolves to
+// null and the clock action proceeds exactly as if location wasn't asked
+// for at all. Deliberately a single snapshot at the moment of the action,
+// not continuous tracking.
+function getGeoLocationBestEffort() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    const timer = setTimeout(() => resolve(null), 6000);
+    navigator.geolocation.getCurrentPosition(
+      pos => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }); },
+      () => { clearTimeout(timer); resolve(null); },
+      { enableHighAccuracy: false, timeout: 5500, maximumAge: 60000 }
+    );
+  });
 }
 
 async function doClockIn() {
@@ -5165,10 +5219,11 @@ async function doClockIn() {
   const date = todayLocalISO();
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const geo = await getGeoLocationBestEffort();
   try {
     const res = await fetch('/api/clock/in', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ location, date, time })
+      body: JSON.stringify({ location, date, time, ...(geo || {}) })
     });
     const body = await res.json();
     if (!res.ok) { showToast(body.error || 'Clock in failed', 'danger'); return; }
@@ -5205,10 +5260,11 @@ async function doClockOut() {
   const date = todayLocalISO();
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const geo = await getGeoLocationBestEffort();
   try {
     const res = await fetch('/api/clock/out', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ date, time, notes })
+      body: JSON.stringify({ date, time, notes, ...(geo || {}) })
     });
     const body = await res.json();
     if (!res.ok) { showToast(body.error || 'Clock out failed', 'danger'); return; }
@@ -5229,13 +5285,23 @@ function renderMyPortal() {
     : 'No staff record is linked to this account yet — contact your admin.';
 
   if (!myStaff) {
-    ['mp-summary','mp-shifts-table','mp-stub-preview','mp-pto-balance','mp-leave-history','mp-clock-widget'].forEach(id => document.getElementById(id).innerHTML = '');
+    ['mp-summary','mp-shifts-table','mp-stub-preview','mp-pto-balance','mp-leave-history','mp-clock-widget','mp-period-banner'].forEach(id => document.getElementById(id).innerHTML = '');
     return;
   }
 
   renderMyClockWidget();
 
   const cp = currentPeriodLabel();
+  const { start: curStart, end: curEnd } = getPeriodForDate(todayLocalISO());
+  const daysLeft = Math.ceil((curEnd.getTime() - new Date(todayLocalISO()+'T00:00:00').getTime()) / 86400000) + 1;
+  const nextPayNote = daysLeft <= 0 ? 'Period has ended \u2014 payroll pending' : `${daysLeft} day${daysLeft!==1?'s':''} remaining in this period`;
+  document.getElementById('mp-period-banner').innerHTML = `
+    <span style="font-size:15px">📅</span>
+    <div>
+      <div style="font-size:14px;font-weight:700;color:var(--text)">Current Pay Period: ${esc(cp)}</div>
+      <div style="font-size:12px;color:var(--text3)">${esc(nextPayNote)} \u2014 the numbers below are for this period only</div>
+    </div>`;
+
   const allMyShifts = computeShiftsWithOT();
   const thisPeriod = allMyShifts.filter(s => s.period === cp);
   let totHrs=0, totOT=0, totGross=0;
@@ -5654,6 +5720,127 @@ async function reviewLeaveRequest(id, action) {
 // or otherwise can't do it themselves. The review table below this one
 // previously excluded 'open' entries entirely, which meant admins had no
 // visibility into who was still clocked in at all.
+// Scans every shift for staff currently marked Inactive, and for any
+// staff+period combination that hasn't been flagged yet, reports it to the
+// server (which independently re-verifies Inactive status before accepting
+// it — this function's job is just detection, not the actual authority).
+async function detectAndFlagInactiveStaff() {
+  if (!hasApprovalPermission()) { renderInactiveFlagsAdmin(); return; }
+  try {
+    const computed = computeShiftsWithOT();
+    const byStaffPeriod = {};
+    computed.forEach(s => {
+      const st = STAFF.find(x => x.id === s.staff);
+      if (!st || st.status !== 'Inactive') return;
+      const key = s.staff + '|' + s.periodKey;
+      if (!byStaffPeriod[key]) byStaffPeriod[key] = { staffId: s.staff, periodStart: s.periodKey, hours: 0 };
+      byStaffPeriod[key].hours += s.hours;
+    });
+    const candidates = Object.values(byStaffPeriod).filter(c => c.hours > 0);
+    for (const c of candidates) {
+      await fetch('/api/inactive-flags', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ staffId: c.staffId, periodStart: c.periodStart })
+      }).catch(() => {});
+    }
+  } catch (e) { /* detection is best-effort; a failure here shouldn't block the rest of the page */ }
+  renderInactiveFlagsAdmin();
+}
+
+function hasApprovalPermission() {
+  const role = _currentUser ? _currentUser.role : 'viewer';
+  if (BUILTIN_ROLE_NAMES.includes(role)) return role === 'admin' || role === 'supervisor';
+  return _myPermissions.includes('approvals_review_shifts');
+}
+
+// Fire-and-forget refresh so the cache is fresh by the time payroll math
+// runs, without making every payroll-related function async just for this.
+async function refreshInactiveFlagsCache() {
+  try {
+    const res = await fetch('/api/inactive-flags');
+    if (res.ok) { const body = await res.json(); window._inactiveFlagsCache = body.flags; }
+  } catch (e) { /* payroll math below treats a missing/stale cache conservatively (excludes), never optimistically */ }
+}
+
+// Removes shifts for Inactive staff whose period doesn't have an explicit
+// 'approved' flag — pending and denied are treated identically here
+// (excluded), matching the rule that hours only ever count once someone
+// actively said yes, never by default. Safe to call even if the cache
+// hasn't loaded yet: with no cache, everything Inactive is conservatively
+// excluded rather than optimistically included.
+function excludeInactiveUnapproved(shifts) {
+  const flags = window._inactiveFlagsCache || [];
+  return shifts.filter(s => {
+    const st = STAFF.find(x => x.id === s.staff);
+    if (!st || st.status !== 'Inactive') return true; // not inactive, not this filter's concern
+    const flag = flags.find(f => f.staffId === s.staff && f.periodStart === s.periodKey);
+    return flag && flag.status === 'approved';
+  });
+}
+
+async function renderInactiveFlagsAdmin() {
+  const el = document.getElementById('inactive-flags-list');
+  if (!el) return;
+  if (!hasApprovalPermission()) { el.innerHTML = ''; return; }
+  try {
+    const res = await fetch('/api/inactive-flags');
+    if (!res.ok) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Could not load.</div>'; return; }
+    const body = await res.json();
+    window._inactiveFlagsCache = body.flags; // consulted synchronously by payroll — see excludeInactiveUnapproved()
+    if (!body.flags.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0">No inactive staff with unreviewed shift hours.</div>';
+      return;
+    }
+    const sorted = body.flags.slice().sort((a,b) => {
+      if (a.status === 'pending' && b.status !== 'pending') return -1;
+      if (b.status === 'pending' && a.status !== 'pending') return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+    const computed = computeShiftsWithOT();
+    let html = '<table><thead><tr><th>Staff</th><th>Period</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>';
+    sorted.forEach(f => {
+      const st = STAFF.find(s => s.id === f.staffId);
+      const name = st ? `${st.last}, ${st.first}` : f.staffId;
+      const periodShifts = computed.filter(s => s.staff === f.staffId && s.periodKey === f.periodStart);
+      const hours = periodShifts.reduce((a,s) => a+s.hours, 0);
+      const badgeClass = f.status === 'approved' ? 'badge-success' : f.status === 'denied' ? 'badge-danger' : 'badge-warn';
+      const actions = f.status === 'pending'
+        ? `<button class="btn btn-success" style="font-size:11px;padding:5px 10px" onclick="reviewInactiveFlag('${f.id}','approve')">✅ Include in Payroll</button>
+           <button class="btn btn-danger" style="font-size:11px;padding:5px 10px" onclick="reviewInactiveFlag('${f.id}','deny')">✕ Exclude</button>`
+        : `<span style="font-size:11px;color:var(--text3)">${esc(f.reviewedBy||'')}${f.notes ? ' — '+esc(f.notes) : ''}</span>`;
+      html += `<tr>
+        <td style="color:var(--text);font-weight:500">${esc(name)} <span class="badge badge-muted" style="font-size:9px;margin-left:4px">INACTIVE</span></td>
+        <td class="mono">${esc(periodShifts[0] ? periodShifts[0].period : f.periodStart)}</td>
+        <td class="mono">${numFmt(hours)}</td>
+        <td><span class="badge ${badgeClass}">${esc(f.status)}</span></td>
+        <td style="white-space:nowrap">${actions}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px">Could not load — check your connection.</div>';
+  }
+}
+
+async function reviewInactiveFlag(id, action) {
+  const notes = action === 'approve'
+    ? (prompt('Optional note (e.g. "confirmed with supervisor, one-off shift"):') || '')
+    : (prompt('Optional reason for excluding these hours:') || '');
+  try {
+    const res = await fetch(`/api/inactive-flags/${encodeURIComponent(id)}/review`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, notes })
+    });
+    const body = await res.json();
+    if (!res.ok) { showToast(body.error || 'Review failed', 'danger'); return; }
+    showToast(action === 'approve' ? '✅ Hours approved for payroll' : 'Hours excluded from payroll');
+    renderInactiveFlagsAdmin();
+  } catch (e) {
+    showToast('Review failed — check your connection', 'danger');
+  }
+}
+
 function renderOpenClockEntries() {
   const el = document.getElementById('open-clock-entries-list');
   if (!el) return;
@@ -5869,6 +6056,7 @@ function renderApprovalsPage() {
   renderLeaveRequestsAdmin();
   renderOpenClockEntries();
   renderClockEntriesAdmin();
+  detectAndFlagInactiveStaff();
   updateApprovalsBadge();
   // Pending
   const pendingEl = document.getElementById('pending-approvals-list');
@@ -6829,6 +7017,7 @@ function getPrSelectedLabel() {
 }
 
 function renderPayrollSetup() {
+  refreshInactiveFlagsCache();
   const { all, cp, sel, dateMap, allLabels, targetVal } = buildPeriodDropdownData('pr-select');
 
   sel.innerHTML = allLabels.map(p => {
@@ -6848,7 +7037,7 @@ function renderPayrollSetup() {
 // Groups shifts by staff + location ("House"), and splits regular/OT hours into
 // Week 1 / Week 2 of the pay period — matching ASO's payroll report format.
 function buildPayrollDetailRows(label) {
-  const shifts = computeShiftsWithOT().filter(s => s.period === label);
+  const shifts = excludeInactiveUnapproved(computeShiftsWithOT().filter(s => s.period === label));
   if (shifts.length === 0) return [];
   const { start } = getPeriodForDate(shifts[0].date);
   const startMs = start.getTime();
@@ -6893,11 +7082,19 @@ function renderPayrollPage() {
   const rec = periodStart ? findPayrollRecord(periodStart) : null;
 
   const banner = document.getElementById('pr-status-banner');
+  let bannerHtml = '';
   if (rec && rec.finalized) {
-    banner.innerHTML = `<div style="background:rgba(34,197,94,.12);border:1px solid var(--success);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">✅ <b>Payroll finalized</b> for this period by ${esc(rec.finalizedBy)} on ${esc(rec.finalizedAt)}. Timesheets are locked.</div>`;
-  } else {
-    banner.innerHTML = '';
+    bannerHtml += `<div style="background:rgba(34,197,94,.12);border:1px solid var(--success);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">✅ <b>Payroll finalized</b> for this period by ${esc(rec.finalizedBy)} on ${esc(rec.finalizedAt)}. Timesheets are locked.</div>`;
   }
+  // Never a silent exclusion — if any Inactive staff have unapproved hours
+  // in this specific period, say so right where the numbers are, not just
+  // buried on the Approvals page.
+  const periodFlags = (window._inactiveFlagsCache || []).filter(f => f.periodStart === periodStart && f.status !== 'approved');
+  if (periodFlags.length) {
+    const names = periodFlags.map(f => { const st = STAFF.find(s => s.id === f.staffId); return st ? `${st.first} ${st.last}` : f.staffId; });
+    bannerHtml += `<div style="background:rgba(198,138,30,.12);border:1px solid var(--warn);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--text)">⚠️ <b>${names.length} Inactive staff member${names.length!==1?'s have':' has'} unreviewed hours excluded</b> from this period's totals below (${esc(names.join(', '))}) — review them on the Approvals page before finalizing if they should be paid.</div>`;
+  }
+  banner.innerHTML = bannerHtml;
 
   let totShifts=0, totReg=0, totOT=0, totRegP=0, totOTP=0;
   detailRows.forEach(d => {
@@ -8371,6 +8568,45 @@ function renderPermissionCheckboxes(containerId, checkedPerms) {
 
 function getCheckedPermissions(containerId) {
   return [...document.querySelectorAll(`.${containerId}-perm-cb:checked`)].map(cb => cb.value);
+}
+
+// Deliberately its own render function reading from its own dedicated
+// endpoint (/api/clock-locations) — never reuses the general CLOCK_ENTRIES
+// data the rest of the app already has loaded, so location data genuinely
+// only ever reaches the browser when this specific page is opened by
+// someone holding clock_locations_view.
+async function renderClockLocationsPage() {
+  const el = document.getElementById('clock-locations-list');
+  el.innerHTML = '<div style="color:var(--text3);font-size:13px">Loading\u2026</div>';
+  try {
+    const res = await fetch('/api/clock-locations');
+    const body = await res.json();
+    if (!res.ok) { el.innerHTML = `<div style="color:var(--danger2);font-size:13px">${esc(body.error||'Could not load')}</div>`; return; }
+    if (!body.entries.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0">No clock entries have location data yet \u2014 nobody has granted their browser location access during a clock in/out, or none have happened yet.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>Staff</th><th>House</th><th>Clock In</th><th>Clock-In Location</th><th>Clock Out</th><th>Clock-Out Location</th></tr></thead><tbody>';
+    body.entries.forEach(e => {
+      const st = STAFF.find(s => s.id === e.staffId);
+      const name = st ? `${st.last}, ${st.first}` : e.staffId;
+      const mapLink = (lat, lng, accuracy) => lat !== null && lat !== undefined
+        ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener" class="mono" style="color:var(--accent2)">${lat.toFixed(5)}, ${lng.toFixed(5)}</a> <span style="font-size:10px;color:var(--text3)">(\u00b1${Math.round(accuracy||0)}m)</span>`
+        : '<span style="color:var(--text3)">\u2014 not granted</span>';
+      html += `<tr>
+        <td style="color:var(--text);font-weight:500">${esc(name)}</td>
+        <td>${esc(e.location||'\u2014')}</td>
+        <td class="mono">${formatDateDisplay(e.clockInDate)} ${formatTimeDisplay(e.clockInTime)}</td>
+        <td>${mapLink(e.clockInLat, e.clockInLng, e.clockInAccuracy)}</td>
+        <td class="mono">${e.clockOutDate ? formatDateDisplay(e.clockOutDate) + ' ' + formatTimeDisplay(e.clockOutTime) : '\u2014'}</td>
+        <td>${mapLink(e.clockOutLat, e.clockOutLng, e.clockOutAccuracy)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--danger2);font-size:13px">Could not load \u2014 check your connection.</div>';
+  }
 }
 
 async function renderRolesPage() {

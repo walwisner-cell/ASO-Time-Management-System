@@ -282,6 +282,52 @@ async function main() {
     ));
     check('exactly 1 of 5 simultaneous clock-ins from the same person succeeds', dblResults.filter(r => r.status === 200).length === 1);
 
+    console.log('\nClock-in/out geolocation (best-effort, separate module):');
+    const geoSetup = { ...raceBase.body };
+    geoSetup.STAFF = [...geoSetup.STAFF, { id: 'SGT1', first: 'Geo', last: 'Test', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    geoSetup.USERS = [...geoSetup.USERS, { id: 'UGT1', username: 'geotester', password: 'geopass1', name: 'Geo Test', role: 'employee', staffId: 'SGT1' }];
+    await request('POST', '/api/db/save', { body: geoSetup, cookie: adminCookie });
+    const geoLogin = await request('POST', '/api/auth/login', { body: { username: 'geotester', password: 'geopass1' } });
+
+    const geoIn = await request('POST', '/api/clock/in', { cookie: geoLogin.cookie, body: { location: 'Usene House', date: '2026-08-03', time: '08:00:00', lat: 39.9526, lng: -75.1652, accuracy: 15 } });
+    check('clock-in with valid coordinates succeeds', geoIn.status === 200);
+    await request('POST', '/api/clock/out', { cookie: geoLogin.cookie, body: { date: '2026-08-03', time: '16:00:00', notes: '', lat: 39.953, lng: -75.1655, accuracy: 20 } });
+
+    const dbLoadCheck = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const generalEntry = dbLoadCheck.body.CLOCK_ENTRIES.find(c => c.staffId === 'SGT1');
+    check('location data does NOT leak into the general db/load response', generalEntry && !('clockInLat' in generalEntry));
+
+    const clockEntriesCheck = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const generalEntry2 = clockEntriesCheck.body.clockEntries.find(c => c.staffId === 'SGT1');
+    check('location data does NOT leak into the general clock-entries response', generalEntry2 && !('clockInLat' in generalEntry2));
+
+    const geoLocations = await request('GET', '/api/clock-locations', { cookie: adminCookie });
+    const dedicatedEntry = geoLocations.body.entries.find(e => e.staffId === 'SGT1');
+    check('the dedicated clock-locations endpoint DOES have the coordinates', dedicatedEntry && dedicatedEntry.clockInLat === 39.9526 && dedicatedEntry.clockOutLat === 39.953);
+
+    const supSetup = { ...raceBase.body };
+    supSetup.USERS = [...supSetup.USERS, { id: 'USUPG', username: 'supgeo', password: 'supgeopass1', name: 'Sup Geo', role: 'supervisor' }];
+    await request('POST', '/api/db/save', { body: supSetup, cookie: adminCookie });
+    const supLogin = await request('POST', '/api/auth/login', { body: { username: 'supgeo', password: 'supgeopass1' } });
+    const supGeoAttempt = await request('GET', '/api/clock-locations', { cookie: supLogin.cookie });
+    check('supervisor is denied clock-locations access by default (not granted this permission)', supGeoAttempt.status === 403);
+
+    const invalidGeoSetup = { ...raceBase.body };
+    invalidGeoSetup.STAFF = [...invalidGeoSetup.STAFF, { id: 'SGT2', first: 'Invalid', last: 'Geo', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    invalidGeoSetup.USERS = [...invalidGeoSetup.USERS, { id: 'UGT2', username: 'invalidgeo', password: 'invpass1', name: 'Invalid Geo', role: 'employee', staffId: 'SGT2' }];
+    await request('POST', '/api/db/save', { body: invalidGeoSetup, cookie: adminCookie });
+    const invalidGeoLogin = await request('POST', '/api/auth/login', { body: { username: 'invalidgeo', password: 'invpass1' } });
+    const invalidGeoIn = await request('POST', '/api/clock/in', { cookie: invalidGeoLogin.cookie, body: { location: 'Usene House', date: '2026-08-04', time: '08:00:00', lat: 999, lng: -9999, accuracy: -5 } });
+    check('out-of-range coordinates are silently ignored, clock-in still succeeds', invalidGeoIn.status === 200);
+
+    const noGeoSetup = { ...raceBase.body };
+    noGeoSetup.STAFF = [...noGeoSetup.STAFF, { id: 'SGT3', first: 'No', last: 'Geo', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
+    noGeoSetup.USERS = [...noGeoSetup.USERS, { id: 'UGT3', username: 'nogeo', password: 'nogeopass1', name: 'No Geo', role: 'employee', staffId: 'SGT3' }];
+    await request('POST', '/api/db/save', { body: noGeoSetup, cookie: adminCookie });
+    const noGeoLogin = await request('POST', '/api/auth/login', { body: { username: 'nogeo', password: 'nogeopass1' } });
+    const noGeoIn = await request('POST', '/api/clock/in', { cookie: noGeoLogin.cookie, body: { location: 'Usene House', date: '2026-08-04', time: '09:00:00' } });
+    check('clock-in with zero location fields works fine (location is truly optional)', noGeoIn.status === 200);
+
     console.log('\nSame-minute clock in/out (previously left people permanently stuck):');
     const sameMinSetup = { ...raceBase.body };
     sameMinSetup.STAFF = [...sameMinSetup.STAFF, { id: 'SSM1', first: 'Same', last: 'Minute', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Active' }];
@@ -322,6 +368,30 @@ async function main() {
     const afterRestore = await request('GET', '/api/db/load', { cookie: adminCookie });
     const restoredShift = afterRestore.body.SHIFTS.find(s => s.id === 'SHRJ1');
     check('restored shift is active again', restoredShift && restoredShift.shiftStatus === 'active');
+
+    console.log('\nInactive staff with worked hours (payroll flag/review):');
+    const inactiveSetup = { ...raceBase.body };
+    inactiveSetup.STAFF = [...inactiveSetup.STAFF, { id: 'SINA1', first: 'Former', last: 'Employee', title: 'DSP', type: 'Full-Time', loc: 'Usene House', rate: 12, start: '2026-01-01', status: 'Inactive' }];
+    await request('POST', '/api/db/save', { body: inactiveSetup, cookie: adminCookie });
+
+    const flagActive = await request('POST', '/api/inactive-flags', { cookie: adminCookie, body: { staffId: 'S001', periodStart: '2026-08-01' } });
+    check('flagging an Active staff member is rejected', flagActive.status === 400);
+
+    const flagOk = await request('POST', '/api/inactive-flags', { cookie: adminCookie, body: { staffId: 'SINA1', periodStart: '2026-08-01' } });
+    check('flagging an Inactive staff member with hours succeeds', flagOk.status === 200 && flagOk.body.alreadyExisted === false);
+
+    const flagAgain = await request('POST', '/api/inactive-flags', { cookie: adminCookie, body: { staffId: 'SINA1', periodStart: '2026-08-01' } });
+    check('re-flagging the same staff+period is idempotent, not a duplicate', flagAgain.status === 200 && flagAgain.body.alreadyExisted === true && flagAgain.body.id === flagOk.body.id);
+
+    const flagsList = await request('GET', '/api/inactive-flags', { cookie: adminCookie });
+    check('the flag appears in the list as pending', flagsList.body.flags.some(f => f.id === flagOk.body.id && f.status === 'pending'));
+
+    const flagApprove = await request('POST', `/api/inactive-flags/${flagOk.body.id}/review`, { cookie: adminCookie, body: { action: 'approve', notes: 'Confirmed one-off shift' } });
+    check('approving the flag succeeds', flagApprove.status === 200);
+
+    const flagsAfter = await request('GET', '/api/inactive-flags', { cookie: adminCookie });
+    const approvedFlag = flagsAfter.body.flags.find(f => f.id === flagOk.body.id);
+    check('flag now shows approved with the note and reviewer', approvedFlag && approvedFlag.status === 'approved' && approvedFlag.notes.includes('Confirmed') && approvedFlag.reviewedBy === 'Admin');
 
     console.log('\nAdmin closing out someone stuck clocked in:');
     const stuckSetup = { ...raceBase.body };
