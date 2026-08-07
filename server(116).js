@@ -69,27 +69,6 @@ async function verifyPassword(storedHash, plaintext) {
 }
 
 // ── Default seed data ──────────────────────────────────────
-// SECURITY FIX (was): USERS: [{ ..., password: 'admin123', ... }] — a real,
-// working default credential sitting in the source code, applied
-// automatically on first run. Since this repo is on GitHub, that meant
-// anyone who saw the code (or guessed it) could log in as admin on any
-// fresh deploy, and — because password comparison fell back to a plain
-// string match for anything that wasn't already hashed — that fallback
-// value would actually keep working until someone manually changed it.
-// Now the seed pulls the first admin's credentials from environment
-// variables (same pattern as the other ASO apps), hashed before storage,
-// and skips creating an admin at all — rather than falling back to
-// something guessable — if they're not set, matching how the seed already
-// warns instead of creating a weak account when other required values are
-// missing.
-const SEED_ADMIN_USERNAME = process.env.SEED_ADMIN_USERNAME || 'admin';
-const SEED_ADMIN_PASSWORD_HASH = process.env.SEED_ADMIN_PASSWORD
-  ? bcrypt.hashSync(process.env.SEED_ADMIN_PASSWORD, 10)
-  : null;
-if (!SEED_ADMIN_PASSWORD_HASH) {
-  console.warn('⚠️  SEED_ADMIN_PASSWORD is not set — no default admin account will be created on first run. Set it in your environment before the very first deploy of a fresh database.');
-}
-
 const DEFAULT_SEED = {
   PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80,
     defaultDeductions: [
@@ -97,9 +76,7 @@ const DEFAULT_SEED = {
       { id: 'ded_fica', label: 'FICA', type: 'percent', value: 7.65 },
       { id: 'ded_state', label: 'State Withholding', type: 'percent', value: 3.07 },
     ] },
-  USERS: SEED_ADMIN_PASSWORD_HASH
-    ? [{ id: 'U001', username: SEED_ADMIN_USERNAME, password: SEED_ADMIN_PASSWORD_HASH, name: 'Admin', role: 'admin' }]
-    : [],
+  USERS: [{ id: 'U001', username: 'admin', password: 'admin123', name: 'Admin', role: 'admin' }],
   LOCATIONS: [
     { id:'L01', name:'Serah House',     rate:18.5,  mult:1.5, notes:'Standard',                rateHistory:[{rate:18.5,  mult:1.5,effectiveFrom:'2000-01-01'}] },
     { id:'L02', name:'Benjamin House',  rate:13,    mult:1.5, notes:'Standard',                rateHistory:[{rate:13,    mult:1.5,effectiveFrom:'2000-01-01'}] },
