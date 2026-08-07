@@ -1171,8 +1171,14 @@ async function main() {
       run('INSERT INTO sessions (id, user_id, expires_at, last_activity) VALUES (?,?,?,?)', [sessionId, user.id, expiresAt, Date.now()]);
       persistDB();
 
+      // CHANGE (per request): no maxAge here means this is a browser-session
+      // cookie — it's cleared automatically when the browser fully closes,
+      // so closing and reopening always requires logging in again. The
+      // server-side session row still expires after SESSION_TTL_MS (24h)
+      // and the idle timeout separately, as a backstop for anyone who
+      // leaves a tab open without closing the browser.
       res.cookie(SESSION_COOKIE, sessionId, {
-        httpOnly: true, sameSite: 'lax', secure: IS_PROD, maxAge: SESSION_TTL_MS, path: '/'
+        httpOnly: true, sameSite: 'lax', secure: IS_PROD, path: '/'
       });
       res.json({ ok: true, user: { id: user.id, username: user.username, name: user.name, role: user.role, staffId: user.staff_id || null } });
     } catch (e) {
