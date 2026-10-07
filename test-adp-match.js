@@ -187,6 +187,12 @@ check('reopening after sign-off opens the week again', adpAuditState(log.concat(
 check('the order entries arrive in does not matter, only their time', adpAuditState(log.slice().reverse(), '2026-09-27', '2026-10-03').signoff.by === 'Lee' && !adpAuditState(log.slice().reverse(), '2026-09-27', '2026-10-03').reviewed['S2|2026-09-30|x|B']);
 check('an empty or missing audit log is handled', adpAuditState(null, 'a', 'b').signoff === null && adpAuditState([], 'a', 'b').corrections.length === 0);
 
+const hlog = log.filter(e => e.type !== 'ADP_SIGNOFF').concat([{ type: 'ADP_SIGNOFF', ts: 20, by: 'Mo', at: 't20', meta: 'range=2026-09-27..2026-10-03 house=East House \u00B7 file' }]);
+check('a sign-off for one house closes that house only', adpAuditState(hlog, '2026-09-27', '2026-10-03', 'East House').signoff.by === 'Mo' && adpAuditState(hlog, '2026-09-27', '2026-10-03', 'East House').signoff.house === 'East House');
+check('\u2026it does not close another house, a house with a similar name, or the whole week', adpAuditState(hlog, '2026-09-27', '2026-10-03', 'West House').signoff === null && adpAuditState(hlog, '2026-09-27', '2026-10-03', 'East').signoff === null && adpAuditState(hlog, '2026-09-27', '2026-10-03').signoff === null);
+check('a whole-week sign-off is not mistaken for a single-house one', adpAuditState(log, '2026-09-27', '2026-10-03', 'East House').signoff === null && adpAuditState(log, '2026-09-27', '2026-10-03').signoff.by === 'Lee');
+check('reopening one house leaves the others signed', (() => { const l2 = hlog.concat([{ type: 'ADP_SIGNOFF', ts: 21, by: 'Jo', at: 't21', meta: 'range=2026-09-27..2026-10-03 house=West House \u00B7 f' }, { type: 'ADP_REOPEN', ts: 22, by: 'Admin', at: 't22', meta: 'range=2026-09-27..2026-10-03 house=East House \u00B7 late fix' }]); return adpAuditState(l2, '2026-09-27', '2026-10-03', 'East House').signoff === null && adpAuditState(l2, '2026-09-27', '2026-10-03', 'West House').signoff.by === 'Jo'; })());
+
 console.log('\nHabits worth a conversation:\n');
 const mk = (id, first, rows) => ({ staff: { id, first, last: 'X', loc: 'Home House' }, rows });
 const pr = (status, dIn, dOut, tier, loc) => ({ status, dIn, dOut, diffHours: 0.5, adp: status === 'ts_only' ? null : { inferred: false }, shift: status === 'adp_only' || status === 'adp_zero' ? null : { location: loc || 'Home House' }, cls: { tier } });

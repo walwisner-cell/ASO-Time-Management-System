@@ -2216,6 +2216,10 @@
                 <option value="30">30 minutes</option>
               </select>
             </div>
+            <div>
+              <label for="adp-house" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">🏠 House</label>
+              <select id="adp-house" onchange="if(_adp){_adpRows=[];adpRender()}" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px"><option value="">All houses</option></select>
+            </div>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Hide exact matches</label>
             <div id="adp-view-btns" class="adp-views" style="display:none;margin-left:auto">
               <button data-view="work" class="active" onclick="adpSetView('work')">Worklist</button>
@@ -11344,6 +11348,9 @@ async function adpFileChosen(input) {
 function renderAdpPage() {
   if (_adp) adpRender();
   else {
+    const hs = document.getElementById('adp-house'), keep = hs.value;
+    hs.innerHTML = '<option value="">All houses</option>' + LOCATIONS.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('');
+    hs.value = LOCATIONS.some(l => l.name === keep) ? keep : '';
     document.getElementById('adp-view-btns').style.display = 'none';
     document.getElementById('adp-file-status').textContent = '';
     document.getElementById('adp-map').innerHTML = '';
@@ -11439,14 +11446,18 @@ function adpPatterns(people) {
 
 // Decisions and sign-offs live in the Audit Trail, so they are shared by
 // everyone, survive a reload, and cannot be quietly edited afterwards.
-function adpAuditState(auditLog, from, to) {
+function adpAuditState(auditLog, from, to, house) {
+  // A sign-off is either for every house ("range=a..b ·") or for one house
+  // ("range=a..b house=Name ·"). The trailing separator keeps one from being
+  // mistaken for the other.
+  const scope = `range=${from}..${to}${house ? ' house=' + house : ''} \u00B7`;
   const reviewed = {}; let signoff = null;
   (auditLog || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(e => {
     const meta = String(e.meta || '');
     if (e.type === 'ADP_REVIEWED') { const m = /^key=(\S+)/.exec(meta); if (m) reviewed[m[1]] = { by: e.by, at: e.at, note: (/note=(.*)$/.exec(meta) || [])[1] || '' }; }
     else if (e.type === 'ADP_REVIEW_UNDONE') { const m = /^key=(\S+)/.exec(meta); if (m) delete reviewed[m[1]]; }
-    else if (e.type === 'ADP_SIGNOFF' && meta.startsWith(`range=${from}..${to}`)) signoff = { by: e.by, at: e.at };
-    else if (e.type === 'ADP_REOPEN' && meta.startsWith(`range=${from}..${to}`)) signoff = null;
+    else if (e.type === 'ADP_SIGNOFF' && meta.startsWith(scope)) signoff = { by: e.by, at: e.at, house: house || '' };
+    else if (e.type === 'ADP_REOPEN' && meta.startsWith(scope)) signoff = null;
   });
   const corrections = (auditLog || []).filter(e => e.type === 'ADP_CORRECTION' && (m => m && m[1] >= from && m[1] <= to)(/^(\d{4}-\d{2}-\d{2})/.exec(String(e.meta || '')))).sort((a, b) => (a.ts || 0) - (b.ts || 0));
   return { reviewed, signoff, corrections };
@@ -11460,8 +11471,15 @@ function adpBuild() {
   const reviewMin = parseInt(document.getElementById('adp-review-min').value, 10) || 15;
   const map = adpLoadMap();
   const from = _adp.from, to = _adp.to;
+  const houseSel = document.getElementById('adp-house');
+  const house = houseSel ? houseSel.value : '';
   const state = adpAuditState(AUDIT_LOG, from, to);
-  const people = [], unmatched = [], usedStaff = new Set();
+  // Who has signed what: the whole week, and each house on its own.
+  const allSigned = state.signoff;
+  const houseSigned = {};
+  LOCATIONS.forEach(l => { const h = adpAuditState(AUDIT_LOG, from, to, l.name).signoff; if (h) houseSigned[l.name] = h; });
+  let people = [], unmatched = [];
+  const usedStaff = new Set();
   _adp.employees.forEach(emp => {
     const m = adpMatchName(emp.name, STAFF, map);
     if (!m.staff || usedStaff.has(m.staff.id)) { unmatched.push({ emp, skipped: m.how === 'skip' }); return; }
@@ -11475,10 +11493,24 @@ function adpBuild() {
       if (r.status === 'adp_only') { const sg = adpSuggestHouse(m.staff, r.date, SHIFTS); r.house = _adpHouse[r.key] || sg.house; r.houseWhy = sg.why; r.houseSuggested = sg.house; }
       r.pay = r.diffHours * adpRate(m.staff, r.shift ? r.shift.location : r.house, r.date);
       r.open = r.cls.tier !== 'ok' && !r.reviewed && !(r.status === 'adp_zero' && r.adp.usedInInference);
+      // The house a line belongs to: where the timesheet shift was worked, else the
+      // house proposed for a shift to be added, else the person's home house.
+      r.rowHouse = (r.shift && r.shift.location) || r.house || m.staff.loc || '';
+      r.signed = allSigned || houseSigned[r.rowHouse] || null;
     });
     people.push({ emp, staff: m.staff, how: m.how, rows, tsCount: shifts.length, adpTotal: emp.entries.reduce((a, x) => a + x.hours, 0), tsTotal: shifts.reduce((a, s) => a + s.hours, 0) });
   });
-  const noCard = STAFF.filter(s => !usedStaff.has(s.id)).map(s => { const sh = SHIFTS.filter(x => x.staff === s.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected'); return { staff: s, shifts: sh.length, hours: sh.reduce((a, x) => a + x.hours, 0) }; }).filter(x => x.shifts > 0);
+  const noCard = STAFF.filter(s => !usedStaff.has(s.id)).map(s => { const sh = SHIFTS.filter(x => x.staff === s.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected' && (!house || x.location === house)); return { staff: s, shifts: sh.length, hours: sh.reduce((a, x) => a + x.hours, 0) }; }).filter(x => x.shifts > 0);
+  const unmatchedAll = unmatched;
+  if (house) {
+    // One house: keep only that house's lines, and count each person's hours from those lines.
+    people = people.map(p => {
+      const rows = p.rows.filter(r => r.rowHouse === house);
+      const real = rows.filter(r => r.adp && !r.adp.inferred).map(r => r.adp);
+      return { ...p, rows, emp: { ...p.emp, entries: real }, tsCount: rows.filter(r => r.shift).length, adpTotal: real.reduce((a, x) => a + x.hours, 0), tsTotal: rows.reduce((a, r) => a + (r.shift ? r.shift.hours : 0), 0) };
+    }).filter(p => p.rows.length);
+    unmatched = []; // an ADP name that is not matched to anyone has no house yet — it is handled under "All houses"
+  }
   const missing = adpWhoIsMissing(people, unmatched, noCard);
 
   // What payroll would look like if every proposed correction were applied
@@ -11493,13 +11525,14 @@ function adpBuild() {
   }));
   let after;
   try { SHIFTS = sim; after = computeShiftsWithOT(); } finally { SHIFTS = live; }
-  const agg = (list, id) => list.filter(s => s.staff === id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected').reduce((a, s) => ({ hours: a.hours + s.hours, ot: a.ot + s.otHrs, pay: a.pay + s.shiftPay }), { hours: 0, ot: 0, pay: 0 });
+  const agg = (list, id) => list.filter(s => s.staff === id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected' && (!house || s.location === house)).reduce((a, s) => ({ hours: a.hours + s.hours, ot: a.ot + s.otHrs, pay: a.pay + s.shiftPay }), { hours: 0, ot: 0, pay: 0 });
   people.forEach(p => { p.before = agg(before, p.staff.id); p.after = agg(after, p.staff.id); });
 
   const all = people.flatMap(p => p.rows.map(r => ({ p, r })));
   const count = t => all.filter(x => x.r.cls.tier === t).length;
   const stats = {
     timecards: _adp.employees.length, punches: _adp.employees.reduce((a, e) => a + e.entries.length, 0), staff: people.length,
+    unmatchedNames: unmatchedAll.filter(u => !u.skipped && u.emp.entries.length).length,
     ok: count('ok'), auto: count('auto'), suggest: count('suggest'), review: count('review'), hold: count('hold'), blocked: count('blocked'),
     reviewed: all.filter(x => x.r.reviewed).length,
     open: all.filter(x => x.r.open).length + unmatched.filter(u => !u.skipped && u.emp.entries.length).length,
@@ -11507,7 +11540,8 @@ function adpBuild() {
     payBefore: people.reduce((a, p) => a + p.before.pay, 0), payAfter: people.reduce((a, p) => a + p.after.pay, 0),
     otBefore: people.reduce((a, p) => a + p.before.ot, 0), otAfter: people.reduce((a, p) => a + p.after.ot, 0)
   };
-  return { reviewMin, from, to, people, unmatched, noCard, missing, state, stats, patterns: adpPatterns(people) };
+  const signoff = house ? (allSigned || houseSigned[house] || null) : allSigned;
+  return { reviewMin, from, to, house, people, unmatched, noCard, missing, state: { ...state, signoff, corrections: house ? state.corrections.filter(e => String(e.meta || '').includes(' \u00B7 ' + house)) : state.corrections }, houseSigned, stats, patterns: adpPatterns(people) };
 }
 
 let _adpHouse = {};      // house picked by hand for a shift to be added, by row key
@@ -11522,9 +11556,14 @@ function adpActionText(r, staff) {
 }
 
 function adpRender() {
+  const hs = document.getElementById('adp-house');
+  const keep = hs.value;
+  hs.innerHTML = '<option value="">All houses</option>' + LOCATIONS.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('');
+  hs.value = LOCATIONS.some(l => l.name === keep) ? keep : '';
   const b = adpBuild();
   const signed = b.state.signoff;
-  const canEdit = userCan('editShift') && !signed;
+  const canEdit = userCan('editShift');
+  const scopeName = b.house || 'all houses';
   const onlyDiff = document.getElementById('adp-only-diff').checked;
   const prev = {}; _adpRows.forEach(r => { prev[r.key] = r.checked; });
   _adpRows = [];
@@ -11541,9 +11580,13 @@ function adpRender() {
   // ── Sign-off banner ──
   const S = b.stats;
   let banner = '';
-  if (signed) banner = `<div class="adp-banner adp-banner-ok">✅ <b>Signed off</b> by ${esc(signed.by)} on ${esc(signed.at)}. This week is closed on this page.${_currentUser && _currentUser.role === 'admin' ? ' <a href="#" onclick="adpReopen();return false;">Reopen</a>' : ''}</div>`;
-  else if (S.open === 0) banner = `<div class="adp-banner adp-banner-ok">Nothing is left unresolved. ${userCan('approveShifts') ? '<button class="btn btn-primary" style="margin-left:10px" onclick="adpSignOff()">Sign off this week</button>' : 'A Program Manager or admin can now sign off this week.'}</div>`;
-  else banner = `<div class="adp-banner"><b>${S.open} item${S.open !== 1 ? 's' : ''} still open.</b> Apply, or mark each one reviewed, before this week can be signed off.</div>`;
+  if (signed) banner = `<div class="adp-banner adp-banner-ok">✅ <b>${b.house ? esc(b.house) + ' signed off' : 'Signed off'}</b> by ${esc(signed.by)} on ${esc(signed.at)}${b.house && !signed.house ? ' (as part of the whole week)' : ''}. ${b.house ? 'This house is' : 'This week is'} closed on this page.${_currentUser && _currentUser.role === 'admin' && (!b.house || signed.house) ? ' <a href="#" onclick="adpReopen();return false;">Reopen</a>' : ''}</div>`;
+  else if (S.open === 0 && b.people.length) banner = `<div class="adp-banner adp-banner-ok">Nothing is left unresolved for ${esc(scopeName)}. ${userCan('approveShifts') ? `<button class="btn btn-primary" style="margin-left:10px" onclick="adpSignOff()">Sign off ${b.house ? esc(b.house) : 'this week'}</button>` : 'A Program Manager or admin can now sign off.'}</div>`;
+  else if (!b.people.length && b.house) banner = `<div class="adp-banner">Nothing to compare for ${esc(b.house)} in these dates.</div>`;
+  else banner = `<div class="adp-banner"><b>${S.open} item${S.open !== 1 ? 's' : ''} still open${b.house ? ' for ' + esc(b.house) : ''}.</b> Apply, or mark each one reviewed, before ${b.house ? 'this house' : 'this week'} can be signed off.</div>`;
+  const houseDone = Object.keys(b.houseSigned);
+  if (!b.house && !signed && houseDone.length) banner += `<div class="adp-banner adp-banner-ok" style="margin-top:-10px">Houses already signed off: ${houseDone.map(h => `${esc(h)} (${esc(b.houseSigned[h].by)})`).join(' · ')}</div>`;
+  if (b.house && S.unmatchedNames) banner += `<div class="adp-banner" style="margin-top:-10px">${S.unmatchedNames} ADP name${S.unmatchedNames !== 1 ? 's are' : ' is'} not matched to a staff member yet, so their punches are not in any house. Switch to <a href="#" onclick="document.getElementById('adp-house').value='';adpRender();return false;">All houses</a> to match them.</div>`;
 
   // ── Names that could not be matched ──
   const opts = '<option value="">— choose the staff member —</option><option value="__skip__">Not in this system — leave out</option>' + STAFF.slice().sort((x, y) => (x.last + x.first).localeCompare(y.last + y.first)).map(s => `<option value="${esc(s.id)}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})</option>`).join('');
@@ -11589,11 +11632,11 @@ function adpRender() {
       const tier = r.cls.tier;
       const locked = !!isPeriodLockedForDate(r.date);
       const actionable = ['auto', 'suggest', 'review', 'hold'].includes(tier) && !r.reviewed;
-      const can = canEdit && actionable && !locked && !(r.adp && r.adp.missingOut) && !(tier === 'hold' && (r.adpIssue || !userCan('approveShifts'))) && (r.status !== 'adp_only' || userCan('addShift'));
+      const can = canEdit && !r.signed && actionable && !locked && !(r.adp && r.adp.missingOut) && !(tier === 'hold' && (r.adpIssue || !userCan('approveShifts'))) && (r.status !== 'adp_only' || userCan('addShift'));
       const was = prev[r.key];
       const row = { key: r.key, staff: p.staff, row: r, can, checked: can && (was === undefined ? tier === 'auto' : was) };
       const idx = _adpRows.push(row) - 1;
-      const note = locked ? '🔒 Pay period is locked' : signed ? 'Signed off' : '';
+      const note = locked ? '🔒 Pay period is locked' : r.signed ? 'Signed off' : '';
       body += `<tr class="${tier === 'ok' || r.reviewed ? 'adp-ok' : ''}">
         <td>${actionable ? `<input type="checkbox" data-adp-idx="${idx}" ${row.checked ? 'checked' : ''} ${can ? '' : 'disabled'} onchange="adpToggle(this)" aria-label="${tier === 'hold' ? 'Reject this shift' : 'Apply this correction'}">` : ''}</td>
         <td class="mono" style="white-space:nowrap"><b>${srDayName(r.date)}</b> ${esc(formatDateDisplay(r.date))}</td>
@@ -11603,9 +11646,9 @@ function adpRender() {
         <td class="mono">${r.adp ? srHrs(r.adp.hours) : ''}</td>
         <td class="mono" style="color:${Math.abs(r.diffHours) < 0.005 ? 'var(--text3)' : 'var(--warn)'}">${Math.abs(r.diffHours) < 0.005 ? '0.00' : (r.diffHours > 0 ? '+' : '') + srHrs(r.diffHours)}${tier !== 'hold' && Math.abs(r.pay) >= 0.005 ? `<div class="adp-dim">${r.pay > 0 ? '+' : '−'}${$fmt(Math.abs(r.pay))}</div>` : ''}</td>
         <td><span class="badge ${badge[tier]}" style="font-size:10px">${esc(r.cls.label)}</span>
-          ${r.reviewed ? `<div class="adp-dim" style="margin-top:3px">Reviewed — no change. ${esc(r.reviewed.by)}, ${esc(r.reviewed.at)}${r.reviewed.note ? ' · “' + esc(r.reviewed.note) + '”' : ''}${canEdit ? ` <a href="#" data-adp-idx="${idx}" onclick="adpUndoReviewed(this);return false;" style="color:var(--accent2)">undo</a>` : ''}</div>` : tier === 'ok' ? '' : `<div class="adp-dim" style="margin-top:3px">${note ? esc(note) : esc(adpActionText(r, p.staff))}</div>`}
+          ${r.reviewed ? `<div class="adp-dim" style="margin-top:3px">Reviewed — no change. ${esc(r.reviewed.by)}, ${esc(r.reviewed.at)}${r.reviewed.note ? ' · “' + esc(r.reviewed.note) + '”' : ''}${canEdit && !r.signed ? ` <a href="#" data-adp-idx="${idx}" onclick="adpUndoReviewed(this);return false;" style="color:var(--accent2)">undo</a>` : ''}</div>` : tier === 'ok' ? '' : `<div class="adp-dim" style="margin-top:3px">${note ? esc(note) : esc(adpActionText(r, p.staff))}</div>`}
           ${!r.reviewed && r.status === 'adp_only' ? `<div class="adp-dim" style="margin-top:4px">House: <select data-adp-idx="${idx}" onchange="adpSetHouse(this)" ${can ? '' : 'disabled'} class="adp-house"><option value="">— pick —</option>${houseOpts(r.house)}</select> <span>${r.house === r.houseSuggested ? 'suggested: ' + esc(r.houseWhy) : 'changed by hand'}</span></div>` : ''}
-          ${!r.reviewed && tier !== 'ok' && canEdit && !locked ? `<a href="#" class="adp-dim" data-adp-idx="${idx}" onclick="adpMarkReviewed(this);return false;" style="color:var(--accent2);display:inline-block;margin-top:4px">Mark reviewed — no change</a>` : ''}</td>
+          ${!r.reviewed && tier !== 'ok' && canEdit && !r.signed && !locked ? `<a href="#" class="adp-dim" data-adp-idx="${idx}" onclick="adpMarkReviewed(this);return false;" style="color:var(--accent2);display:inline-block;margin-top:4px">Mark reviewed — no change</a>` : ''}</td>
       </tr>`;
     });
   });
@@ -11677,16 +11720,17 @@ function adpUndoReviewed(el) {
 function adpSignOff() {
   const b = adpBuild();
   if (b.stats.open) { showToast(`${b.stats.open} item${b.stats.open !== 1 ? 's are' : ' is'} still open`, 'danger'); return; }
-  if (!confirm(`Sign off the ADP reconciliation for ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}?\n\nYou are confirming that every difference between ADP and the timesheet has been corrected or reviewed. Your name and the time are recorded in the Audit Trail, and this week is closed on this page.`)) return;
-  adpPushAudit('ADP_SIGNOFF', `ADP reconciliation signed off: ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to} · ${_adp.fileName} · ${b.stats.staff} staff · ADP ${srHrs(b.stats.adpHours)} hrs · timesheet ${srHrs(b.stats.tsHours)} hrs · ${b.state.corrections.length} corrections · ${b.stats.reviewed} reviewed with no change`);
-  dbSave(); adpRender(); showToast('Week signed off ✅');
+  const what = b.house || 'all houses';
+  if (!confirm(`Sign off the ADP reconciliation for ${what}, ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}?\n\nYou are confirming that every difference between ADP and the timesheet${b.house ? ' at this house' : ''} has been corrected or reviewed. Your name and the time are recorded in the Audit Trail, and ${b.house ? 'this house' : 'this week'} is closed on this page.`)) return;
+  adpPushAudit('ADP_SIGNOFF', `ADP reconciliation signed off: ${what}, ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to}${b.house ? ' house=' + b.house : ''} · ${_adp.fileName} · ${b.stats.staff} staff · ADP ${srHrs(b.stats.adpHours)} hrs · timesheet ${srHrs(b.stats.tsHours)} hrs · ${b.state.corrections.length} corrections · ${b.stats.reviewed} reviewed with no change`);
+  dbSave(); adpRender(); showToast(`${b.house || 'Week'} signed off ✅`);
 }
 function adpReopen() {
   const b = adpBuild();
-  const why = prompt('Why is this week being reopened? (required)');
+  const why = prompt(`Why is ${b.house || 'this week'} being reopened? (required)`);
   if (why === null) return;
   if (why.trim().length < 3) { showToast('A reason is required', 'danger'); return; }
-  adpPushAudit('ADP_REOPEN', `ADP reconciliation reopened: ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to} · ${why.trim()}`);
+  adpPushAudit('ADP_REOPEN', `ADP reconciliation reopened: ${b.house || 'all houses'}, ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to}${b.house ? ' house=' + b.house : ''} · ${why.trim()}`);
   dbSave(); adpRender();
 }
 
@@ -11770,11 +11814,11 @@ function adpReportHtml(b) {
   const P = b.patterns;
   return `<section class="sr-sheet adp-rep">
     <div class="sr-head">
-      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">ADP Timecard Reconciliation Report</div></div></div>
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">ADP Timecard Reconciliation Report${b.house ? ' — ' + esc(b.house) : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}</div>
         <div class="sr-status ${signed ? 'sr-final' : 'sr-draft'}">${signed ? `Signed off by ${esc(signed.by)}, ${esc(signed.at)}` : S.open ? `Open — ${S.open} item${S.open !== 1 ? 's' : ''} unresolved` : 'Ready for sign-off — nothing unresolved'}</div></div>
     </div>
-    <div class="sr-key" style="margin-top:8px">ADP file: ${esc(_adp.fileName)} · ${S.timecards} timecards, ${S.punches} punches · A time difference of up to ${b.reviewMin} minutes is “ready to apply”; more than that needs review · Generated ${esc(new Date().toLocaleString())}${_currentUser ? ' by ' + esc(_currentUser.name) : ''}</div>
+    <div class="sr-key" style="margin-top:8px">${b.house ? 'House: <b>' + esc(b.house) + '</b> (lines worked at, or proposed for, this house only) · ' : 'All houses · '}ADP file: ${esc(_adp.fileName)} · ${S.timecards} timecards, ${S.punches} punches · A time difference of up to ${b.reviewMin} minutes is “ready to apply”; more than that needs review · Generated ${esc(new Date().toLocaleString())}${_currentUser ? ' by ' + esc(_currentUser.name) : ''}</div>
 
     <div class="sr-h" style="margin-top:14px">1. Summary</div>
     <div class="sr-tiles">${tile('Staff compared', S.staff, `${S.timecards} ADP timecards`)}${tile('ADP hours', srHrs(S.adpHours), '')}${tile('Timesheet hours', srHrs(S.tsHours), '')}${tile('Difference', signNum(S.adpHours - S.tsHours), 'ADP minus timesheet')}${tile('Pay effect', signNum(dPay, true), `overtime ${signNum(dOT)} hrs, if all applied`)}</div>
@@ -11883,7 +11927,7 @@ function adpExportCSV() {
   const q = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
   const line = arr => arr.map(q).join(',') + '\n';
   let csv = line(['American Safety Options, Inc. — ADP Timecard Reconciliation']);
-  csv += line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Review needed above (minutes)', b.reviewMin]) + line(['Status', b.state.signoff ? `Signed off by ${b.state.signoff.by}, ${b.state.signoff.at}` : `${b.stats.open} open`]) + line(['Generated', new Date().toLocaleString()]) + '\n';
+  csv += line(['House', b.house || 'All houses']) + line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Review needed above (minutes)', b.reviewMin]) + line(['Status', b.state.signoff ? `Signed off by ${b.state.signoff.by}, ${b.state.signoff.at}` : `${b.stats.open} open`]) + line(['Generated', new Date().toLocaleString()]) + '\n';
   csv += line(['PEOPLE ON THE ADP TIMECARD WITH NOTHING ON THE TIMESHEET']) + line(['Name', 'Staff ID', 'ADP punches', 'ADP hrs', 'Note']);
   b.missing.adpOnly.forEach(x => { csv += line([x.name, x.id, x.punches, srHrs(x.hours), x.known ? '' : x.skipped ? 'Left out on purpose' : 'Not a staff member in this system / not matched yet']); });
   if (!b.missing.adpOnly.length) csv += line(['Nobody']);
@@ -11893,7 +11937,7 @@ function adpExportCSV() {
   csv += '\n' + line(['PUNCH BY PUNCH']);
   csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Approx pay effect', 'Class', 'Recommended', 'Suggested house', 'Status']);
   b.people.forEach(p => p.rows.forEach(r => {
-    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : '', r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), r.pay.toFixed(2), r.cls.label, r.cls.tier === 'ok' ? '' : adpActionText(r, p.staff), r.status === 'adp_only' ? `${r.house} (${r.houseWhy})` : '', r.cls.tier === 'ok' ? 'Match' : r.reviewed ? `Reviewed, no change - ${r.reviewed.by}: ${r.reviewed.note}` : r.open ? 'Open' : '']);
+    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : (b.house ? '' : ''), r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), r.pay.toFixed(2), r.cls.label, r.cls.tier === 'ok' ? '' : adpActionText(r, p.staff), r.status === 'adp_only' ? `${r.house} (${r.houseWhy})` : '', r.cls.tier === 'ok' ? 'Match' : r.reviewed ? `Reviewed, no change - ${r.reviewed.by}: ${r.reviewed.note}` : r.open ? 'Open' : '']);
   }));
   b.unmatched.forEach(u => u.emp.entries.forEach(x => { csv += line(['', '', '', u.emp.name, formatDateDisplay(x.date), x.day, '', '', '', '', srTime(x.start), x.end ? srTime(x.end) : '', srHrs(x.hours), srHrs(x.ot), '', '', '', '', '', u.skipped ? 'Left out on purpose' : 'ADP name not matched to a staff member']); }));
   csv += '\n' + line(['CORRECTIONS MADE (AUDIT TRAIL)']) + line(['When', 'By', 'What', 'Detail']);
@@ -11901,7 +11945,7 @@ function adpExportCSV() {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `ASO_ADP_Reconciliation_${b.from}_to_${b.to}.csv`;
+  a.href = url; a.download = `ASO_ADP_Reconciliation_${b.house ? b.house.replace(/[^a-z0-9]+/gi, '_') + '_' : ''}${b.from}_to_${b.to}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   showToast('CSV exported ✅');

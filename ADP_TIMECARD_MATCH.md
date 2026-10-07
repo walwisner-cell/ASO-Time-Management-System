@@ -28,6 +28,16 @@ I find it in the left menu under **ADP Timecard Match** (Admin and Supervisor on
 10. When the banner says nothing is open, press **Sign off this week**.
 11. Press **Print report** and file the Reconciliation Report with payroll.
 
+## Doing it one house at a time
+After I upload the file, I pick a house in the **House** dropdown. Everything on the page then covers that house only: the counts, the worklist, the two "who is missing" lists, the pay effect, the report and the CSV.
+
+- A line belongs to the house where the shift was worked. For a punch with no timesheet shift, it belongs to the house the system suggests (I can change it). For anything else, it is the person's home house.
+- Someone who worked at two houses shows up under each house, with only that house's shifts.
+- When a house has nothing open, the button reads **Sign off [house name]**. The Program Manager for that house signs it, and that house's lines are closed while the other houses stay open.
+- **Print report** with a house selected prints the Reconciliation Report for that house, with the house name in the title.
+- ADP names that are not matched to a staff member yet have no house. A note tells me to switch to **All houses** to match them.
+- Under **All houses**, a line lists which houses are already signed off. Signing off under All houses closes the whole week.
+
 ## What I see while I work
 - **Pay effect**: for each person and in total, what applying everything proposed would do to pay and to overtime. It uses the same overtime calculation as payroll.
 - **Still open**: how many items are left before I can sign off.
@@ -75,7 +85,7 @@ These are my decisions as the employer, and I should confirm them with my payrol
 
 ## How I check it still works
 ```
-node test-adp-match.js         (68 checks)
+node test-adp-match.js         (72 checks)
 node test-staff-report.js      (45 checks)
 node test.js                   (117 checks)
 ```
