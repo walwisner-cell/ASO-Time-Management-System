@@ -72,7 +72,7 @@ function waitForServer(retries = 20) {
 async function main() {
   console.log(`\nStarting test server (scratch DB at ${TEST_DIR})...\n`);
   const server = spawn('node', [path.join(__dirname, 'server.js')], {
-    env: { ...process.env, DB_DIR: TEST_DIR, PORT: String(PORT), NODE_ENV: 'test' },
+    env: { ...process.env, DB_DIR: TEST_DIR, PORT: String(PORT), NODE_ENV: 'test', SEED_ADMIN_PASSWORD: 'admin123' },
     stdio: 'pipe'
   });
   let serverOutput = '';

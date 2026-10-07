@@ -1132,7 +1132,7 @@
     #toast, .modal-overlay, .nav-section, .nav-item, .pr-steps, .pr-ded-row, .pr-ded-remove { display:none !important; }
     .layout { display:block !important; }
     .main { padding:0 !important; }
-    .page { display:block !important; }
+    .page.active { display:block !important; animation:none !important; }
     .card { border:1px solid #ddd !important; box-shadow:none !important; page-break-inside:avoid; }
     table { font-size:11px !important; }
     th, td { padding:7px 10px !important; }
@@ -1367,6 +1367,109 @@
     .rb-results-empty { display:none !important; }
     .rb-generate-btn { display:none !important; }
     .rb-staff-chips, .rb-loc-chips { display:none !important; }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     STAFF TIMESHEET REPORT
+     The sheet is styled as white paper on purpose, even inside the dark
+     app, so what is on screen is exactly what comes out of the printer.
+  ═══════════════════════════════════════════════════════ */
+  .sr-controls-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:end; }
+  @media(max-width:860px){ .sr-controls-grid { grid-template-columns:1fr; } }
+  .sr-controls-grid label.sr-lbl, .sr-custom label.sr-lbl { display:block; font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.8px; font-family:var(--mono); margin-bottom:8px; }
+  .sr-controls-grid select, .sr-custom input { width:100%; font-size:13px; padding:10px 12px; border:1px solid var(--border2); color:var(--text); font-family:var(--sans); background:var(--surface2); border-radius:8px; }
+  .sr-custom { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; max-width:520px; }
+  .sr-opts { display:flex; gap:20px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+  .sr-opts label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text2); cursor:pointer; }
+  .sr-opts input { width:15px; height:15px; cursor:pointer; }
+  .sr-empty { text-align:center; color:var(--text3); padding:48px 20px; font-size:14px; line-height:1.9; border:1px dashed var(--border2); border-radius:var(--radius-lg); }
+  #sr-output { overflow-x:auto; padding-bottom:8px; }
+
+  .sr-sheet {
+    background:#fff; color:#16283c; width:8.5in; max-width:none; margin:0 auto 28px; padding:0.5in;
+    box-sizing:border-box; border-radius:4px; box-shadow:0 10px 40px rgba(0,0,0,0.35);
+    font-family:"Segoe UI",Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4;
+    font-variant-numeric:tabular-nums; page:srpage;
+  }
+  .sr-sheet b { font-weight:700; }
+  .sr-head { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; padding-bottom:10px; border-bottom:2px solid #0b5fa8; }
+  .sr-org { font-size:17px; font-weight:700; color:#0b5fa8; letter-spacing:-0.2px; }
+  .sr-doc { font-size:12.5px; font-weight:700; color:#16283c; margin-top:1px; }
+  .sr-head-r { text-align:right; }
+  .sr-period { font-size:12.5px; font-weight:700; color:#16283c; }
+  .sr-status { font-size:10px; font-weight:700; margin-top:2px; }
+  .sr-final { color:#14704a; }
+  .sr-draft { color:#aa2d28; }
+
+  .sr-emp { margin-top:10px; }
+  .sr-emp-name { font-size:17px; font-weight:700; color:#16283c; letter-spacing:-0.3px; }
+  .sr-emp-grid { display:flex; flex-wrap:wrap; gap:6px 26px; margin-top:6px; font-size:11.5px; font-weight:600; color:#16283c; }
+  .sr-emp-grid span { display:block; font-size:8.5px; font-weight:400; letter-spacing:.7px; text-transform:uppercase; color:#647182; }
+
+  .sr-tiles { display:flex; gap:8px; margin-top:10px; }
+  .sr-tile { flex:1; min-width:0; background:#eef3f9; border-radius:5px; padding:6px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-tile-l { font-size:8.5px; letter-spacing:.7px; text-transform:uppercase; color:#647182; }
+  .sr-tile-v { font-size:16px; font-weight:700; color:#16283c; line-height:1.25; }
+  .sr-tile-s { font-size:8.5px; color:#647182; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .sr-sheet table.sr-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:10.5px; background:none; }
+  .sr-sheet .sr-table thead, .sr-sheet .sr-table tbody, .sr-sheet .sr-table tr { background:none; }
+  .sr-sheet .sr-table th, .sr-sheet .sr-table td { font-family:inherit; }
+  .sr-sheet .sr-table th { background:#16283c; color:#fff; text-align:left; padding:5px 6px; font-size:9px; font-weight:700; letter-spacing:.3px; text-transform:none; border:none; white-space:nowrap; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-sheet .sr-table td { padding:2.5px 6px; border:none; border-bottom:1px solid #dde3ea; color:#16283c; vertical-align:top; background:none; font-size:10.5px; }
+  .sr-sheet .sr-table .sr-num { text-align:right; white-space:nowrap; }
+  .sr-sheet .sr-nw { white-space:nowrap; }
+  .sr-sheet .sr-dim { color:#7a8797; font-weight:400; }
+  .sr-sheet .sr-table tr.sr-wk td { background:#eef3f9; color:#0b5fa8; font-weight:700; font-size:10px; border-bottom:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-sheet .sr-table tr.sr-sub td { font-weight:700; border-bottom:1.5px solid #16283c; }
+  .sr-sheet .sr-table tr.sr-tot td { background:#16283c; color:#fff; font-weight:700; font-size:11px; border-bottom:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-sheet .sr-table tr.sr-rej td { color:#7a8797; }
+  .sr-sheet .sr-src { font-size:9.5px; color:#4a5868; }
+  .sr-sheet .sr-flag { color:#aa2d28; font-weight:600; }
+  .sr-sheet tr.sr-rej .sr-flag { color:#aa2d28; }
+  .sr-key { font-size:8.5px; color:#647182; margin-top:5px; line-height:1.45; }
+
+  .sr-two { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:10px; }
+  .sr-h { font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#0b5fa8; border-bottom:1px solid #cdd5e0; padding-bottom:3px; margin-bottom:2px; }
+  .sr-sheet table.sr-mini { margin-top:0; }
+  .sr-sheet .sr-mini th { background:#fff; color:#647182; font-size:8.5px; padding:4px 6px 3px; border-bottom:1px solid #dde3ea; }
+
+  .sr-notes { margin-top:10px; }
+  .sr-notes ul { list-style:none; margin:4px 0 0; padding:0; }
+  .sr-notes li { display:flex; gap:10px; padding:2px 0; font-size:10.5px; color:#16283c; break-inside:avoid; }
+  .sr-lvl { flex:0 0 70px; font-size:8.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; padding-top:1px; color:#647182; }
+  .sr-n-action .sr-lvl { color:#aa2d28; }
+  .sr-n-check .sr-lvl { color:#965f0a; }
+
+  .sr-sign { margin-top:12px; border:1px solid #cdd5e0; border-radius:5px; break-inside:avoid; page-break-inside:avoid; }
+  .sr-sign-row { display:grid; grid-template-columns:40% 1fr; gap:20px; align-items:end; padding:7px 12px 6px; }
+  .sr-sign-row + .sr-sign-row { border-top:1px solid #cdd5e0; }
+  .sr-sign-t { font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#0b5fa8; }
+  .sr-sign-p { font-size:9px; color:#4a5868; margin-top:2px; line-height:1.35; }
+  .sr-line { display:flex; gap:14px; font-size:8.5px; color:#647182; }
+  .sr-line > div { flex:1; }
+  .sr-line > .sr-line-d { flex:0 0 78px; }
+  .sr-line i { display:block; border-top:1px solid #16283c; margin-bottom:2px; }
+
+  .sr-end { break-inside:avoid; page-break-inside:avoid; }
+  .sr-foot { display:flex; justify-content:space-between; gap:12px; margin-top:10px; padding-top:5px; border-top:1px solid #cdd5e0; font-size:8.5px; color:#647182; }
+
+  @page srpage { size:letter portrait; margin:0.5in; }
+  @media print {
+    body.sr-printing .page { display:none !important; }
+    body.sr-printing #page-staffreport { display:block !important; animation:none !important; }
+    body.sr-printing .sr-noprint { display:none !important; }
+    body.sr-printing #sr-output { overflow:visible !important; padding:0 !important; }
+    body.sr-printing .sr-sheet { width:auto !important; margin:0 !important; padding:0 !important; box-shadow:none !important; border-radius:0 !important; break-after:page; page-break-after:always; }
+    body.sr-printing .sr-sheet:last-child { break-after:auto; page-break-after:auto; }
+    body.sr-printing .sr-sheet .sr-table { font-size:10.5px !important; }
+    body.sr-printing .sr-sheet .sr-table th { padding:5px 6px !important; color:#fff !important; }
+    body.sr-printing .sr-sheet .sr-table td { padding:2.5px 6px !important; }
+    body.sr-printing .sr-sheet .sr-mini th { padding:4px 6px 3px !important; color:#000 !important; }
+    body.sr-printing .sr-sheet .sr-table tr.sr-tot td { color:#fff !important; }
+    body.sr-printing .sr-sheet .sr-table thead { display:table-header-group; }
+    body.sr-printing .sr-sheet .sr-table tr { break-inside:avoid; page-break-inside:avoid; }
+    body.sr-printing .sr-sheet .sr-table tr.sr-wk { break-after:avoid; page-break-after:avoid; }
   }
 
   /* ─────────────────────────────────────────────────────
@@ -1673,6 +1776,7 @@
       <div class="nav-item" data-page="approvals" onclick="nav('approvals',this)"><span class="nav-icon">⚠️</span>Approvals <span class="nav-badge" id="approvals-badge" style="display:none">0</span></div>
       <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes <span class="nav-pulse-badge">●</span></div>
       <div class="nav-section">Reports</div>
+      <div class="nav-item" data-page="staffreport" onclick="nav('staffreport',this)"><span class="nav-icon">🧑‍💼</span>Staff Timesheet Report</div>
       <div class="nav-item" data-page="reportbuilder" onclick="nav('reportbuilder',this)"><span class="nav-icon">🗂️</span>Report Builder</div>
       <div class="nav-item" data-page="payperiod" onclick="nav('payperiod',this)"><span class="nav-icon">💵</span>Pay Period Report</div>
       <div class="nav-item" data-page="monthly" onclick="nav('monthly',this)"><span class="nav-icon">📅</span>Monthly Report</div>
@@ -2017,6 +2121,49 @@
       </div>
       <!-- END REPORT BUILDER -->
 
+      <!-- STAFF TIMESHEET REPORT -->
+      <div class="page" id="page-staffreport">
+        <div class="page-header sr-noprint">
+          <div class="page-header-left">
+            <div class="page-title">Staff Timesheet Report</div>
+            <div class="page-sub">One complete, signable timesheet per staff member — hours by day and workweek, houses worked, time off, and what to check before signing</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="rb-export-btn" onclick="srExportCSV()">⬇ CSV</button>
+            <button class="rb-export-btn" onclick="srDownloadPDF()">⬇ PDF</button>
+            <button class="rb-print-btn" onclick="srPrint()">🖨️ Print</button>
+          </div>
+        </div>
+        <div class="card sr-noprint" style="margin-bottom:20px">
+          <div class="sr-controls-grid">
+            <div>
+              <label class="sr-lbl" for="sr-period">📅 Pay Period</label>
+              <select id="sr-period" onchange="srGenerate()" style="border-color:var(--accent);color:var(--accent2);font-family:var(--mono);font-weight:600"></select>
+            </div>
+            <div>
+              <label class="sr-lbl" for="sr-house">🏠 House</label>
+              <select id="sr-house" onchange="srGenerate()"></select>
+            </div>
+            <div>
+              <label class="sr-lbl" for="sr-staff">👤 Staff Member</label>
+              <select id="sr-staff" onchange="srGenerate()"></select>
+            </div>
+          </div>
+          <div class="sr-custom" id="sr-custom-wrap" style="display:none">
+            <div><label class="sr-lbl" for="sr-from">From</label><input type="date" id="sr-from" onchange="srGenerate()"></div>
+            <div><label class="sr-lbl" for="sr-to">To</label><input type="date" id="sr-to" onchange="srGenerate()"></div>
+          </div>
+          <div class="sr-opts">
+            <label id="sr-opt-pay-wrap"><input type="checkbox" id="sr-opt-pay" checked onchange="srGenerate()"> Show pay amounts</label>
+            <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Show items to review</label>
+            <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Signature lines</label>
+            <label id="sr-opt-empty-wrap"><input type="checkbox" id="sr-opt-empty" onchange="srGenerate()"> Include staff with no hours</label>
+          </div>
+        </div>
+        <div id="sr-overview" class="sr-noprint"></div>
+        <div id="sr-output"></div>
+      </div>
+
       <!-- TIMESHEET -->
       <div class="page" id="page-timesheet">
         <div class="print-header">American Safety Options — Timesheet Log &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
@@ -2026,7 +2173,10 @@
             <div class="page-title">Timesheet Log</div>
             <div class="page-sub" id="ts-ot-threshold-label"></div>
           </div>
-          <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Timesheet</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="print-btn" onclick="srOpenFromTimesheet()" title="Open a complete, signable timesheet for each staff member, using the pay period, house and staff filters chosen below">🧑‍💼 Staff Report</button>
+            <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Timesheet</button>
+          </div>
         </div>
         <div class="card section-gap">
           <div class="card-title">➕ Add New Shift</div>
@@ -3881,7 +4031,7 @@ async function loadMyPermissions() {
 // their existing access is completely unaffected by this system existing.
 const PAGE_REQUIRED_PERMISSION = {
   dashboard: 'dashboard_view', timesheet: 'shifts_view', approvals: 'approvals_view',
-  reportbuilder: 'reports_view', payperiod: 'reports_view', payroll: 'payroll_view',
+  reportbuilder: 'reports_view', staffreport: 'reports_view', payperiod: 'reports_view', payroll: 'payroll_view',
   monthly: 'reports_view', leaderboard: 'reports_view', payconfig: 'payroll_run',
   taxbenefits: 'taxes_manage', staff: 'staff_view', locations: 'locations_view',
   passwords: 'users_view', datamanager: 'data_export', audittrail: 'audit_view',
@@ -3901,6 +4051,7 @@ const PAGE_ROLES = {
   timesheet:     ['admin','supervisor','viewer'],
   approvals:     ['admin','supervisor'],
   reportbuilder: ['admin','supervisor','viewer'],
+  staffreport:   ['admin','supervisor','viewer'],
   payperiod:     ['admin','supervisor','viewer'],
   payroll:       ['admin'],
   monthly:       ['admin','supervisor','viewer'],
@@ -3987,13 +4138,35 @@ let _currentUser = null;
 // ──────────────────────────────────────────────────────────
 // PAY PERIOD ENGINE
 // ──────────────────────────────────────────────────────────
+// Pay periods are counted in whole CALENDAR days from the anchor date, never
+// in milliseconds. A day is not always 24 hours: the clocks change twice a
+// year, so "anchor + N x 86,400,000 ms" lands at 11 PM the night before (or
+// 1 AM) once the period is on the other side of a clock change from the
+// anchor. That made period labels read one day early every winter with a
+// summer anchor, and put the first day of a period into the PREVIOUS period
+// every summer with a winter anchor (which changes whose hours count toward
+// overtime). These three helpers are the single source of truth for period
+// boundaries — every period calculation below goes through them.
+function calendarDayDiff(fromISO, toISO) {
+  const [fy, fm, fd] = String(fromISO).slice(0, 10).split('-').map(Number);
+  const [ty, tm, td] = String(toISO).slice(0, 10).split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+function periodIndexForDate(dateStr, anchorStr, periodDays) {
+  return Math.floor(calendarDayDiff(anchorStr || PAY_CONFIG.anchorDate, dateStr) / (periodDays || PAY_CONFIG.periodDays));
+}
+function periodBoundsByIndex(idx, anchorStr, periodDays) {
+  const days = periodDays || PAY_CONFIG.periodDays;
+  const [ay, am, ad] = String(anchorStr || PAY_CONFIG.anchorDate).slice(0, 10).split('-').map(Number);
+  // Local midnight on the real calendar day — the Date constructor handles
+  // month/year rollover and clock changes on its own.
+  const start = new Date(ay, am - 1, ad + idx * days);
+  const end = new Date(ay, am - 1, ad + idx * days + days - 1);
+  return { start, end };
+}
+
 function getPeriodForDate(dateStr) {
-  const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const d = new Date(dateStr + 'T00:00:00');
-  const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
-  const diff = Math.floor((d - anchor) / msPerPeriod);
-  const start = new Date(anchor.getTime() + diff * msPerPeriod);
-  const end = new Date(start.getTime() + (PAY_CONFIG.periodDays - 1) * 86400000);
+  const { start, end } = periodBoundsByIndex(periodIndexForDate(dateStr));
   return { start, end, key: start.toISOString().split('T')[0] };
 }
 
@@ -4361,6 +4534,7 @@ function nav(page, el) {
     datamanager: renderDataManager,
     audittrail: renderAuditTrail,
     reportbuilder: renderReportBuilder,
+    staffreport: renderStaffReportPage,
     roles: renderRolesPage,
     clocklocations: renderClockLocationsPage
   };
@@ -4391,13 +4565,7 @@ function initApp() {
 let _dismissedPeriods = [];
 
 function getPeriodDatesWithOffset(periodOffset) {
-  const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(todayLocalISO() + 'T00:00:00');
-  const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
-  const diff = Math.floor((today - anchor) / msPerPeriod);
-  const start = new Date(anchor.getTime() + (diff + periodOffset) * msPerPeriod);
-  const end = new Date(start.getTime() + (PAY_CONFIG.periodDays - 1) * 86400000);
-  return { start, end };
+  return periodBoundsByIndex(periodIndexForDate(todayLocalISO()) + periodOffset);
 }
 
 function getCurrentPeriodDates() {
@@ -4564,7 +4732,7 @@ function renderTimesheetPeriodContext() {
   const all = computeShiftsWithOT();
   const shiftCount = all.filter(s => s.date >= start && s.date <= end).length;
   const today = todayLocalISO();
-  const daysLeft = isCurrent ? Math.max(0, Math.ceil((new Date(end + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1) : null;
+  const daysLeft = isCurrent ? Math.max(0, calendarDayDiff(today, end) + 1) : null;
 
   bar.style.display = 'flex';
   bar.innerHTML = `
@@ -4686,7 +4854,7 @@ function renderPayConfigStatusBanner() {
   const startD = new Date(cp.start + 'T00:00:00');
   const endD = new Date(cp.end + 'T00:00:00');
   const cpLabel = `${months[startD.getMonth()]} ${startD.getDate()} – ${months[endD.getMonth()]} ${endD.getDate()}, ${endD.getFullYear()}`;
-  const daysLeft = Math.max(0, Math.ceil((new Date(cp.end + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1);
+  const daysLeft = Math.max(0, calendarDayDiff(today, cp.end) + 1);
 
   if (isInCurrentPeriod) {
     banner.innerHTML = `<div style="background:rgba(14,143,94,0.08);border:1px solid rgba(14,143,94,0.3);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -4700,7 +4868,7 @@ function renderPayConfigStatusBanner() {
   } else {
     // Period has lapsed — show warning with auto-advance option
     const prevCP = getPrevPeriodDates();
-    const daysBehind = Math.ceil((new Date(today + 'T00:00:00') - new Date(cp.end + 'T00:00:00')) / 86400000);
+    const daysBehind = calendarDayDiff(cp.end, today);
     banner.innerHTML = `<div style="background:rgba(194,74,70,0.08);border:1px solid rgba(194,74,70,0.35);border-radius:12px;padding:16px 20px">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
         <div style="font-size:28px">⚠️</div>
@@ -4722,12 +4890,8 @@ function renderPayConfigStatusBanner() {
 
 function autoAdvancePeriod() {
   // Keep the same anchor day-of-cycle but move forward so today falls in the current period
-  const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(todayLocalISO() + 'T00:00:00');
-  const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
-  const diff = Math.floor((today - anchor) / msPerPeriod);
   // The new anchor is the start of the current period
-  const newAnchor = new Date(anchor.getTime() + diff * msPerPeriod);
+  const newAnchor = periodBoundsByIndex(periodIndexForDate(todayLocalISO())).start;
   const newAnchorStr = newAnchor.toISOString().split('T')[0];
   PAY_CONFIG.anchorDate = newAnchorStr;
   dbSave();
@@ -4876,15 +5040,11 @@ function updatePeriodPreview() {
   const anchor = document.getElementById('cfg-anchor-date').value || PAY_CONFIG.anchorDate;
   const days = parseInt(document.getElementById('cfg-period-type').value) || 14;
   const today = todayLocalISO();
-  const anchorD = new Date(anchor + 'T00:00:00');
-  const todayD = new Date(today + 'T00:00:00');
-  const msPerPeriod = days * 86400000;
-  const diff = Math.floor((todayD - anchorD) / msPerPeriod);
+  const diff = periodIndexForDate(today, anchor, days);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   let html = '';
   for (let i = diff - 2; i <= diff + 4; i++) {
-    const start = new Date(anchorD.getTime() + i * msPerPeriod);
-    const end = new Date(start.getTime() + (days - 1) * 86400000);
+    const { start, end } = periodBoundsByIndex(i, anchor, days);
     const isCurrent = i === diff;
     const startStr = start.toISOString().split('T')[0];
     const endStr = end.toISOString().split('T')[0];
@@ -5458,7 +5618,7 @@ function renderMyPortal() {
 
   const cp = currentPeriodLabel();
   const { start: curStart, end: curEnd } = getPeriodForDate(todayLocalISO());
-  const daysLeft = Math.ceil((curEnd.getTime() - new Date(todayLocalISO()+'T00:00:00').getTime()) / 86400000) + 1;
+  const daysLeft = Math.round((curEnd.getTime() - new Date(todayLocalISO()+'T00:00:00').getTime()) / 86400000) + 1;
   const nextPayNote = daysLeft <= 0 ? 'Period has ended \u2014 payroll pending' : `${daysLeft} day${daysLeft!==1?'s':''} remaining in this period`;
   document.getElementById('mp-period-banner').innerHTML = `
     <span style="font-size:15px">📅</span>
@@ -6340,14 +6500,10 @@ function denyShift(pendingId) {
 // SHIFT PERIOD SELECTOR HELPERS
 // ──────────────────────────────────────────────────────────
 function getPeriodsAroundToday(pastCount, futureCount) {
-  const anchor = new Date(PAY_CONFIG.anchorDate + 'T00:00:00');
-  const today = new Date(todayLocalISO() + 'T00:00:00');
-  const msPerPeriod = PAY_CONFIG.periodDays * 86400000;
-  const diff = Math.floor((today - anchor) / msPerPeriod);
+  const diff = periodIndexForDate(todayLocalISO());
   const result = [];
   for (let i = diff - pastCount; i <= diff + futureCount; i++) {
-    const start = new Date(anchor.getTime() + i * msPerPeriod);
-    const end = new Date(start.getTime() + (PAY_CONFIG.periodDays - 1) * 86400000);
+    const { start, end } = periodBoundsByIndex(i);
     const startStr = start.toISOString().split('T')[0];
     const endStr = end.toISOString().split('T')[0];
     const label = fmtPeriod(start, end);
@@ -7284,7 +7440,7 @@ function buildPayrollDetailRows(label, periodStart) {
         };
       }
       const g = groups[key];
-      const dayOffset = Math.floor((new Date(s.date + 'T00:00:00').getTime() - startMs) / 86400000);
+      const dayOffset = Math.round((new Date(s.date + 'T00:00:00').getTime() - startMs) / 86400000); // round, not floor: a clock change inside the period makes this 1 hour short of a whole day
       const wk = dayOffset < 7 ? 1 : 2;
       if (wk === 1) { g.wk1Reg += s.regHrs; g.wk1OT += s.otHrs; }
       else         { g.wk2Reg += s.regHrs; g.wk2OT += s.otHrs; }
@@ -9802,6 +9958,762 @@ function rbExportCSV() {
   a.click();
   URL.revokeObjectURL(url);
   showToast('CSV exported ✅');
+}
+
+// ──────────────────────────────────────────────────────────
+// STAFF TIMESHEET REPORT
+// One complete, signable timesheet per staff member: every shift by day,
+// subtotalled by workweek, split by house, with time off and a plain list
+// of anything a supervisor should look at before signing. Everything on
+// the page, the PDF and the CSV comes from one builder function
+// (srBuildStaffReport), so the three can never disagree with each other.
+// Pay math is NOT redone here — hours, regular/OT split and pay all come
+// straight from computeShiftsWithOT(), the same engine payroll uses.
+// ──────────────────────────────────────────────────────────
+let _srLast = null;     // { reports, opts, meta } — what is on screen right now
+let _srPrefill = null;  // filters handed over from the Timesheet Log button
+
+function srAddDays(iso, n) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function srDayName(iso) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(y, m - 1, d).getDay()];
+}
+function srShortDate(iso) { return String(iso).slice(5, 7) + '/' + String(iso).slice(8, 10); }
+function srTime(t) { return t ? formatTimeDisplay(String(t).slice(0, 5)) : '—'; }
+function srHrs(n) { return Number(n || 0).toFixed(2); }
+
+// The workweek is a fixed 7-day block counted from the pay period anchor
+// date, so week 1 and week 2 of a bi-weekly period always line up with it.
+function srWeekStart(iso) {
+  const idx = Math.floor(calendarDayDiff(PAY_CONFIG.anchorDate, iso) / 7);
+  return srAddDays(PAY_CONFIG.anchorDate, idx * 7);
+}
+
+// Pay amounts are only shown to people allowed to see them. The built-in
+// office roles already see pay everywhere else in the app; a custom role
+// needs the "View pay rates" permission; employees never see this page.
+function srCanSeePay() {
+  const role = _currentUser ? _currentUser.role : 'viewer';
+  if (role === 'employee') return false;
+  if (BUILTIN_ROLE_NAMES.includes(role)) return true;
+  return _myPermissions.includes('staff_view_wage');
+}
+
+// Builds everything the report says about ONE staff member for a date
+// range. Pure data in, pure data out — no page elements touched — so it can
+// be tested directly (see test-staff-report.js).
+function srBuildStaffReport(st, fromISO, toISO, allComputed) {
+  const payType = st.payType || 'hourly';
+  const mine = allComputed
+    .filter(s => s.staff === st.id && s.date >= fromISO && s.date <= toISO)
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.start || '').localeCompare(String(b.start || '')));
+
+  const rows = mine.map(s => {
+    const rejected = s.shiftStatus === 'rejected';
+    const entry = (CLOCK_ENTRIES || []).find(c => c.shiftId === s.id);
+    let mealMin = null; // null = no clock record, so no break information exists at all
+    if (entry) {
+      let mins = 0;
+      (CLOCK_BREAKS || []).forEach(b => {
+        if (b.clockEntryId === entry.id && b.breakType === 'meal' && b.endTime) {
+          const h = calcClockHours(b.startDate || entry.clockInDate, b.startTime, b.endDate || b.startDate || entry.clockInDate, b.endTime);
+          if (h > 0) mins += h * 60;
+        }
+      });
+      mealMin = Math.round(mins);
+    }
+    const missingMeal = !rejected && shiftMissingMealBreak(s);
+    const flags = [];
+    if (rejected) flags.push('Rejected' + (s.rejectedReason ? ': ' + s.rejectedReason : ''));
+    else {
+      if (missingMeal) flags.push('No meal break');
+      if (s.approvedEx) flags.push('Over-24h approved');
+      if (s._corrected) flags.push('Edited');
+      if (s.hours >= 16) flags.push('Long shift');
+    }
+    return {
+      id: s.id, date: s.date, day: srDayName(s.date), weekStart: srWeekStart(s.date),
+      location: s.location || '', start: s.start, end: s.end,
+      overnight: !!(s.start && s.end && String(s.end).slice(0, 5) <= String(s.start).slice(0, 5)),
+      mealMin, rejected, rejectedReason: s.rejectedReason || '', rejectedBy: s.rejectedBy || '',
+      // A rejected shift is listed (so nothing silently disappears) but counts for nothing.
+      hours: rejected ? 0 : s.hours, enteredHours: s.hours,
+      reg: s.regHrs, ot: s.otHrs, rate: s.locRate, regPay: s.regPay, otPay: s.otPay, pay: s.shiftPay,
+      source: s.source || 'manual', missingMeal,
+      approvedEx: !rejected && !!s.approvedEx, corrected: !rejected && !!s._corrected, flags
+    };
+  });
+  const counted = rows.filter(r => !r.rejected);
+  const sum = (arr, k) => arr.reduce((a, r) => a + (r[k] || 0), 0);
+
+  // ── Workweeks ──
+  const weeks = [];
+  let ws = srWeekStart(fromISO);
+  for (let guard = 0; ws <= toISO && guard < 60; guard++) {
+    const we = srAddDays(ws, 6);
+    const wRows = rows.filter(r => r.weekStart === ws);
+    const wCounted = wRows.filter(r => !r.rejected);
+    const hours = sum(wCounted, 'hours');
+    weeks.push({
+      start: ws, end: we, partial: ws < fromISO || we > toISO, rows: wRows,
+      hours, reg: sum(wCounted, 'reg'), ot: sum(wCounted, 'ot'), pay: sum(wCounted, 'pay'),
+      days: new Set(wCounted.map(r => r.date)).size, over40: Math.max(0, hours - 40)
+    });
+    ws = srAddDays(ws, 7);
+  }
+
+  // ── Totals ──
+  const totals = {
+    shifts: counted.length, rejected: rows.length - counted.length,
+    days: new Set(counted.map(r => r.date)).size,
+    hours: sum(counted, 'hours'), reg: sum(counted, 'reg'), ot: sum(counted, 'ot'),
+    regPay: sum(counted, 'regPay'), otPay: sum(counted, 'otPay'), gross: sum(counted, 'pay'),
+    longest: counted.reduce((m, r) => Math.max(m, r.hours), 0)
+  };
+
+  // ── Hours by house ──
+  const houseMap = {};
+  counted.forEach(r => {
+    const k = r.location || '—';
+    if (!houseMap[k]) houseMap[k] = { name: k, shifts: 0, hours: 0, pay: 0, rates: new Set(), home: k === st.loc };
+    houseMap[k].shifts++; houseMap[k].hours += r.hours; houseMap[k].pay += r.pay; houseMap[k].rates.add(r.rate);
+  });
+  const houses = Object.values(houseMap).sort((a, b) => b.hours - a.hours)
+    .map(h => ({ name: h.name, shifts: h.shifts, hours: h.hours, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
+  const rates = [...new Set(counted.map(r => r.rate))].sort((a, b) => a - b);
+
+  // ── Time off that touches this date range (denied requests left out) ──
+  const leave = (LEAVE_REQUESTS || [])
+    .filter(l => l.staffId === st.id && l.status !== 'denied' && l.startDate <= toISO && l.endDate >= fromISO)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+    .map(l => ({ type: l.type, startDate: l.startDate, endDate: l.endDate, hours: Number(l.hours) || 0, status: l.status, reviewedBy: l.reviewedBy || '' }));
+  const leaveHours = leave.filter(l => l.status === 'approved').reduce((a, l) => a + l.hours, 0);
+
+  // ── Longest run of days worked in a row ──
+  const dates = [...new Set(counted.map(r => r.date))].sort();
+  let run = dates.length ? 1 : 0, runStart = dates[0] || '', best = { len: run, start: runStart, end: runStart };
+  for (let i = 1; i < dates.length; i++) {
+    if (calendarDayDiff(dates[i - 1], dates[i]) === 1) run++;
+    else { run = 1; runStart = dates[i]; }
+    if (run > best.len) best = { len: run, start: runStart, end: dates[i] };
+  }
+
+  // ── Items to review ──
+  // 'action' = should be settled before this timesheet is signed,
+  // 'check'  = worth a look, 'info' = context only.
+  const notes = [];
+  const fd = formatDateDisplay;
+  const waiting = (CLOCK_ENTRIES || []).filter(c => c.staffId === st.id && c.clockInDate >= fromISO && c.clockInDate <= toISO);
+  const pendingClock = waiting.filter(c => c.status === 'pending');
+  const openClock = waiting.filter(c => c.status === 'open');
+  if (pendingClock.length) notes.push({ level: 'action', text: `${pendingClock.length} clock in/out entr${pendingClock.length === 1 ? 'y is' : 'ies are'} still waiting for approval (${pendingClock.map(c => srShortDate(c.clockInDate)).join(', ')}) — those hours are NOT on this timesheet yet.` });
+  openClock.forEach(c => notes.push({ level: 'action', text: `Still clocked in from ${fd(c.clockInDate)} ${srTime(c.clockInTime)}${c.location ? ' at ' + c.location : ''} — never clocked out.` }));
+  rows.filter(r => r.rejected).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — ${srHrs(r.enteredHours)} hr shift at ${r.location} was rejected and is not paid${r.rejectedReason ? ': ' + r.rejectedReason : ''}${r.rejectedBy ? ' (' + r.rejectedBy + ')' : ''}.` }));
+  counted.filter(r => r.missingMeal).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — ${srHrs(r.hours)} hr clocked shift with no meal break recorded.` }));
+  counted.filter(r => r.source === 'clock_in_override').forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — clocked in or out by a supervisor on the employee’s behalf.` }));
+  counted.filter(r => r.approvedEx).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — more than 24 hours entered for one day, approved as an exception.` }));
+  counted.filter(r => r.corrected).forEach(r => notes.push({ level: 'info', text: `${fd(r.date)} — shift was edited after it was first entered.` }));
+  counted.filter(r => r.hours >= 16).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — single shift of ${srHrs(r.hours)} hours.` }));
+  if (best.len >= 7) notes.push({ level: 'check', text: `Worked ${best.len} days in a row (${fd(best.start)} – ${fd(best.end)}).` });
+  // Overtime cross-check. The system pays overtime after PAY_CONFIG.otThreshold
+  // hours in the whole pay period. This simply shows, side by side, what a
+  // plain 40-hours-per-workweek count would give, so the difference is never
+  // hidden. It changes nothing about what is paid.
+  const fullWeeks = weeks.filter(w => !w.partial);
+  const over40 = fullWeeks.reduce((a, w) => a + w.over40, 0);
+  const weeklyRule = PAY_CONFIG.periodDays === 7 && PAY_CONFIG.otThreshold === 40;
+  if (payType === 'hourly' && !weeklyRule && over40 > totals.ot + 0.005) {
+    const detail = fullWeeks.filter(w => w.over40 > 0).map(w => `${srShortDate(w.start)}–${srShortDate(w.end)}: ${srHrs(w.hours)} hrs`).join('; ');
+    notes.push({ level: 'check', text: `Overtime cross-check: ${srHrs(over40)} hrs were worked beyond 40 in a workweek (${detail}), but ${srHrs(totals.ot)} overtime hrs are paid under the current rule of ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period.` });
+  }
+  leave.filter(l => l.status === 'pending').forEach(l => notes.push({ level: 'action', text: `Time-off request still pending: ${l.type}, ${fd(l.startDate)}${l.endDate !== l.startDate ? ' – ' + fd(l.endDate) : ''}, ${srHrs(l.hours)} hrs.` }));
+  if (st.status !== 'Active' && totals.hours > 0) notes.push({ level: 'action', text: 'Staff member is marked Inactive but has hours in this range — payroll holds these until approved on the Approvals page.' });
+  if (payType === 'salary') notes.push({ level: 'info', text: 'Paid a fixed salary each pay period — pay is not calculated from the hours listed here.' });
+  if (payType === 'external') notes.push({ level: 'info', text: 'Paid through the external payroll program — pay is not calculated from the hours listed here.' });
+  if (!rows.length) notes.push({ level: 'info', text: 'No hours recorded in this date range.' });
+
+  return { staff: st, from: fromISO, to: toISO, payType, rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, notes };
+}
+
+// Is this date range already locked by a confirmed payroll run? A printed
+// timesheet should say plainly whether it is the final record or a draft.
+function srRangeStatus(fromISO, toISO) {
+  const recs = [];
+  let idx = periodIndexForDate(fromISO), all = true, guard = 0;
+  const lastIdx = periodIndexForDate(toISO);
+  for (; idx <= lastIdx && guard < 80; idx++, guard++) {
+    const rec = findPayrollRecord(periodBoundsByIndex(idx).start.toISOString().split('T')[0]);
+    if (rec && rec.confirmed) recs.push(rec); else all = false;
+  }
+  if (all && recs.length) {
+    const r = recs[recs.length - 1];
+    return { final: true, short: 'FINAL', text: `Final — payroll confirmed${r.confirmedAt ? ' ' + r.confirmedAt : ''}${r.confirmedBy ? ' by ' + r.confirmedBy : ''}` };
+  }
+  if (toISO >= todayLocalISO()) return { final: false, short: 'DRAFT', text: 'Draft — this period is still open, hours can still change' };
+  return { final: false, short: 'DRAFT', text: 'Draft — payroll for this period has not been confirmed yet' };
+}
+
+// Every pay period worth offering: the last year, plus any older period that has shifts.
+function srPeriodList() {
+  const map = {};
+  getPeriodsAroundToday(26, 1).forEach(p => { map[p.startStr] = { start: p.startStr, end: p.endStr, label: p.label, isCurrent: p.isCurrent }; });
+  SHIFTS.forEach(s => {
+    const { start, end } = getPeriodForDate(s.date);
+    const k = start.toISOString().split('T')[0];
+    if (!map[k]) map[k] = { start: k, end: end.toISOString().split('T')[0], label: fmtPeriod(start, end), isCurrent: false };
+  });
+  return Object.values(map).sort((a, b) => b.start.localeCompare(a.start));
+}
+
+function srOpenFromTimesheet() {
+  const label = document.getElementById('ts-filter-period') ? document.getElementById('ts-filter-period').value : '';
+  const p = label ? srPeriodList().find(x => x.label === label) : null;
+  _srPrefill = {
+    periodStart: p ? p.start : null,
+    staffId: document.getElementById('ts-filter-staff') ? document.getElementById('ts-filter-staff').value : '',
+    house: document.getElementById('ts-filter-house') ? document.getElementById('ts-filter-house').value : ''
+  };
+  nav('staffreport', document.querySelector('[data-page="staffreport"]'));
+}
+
+function renderStaffReportPage() {
+  const perSel = document.getElementById('sr-period');
+  const houseSel = document.getElementById('sr-house');
+  const pre = _srPrefill; _srPrefill = null;
+  const periods = srPeriodList();
+  const cur = periods.find(p => p.isCurrent);
+  const prevPeriod = pre && pre.periodStart ? pre.periodStart : (perSel.value || (cur ? cur.start : (periods[0] ? periods[0].start : 'custom')));
+  perSel.innerHTML = periods.map(p => {
+    const n = SHIFTS.filter(s => s.date >= p.start && s.date <= p.end).length;
+    return `<option value="${esc(p.start)}" data-end="${esc(p.end)}" data-label="${esc(p.label)}">${esc(p.label)}${p.isCurrent ? ' ← CURRENT' : ''}${n ? ' (' + n + ')' : ''}</option>`;
+  }).join('') + '<option value="custom">Custom date range…</option>';
+  perSel.value = [...perSel.options].some(o => o.value === prevPeriod) ? prevPeriod : 'custom';
+
+  const prevHouse = pre ? (pre.house || '') : houseSel.value;
+  houseSel.innerHTML = '<option value="">All houses</option>' + LOCATIONS.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('');
+  houseSel.value = [...houseSel.options].some(o => o.value === prevHouse) ? prevHouse : '';
+
+  if (pre) document.getElementById('sr-staff').setAttribute('data-want', pre.staffId || '');
+
+  const payCb = document.getElementById('sr-opt-pay');
+  const canPay = srCanSeePay();
+  document.getElementById('sr-opt-pay-wrap').style.display = canPay ? '' : 'none';
+  if (!canPay) payCb.checked = false;
+
+  srGenerate();
+}
+
+function srGetRange() {
+  const perSel = document.getElementById('sr-period');
+  const custom = perSel.value === 'custom';
+  document.getElementById('sr-custom-wrap').style.display = custom ? '' : 'none';
+  if (!custom) {
+    const opt = perSel.options[perSel.selectedIndex];
+    return { from: perSel.value, to: opt.getAttribute('data-end'), label: opt.getAttribute('data-label'), isPeriod: true };
+  }
+  const fromEl = document.getElementById('sr-from'), toEl = document.getElementById('sr-to');
+  if (!fromEl.value || !toEl.value) {
+    const cp = getCurrentPeriodDates();
+    if (!fromEl.value) fromEl.value = cp.start;
+    if (!toEl.value) toEl.value = cp.end;
+  }
+  if (toEl.value < fromEl.value) return { error: 'The "To" date is before the "From" date.' };
+  if (calendarDayDiff(fromEl.value, toEl.value) > 371) return { error: 'Please keep a custom range to one year or less.' };
+  return { from: fromEl.value, to: toEl.value, label: `${formatDateDisplay(fromEl.value)} – ${formatDateDisplay(toEl.value)}`, isPeriod: false };
+}
+
+function srGenerate() {
+  const out = document.getElementById('sr-output');
+  const overview = document.getElementById('sr-overview');
+  const range = srGetRange();
+  if (range.error) {
+    _srLast = null; overview.innerHTML = '';
+    out.innerHTML = `<div class="sr-empty">${esc(range.error)}</div>`;
+    return;
+  }
+  const house = document.getElementById('sr-house').value;
+  const includeEmpty = document.getElementById('sr-opt-empty').checked;
+  const opts = {
+    showPay: srCanSeePay() && document.getElementById('sr-opt-pay').checked,
+    showNotes: document.getElementById('sr-opt-notes').checked,
+    showSign: document.getElementById('sr-opt-sign').checked
+  };
+  const all = computeShiftsWithOT();
+  const inRange = all.filter(s => s.date >= range.from && s.date <= range.to);
+
+  // Who can be picked: with a house chosen, anyone assigned there OR who worked there in this range.
+  let pool = STAFF.slice();
+  if (house) {
+    const workedThere = new Set(inRange.filter(s => s.location === house).map(s => s.staff));
+    pool = pool.filter(s => s.loc === house || workedThere.has(s.id));
+  }
+  pool.sort((a, b) => (a.last + a.first).localeCompare(b.last + b.first));
+  const staffSel = document.getElementById('sr-staff');
+  const want = staffSel.hasAttribute('data-want') ? staffSel.getAttribute('data-want') : staffSel.value;
+  staffSel.removeAttribute('data-want');
+  staffSel.innerHTML = `<option value="">All staff${house ? ' for this house' : ''} with hours</option>` +
+    pool.map(s => `<option value="${esc(s.id)}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})${s.status !== 'Active' ? ' — Inactive' : ''}</option>`).join('');
+  staffSel.value = pool.some(s => s.id === want) ? want : '';
+  const one = staffSel.value;
+  document.getElementById('sr-opt-empty-wrap').style.display = one ? 'none' : '';
+
+  const hasRows = new Set(inRange.map(s => s.staff));
+  let chosen;
+  if (one) chosen = pool.filter(s => s.id === one);
+  else chosen = pool.filter(s => hasRows.has(s.id) || (includeEmpty && s.status === 'Active'));
+
+  const reports = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all));
+  const meta = {
+    range, house, status: srRangeStatus(range.from, range.to),
+    generatedBy: _currentUser ? (_currentUser.name || _currentUser.username || '') : '',
+    generatedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' })
+  };
+  _srLast = { reports, opts, meta };
+
+  if (!reports.length) {
+    overview.innerHTML = '';
+    out.innerHTML = `<div class="sr-empty">No hours recorded for ${esc(range.label)}${house ? ' at ' + esc(house) : ''}.<br><span style="font-size:12px">Pick a different pay period, or tick “Include staff with no hours”.</span></div>`;
+    return;
+  }
+  overview.innerHTML = reports.length > 1 ? srOverviewHtml(reports, opts, meta) : '';
+  out.innerHTML = reports.map((r, i) => srSheetHtml(r, opts, meta, i + 1, reports.length)).join('');
+}
+
+// On-screen only: a one-line-per-person roll-up of the whole batch, so the
+// people who need attention are obvious before anything is printed.
+function srOverviewHtml(reports, opts, meta) {
+  const t = reports.reduce((a, r) => ({ hours: a.hours + r.totals.hours, reg: a.reg + r.totals.reg, ot: a.ot + r.totals.ot, gross: a.gross + (r.payType === 'hourly' ? r.totals.gross : 0), leave: a.leave + r.leaveHours }), { hours: 0, reg: 0, ot: 0, gross: 0, leave: 0 });
+  return `<div class="card" style="margin-bottom:20px">
+    <div class="card-title">${reports.length} timesheets · ${esc(meta.range.label)}${meta.house ? ' · ' + esc(meta.house) : ''}</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Staff</th><th>Home house</th><th>Days</th><th>Hours</th><th>Regular</th><th>Overtime</th><th>Time off</th>${opts.showPay ? '<th>Gross pay</th>' : ''}<th>To review</th><th></th></tr></thead>
+      <tbody>${reports.map(r => {
+        const act = r.notes.filter(n => n.level === 'action').length, chk = r.notes.filter(n => n.level === 'check').length;
+        return `<tr>
+          <td style="color:var(--text);font-weight:500">${esc(r.staff.last)}, ${esc(r.staff.first)}<div style="font-size:10px;color:var(--text3);font-weight:400">${esc(r.staff.id)}</div></td>
+          <td>${esc(r.staff.loc || '—')}</td>
+          <td class="mono">${r.totals.days}</td>
+          <td class="mono" style="color:var(--accent2);font-weight:600">${srHrs(r.totals.hours)}</td>
+          <td class="mono">${srHrs(r.totals.reg)}</td>
+          <td class="mono" style="color:${r.totals.ot > 0 ? 'var(--warn)' : 'var(--text3)'}">${srHrs(r.totals.ot)}</td>
+          <td class="mono" style="color:${r.leaveHours > 0 ? 'var(--text2)' : 'var(--text3)'}">${srHrs(r.leaveHours)}</td>
+          ${opts.showPay ? `<td class="mono">${r.payType === 'hourly' ? $fmt(r.totals.gross) : '—'}</td>` : ''}
+          <td>${act ? `<span class="badge badge-danger" style="font-size:10px">${act} to settle</span> ` : ''}${chk ? `<span class="badge badge-warn" style="font-size:10px">${chk} to check</span>` : ''}${!act && !chk ? '<span style="color:var(--text3);font-size:12px">Nothing flagged</span>' : ''}</td>
+          <td><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" data-target="sr-sheet-${esc(r.staff.id)}" onclick="document.getElementById(this.dataset.target).scrollIntoView({behavior:'smooth',block:'start'})">View</button></td>
+        </tr>`;
+      }).join('')}
+      <tr style="background:var(--surface2);font-weight:600">
+        <td colspan="3" style="color:var(--text)">TOTAL</td>
+        <td class="mono" style="color:var(--accent2)">${srHrs(t.hours)}</td><td class="mono">${srHrs(t.reg)}</td><td class="mono" style="color:var(--warn)">${srHrs(t.ot)}</td><td class="mono">${srHrs(t.leave)}</td>
+        ${opts.showPay ? `<td class="mono">${$fmt(t.gross)}</td>` : ''}<td colspan="2"></td>
+      </tr></tbody>
+    </table></div>
+  </div>`;
+}
+
+function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : 'Manual'; }
+function srLeaveLabel(t) { return t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : 'Time off'; }
+
+function srSheetHtml(r, opts, meta, n, total) {
+  const st = r.staff, T = r.totals;
+  const showPay = opts.showPay && r.payType === 'hourly';
+  const cols = showPay ? 10 : 9;
+  const rateText = r.payType === 'salary' ? 'Salary' : r.payType === 'external' ? 'External payroll'
+    : !r.rates.length ? (st.rate > 0 ? $fmt(st.rate) + '/hr' : 'House rate')
+    : r.rates.length === 1 ? $fmt(r.rates[0]) + '/hr' : $fmt(r.rates[0]) + ' – ' + $fmt(r.rates[r.rates.length - 1]) + '/hr';
+
+  let body = '';
+  r.weeks.forEach((w, wi) => {
+    body += `<tr class="sr-wk"><td colspan="${cols}">Week ${wi + 1} · ${srDayName(w.start)} ${esc(formatDateDisplay(w.start))} – ${srDayName(w.end)} ${esc(formatDateDisplay(w.end))}${w.partial ? ' <span class="sr-dim">(only part of this week is inside the report range)</span>' : ''}</td></tr>`;
+    if (!w.rows.length) body += `<tr><td colspan="${cols}" class="sr-dim" style="font-style:italic">No shifts this week</td></tr>`;
+    w.rows.forEach(x => {
+      body += `<tr class="${x.rejected ? 'sr-rej' : ''}">
+        <td class="sr-nw"><b>${x.day}</b> ${esc(formatDateDisplay(x.date))}</td>
+        <td class="sr-nw">${esc(x.location)}${x.location && st.loc && x.location !== st.loc ? ' <span class="sr-dim" title="Not this staff member’s home house">•</span>' : ''}</td>
+        <td class="sr-nw">${esc(srTime(x.start))}</td>
+        <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
+        <td class="sr-num">${x.mealMin === null ? '<span class="sr-dim">—</span>' : x.mealMin + 'm'}</td>
+        <td class="sr-num"><b>${x.rejected ? '<s>' + srHrs(x.enteredHours) + '</s>' : srHrs(x.hours)}</b></td>
+        <td class="sr-num">${x.rejected ? '' : srHrs(x.reg)}</td>
+        <td class="sr-num">${x.rejected ? '' : (x.ot > 0 ? '<b>' + srHrs(x.ot) + '</b>' : '<span class="sr-dim">—</span>')}</td>
+        ${showPay ? `<td class="sr-num">${x.rejected ? '' : $fmt(x.pay)}</td>` : ''}
+        <td class="sr-src">${srSourceLabel(x.source)}${x.flags.length ? ' · <span class="sr-flag">' + esc(x.flags.join('; ')) + '</span>' : ''}</td>
+      </tr>`;
+    });
+    body += `<tr class="sr-sub">
+      <td colspan="5">Week ${wi + 1} total · ${w.days} day${w.days !== 1 ? 's' : ''} worked</td>
+      <td class="sr-num">${srHrs(w.hours)}</td><td class="sr-num">${srHrs(w.reg)}</td><td class="sr-num">${srHrs(w.ot)}</td>
+      ${showPay ? `<td class="sr-num">${$fmt(w.pay)}</td>` : ''}<td></td>
+    </tr>`;
+  });
+  body += `<tr class="sr-tot">
+    <td colspan="5">TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : 'DATE RANGE'}</td>
+    <td class="sr-num">${srHrs(T.hours)}</td><td class="sr-num">${srHrs(T.reg)}</td><td class="sr-num">${srHrs(T.ot)}</td>
+    ${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}<td></td>
+  </tr>`;
+
+  const tile = (label, val, sub) => `<div class="sr-tile"><div class="sr-tile-l">${label}</div><div class="sr-tile-v">${val}</div>${sub ? `<div class="sr-tile-s">${sub}</div>` : ''}</div>`;
+  const lvlLabel = { action: 'Settle first', check: 'Check', info: 'Note' };
+  const fromTo = `${esc(formatDateDisplay(r.from))} – ${esc(formatDateDisplay(r.to))}`;
+
+  return `<section class="sr-sheet" id="sr-sheet-${esc(st.id)}">
+    <div class="sr-head">
+      <div>
+        <div class="sr-org">American Safety Options, Inc.</div>
+        <div class="sr-doc">Staff Timesheet Report</div>
+      </div>
+      <div class="sr-head-r">
+        <div class="sr-period">${meta.range.isPeriod ? 'Pay period ' : ''}${fromTo}</div>
+        <div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div>
+      </div>
+    </div>
+
+    <div class="sr-emp">
+      <div class="sr-emp-name">${esc(st.first)} ${esc(st.last)}</div>
+      <div class="sr-emp-grid">
+        <div><span>Staff ID</span>${esc(st.id)}</div>
+        <div><span>Position</span>${esc(st.title || '—')}</div>
+        <div><span>Employment</span>${esc(st.type || '—')}</div>
+        <div><span>Home house</span>${esc(st.loc || '—')}</div>
+        <div><span>Status</span>${esc(st.status || '—')}</div>
+        ${opts.showPay ? `<div><span>Pay rate</span>${esc(rateText)}</div>` : ''}
+      </div>
+    </div>
+
+    <div class="sr-tiles">
+      ${tile('Hours worked', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''} · ${T.days} day${T.days !== 1 ? 's' : ''}`)}
+      ${tile('Regular hours', srHrs(T.reg), '')}
+      ${tile('Overtime hours', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`)}
+      ${tile('Approved time off', srHrs(r.leaveHours), 'hours')}
+      ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
+    </div>
+
+    <table class="sr-table">
+      <thead><tr><th>Date</th><th>House worked</th><th>In</th><th>Out</th><th class="sr-num">Meal</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}<th>Entry / notes</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="sr-key">Meal = unpaid meal break recorded on a clocked shift, already taken out of Hours (— means the shift was typed in, so no break record exists). +1 = shift ended the next day. • = worked away from home house. Entry: Clock = employee clocked in and out; Manual = typed in by the office; Override = a supervisor clocked in or out for the employee.</div>
+
+    <div class="sr-two">
+      <div>
+        <div class="sr-h">Hours by house</div>
+        ${r.houses.length ? `<table class="sr-table sr-mini">
+          <thead><tr><th>House</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
+          <tbody>${r.houses.map(h => `<tr><td>${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ''}</td><td class="sr-num">${h.shifts}</td><td class="sr-num">${srHrs(h.hours)}</td>${showPay ? `<td class="sr-num">${h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies'}</td><td class="sr-num">${$fmt(h.pay)}</td>` : ''}</tr>`).join('')}</tbody>
+        </table>` : '<div class="sr-dim">No hours worked.</div>'}
+      </div>
+      <div>
+        <div class="sr-h">Time off in this range</div>
+        ${r.leave.length ? `<table class="sr-table sr-mini">
+          <thead><tr><th>Type</th><th>Dates</th><th class="sr-num">Hours</th><th>Status</th></tr></thead>
+          <tbody>${r.leave.map(l => `<tr><td>${esc(srLeaveLabel(l.type))}</td><td class="sr-nw">${esc(formatDateDisplay(l.startDate))}${l.endDate !== l.startDate ? ' – ' + esc(formatDateDisplay(l.endDate)) : ''}</td><td class="sr-num">${srHrs(l.hours)}</td><td>${l.status === 'approved' ? 'Approved' : 'Pending'}</td></tr>`).join('')}</tbody>
+        </table>` : '<div class="sr-dim">None requested.</div>'}
+        <div class="sr-dim" style="margin-top:4px">PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs</div>
+      </div>
+    </div>
+
+    ${opts.showNotes ? `<div class="sr-notes">
+      <div class="sr-h">Items to review before signing</div>
+      ${r.notes.length ? `<ul>${r.notes.map(nt => `<li class="sr-n-${nt.level}"><span class="sr-lvl">${lvlLabel[nt.level]}</span>${esc(nt.text)}</li>`).join('')}</ul>` : '<div class="sr-dim">Nothing flagged — no missed meal breaks, overrides, rejected shifts or pending entries in this range.</div>'}
+    </div>` : ''}
+
+    <div class="sr-end">
+    ${opts.showSign ? `<div class="sr-sign">
+      <div class="sr-sign-row">
+        <div><div class="sr-sign-t">Employee</div><div class="sr-sign-p">I have reviewed this timesheet. It is a true and complete record of all the time I worked in this period, and I have reported anything that is missing or wrong.</div></div>
+        <div class="sr-line"><div><i></i>Signature</div><div><i></i>Printed name</div><div class="sr-line-d"><i></i>Date</div></div>
+      </div>
+      <div class="sr-sign-row">
+        <div><div class="sr-sign-t">Program Manager / Supervisor</div><div class="sr-sign-p">I have reviewed these hours against the schedule and the items listed above, and I approve this timesheet for payroll.</div></div>
+        <div class="sr-line"><div><i></i>Signature</div><div><i></i>Printed name</div><div class="sr-line-d"><i></i>Date</div></div>
+      </div>
+    </div>` : ''}
+
+    <div class="sr-foot">
+      <span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span>
+      <span>Confidential personnel and payroll record · ${n} of ${total}</span>
+    </div>
+    </div>
+  </section>`;
+}
+
+// ── Print ──
+// Printing is done by the browser straight from what is on screen, so the
+// paper always matches the preview. While printing, everything except the
+// report sheets is hidden (see the body.sr-printing rules in the stylesheet).
+function srPrint() {
+  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to print yet — pick a pay period that has hours', 'warn'); return; }
+  window.print();
+}
+window.addEventListener('beforeprint', () => {
+  const pg = document.getElementById('page-staffreport');
+  if (pg && pg.classList.contains('active')) document.body.classList.add('sr-printing');
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('sr-printing'));
+
+function srFileStem() {
+  const m = _srLast.meta, one = _srLast.reports.length === 1 ? _srLast.reports[0].staff : null;
+  const who = one ? `${one.last}_${one.first}` : (m.house ? m.house : 'All_Staff');
+  return `ASO_Timesheet_${who}_${m.range.from}_to_${m.range.to}`.replace(/[^a-z0-9_\-]/gi, '_');
+}
+
+// ── CSV ──
+function srExportCSV() {
+  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to export yet — pick a pay period that has hours', 'warn'); return; }
+  const { reports, opts, meta } = _srLast;
+  const q = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
+  const line = arr => arr.map(q).join(',') + '\n';
+  let csv = line(['American Safety Options, Inc. — Staff Timesheet Report']);
+  csv += line(['Range', `${formatDateDisplay(meta.range.from)} - ${formatDateDisplay(meta.range.to)}`]);
+  csv += line(['Status', meta.status.text]);
+  csv += line(['Generated', meta.generatedAt + (meta.generatedBy ? ' by ' + meta.generatedBy : '')]);
+  csv += line(['Overtime rule', `After ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day pay period`]) + '\n';
+
+  csv += line(['SUMMARY']);
+  csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'Status', 'Days worked', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs', 'Approved time off hrs'].concat(opts.showPay ? ['Regular pay', 'OT pay', 'Gross pay'] : []).concat(['Items to settle', 'Items to check']));
+  reports.forEach(r => {
+    const pay = opts.showPay && r.payType === 'hourly';
+    csv += line([r.staff.id, r.staff.last, r.staff.first, r.staff.loc || '', r.staff.status, r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
+      .concat(opts.showPay ? (pay ? [r.totals.regPay.toFixed(2), r.totals.otPay.toFixed(2), r.totals.gross.toFixed(2)] : ['', '', '']) : [])
+      .concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]));
+  });
+
+  csv += '\n' + line(['SHIFT DETAIL']);
+  csv += line(['Staff ID', 'Last name', 'First name', 'Date', 'Day', 'Workweek starting', 'House worked', 'In', 'Out', 'Meal break min', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
+  reports.forEach(r => {
+    const pay = opts.showPay && r.payType === 'hourly';
+    r.rows.forEach(x => {
+      csv += line([r.staff.id, r.staff.last, r.staff.first, formatDateDisplay(x.date), x.day, formatDateDisplay(x.weekStart), x.location, srTime(x.start), srTime(x.end) + (x.overnight ? ' (+1 day)' : ''), x.mealMin === null ? '' : x.mealMin, srHrs(x.rejected ? x.enteredHours : x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : srHrs(x.ot)]
+        .concat(opts.showPay ? (pay && !x.rejected ? [Number(x.rate).toFixed(2), x.pay.toFixed(2)] : ['', '']) : [])
+        .concat([srSourceLabel(x.source), x.rejected ? 'No - rejected' : 'Yes', x.flags.join('; ')]));
+    });
+  });
+
+  if (opts.showNotes) {
+    csv += '\n' + line(['ITEMS TO REVIEW']);
+    csv += line(['Staff ID', 'Last name', 'First name', 'Level', 'Item']);
+    reports.forEach(r => r.notes.forEach(nt => { csv += line([r.staff.id, r.staff.last, r.staff.first, nt.level === 'action' ? 'Settle first' : nt.level === 'check' ? 'Check' : 'Note', nt.text]); }));
+  }
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = srFileStem() + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported ✅');
+}
+
+// ── PDF ──
+// A real PDF drawn line by line (not a screenshot), one staff member per
+// page, continuing onto extra pages when a timesheet is long.
+function srDownloadPDF() {
+  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to export yet — pick a pay period that has hours', 'warn'); return; }
+  if (!window.jspdf) { showToast('The PDF tool did not load — use Print and choose “Save as PDF” instead', 'danger'); return; }
+  const { reports, opts, meta } = _srLast;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40, R = W - M, UW = W - M * 2, BOTTOM = H - 46;
+  const navy = [22, 40, 60], blue = [11, 95, 168], gray = [100, 113, 130], rule = [205, 213, 224], shade = [238, 243, 249], red = [170, 45, 40];
+  // The built-in PDF fonts only cover basic Western characters.
+  const tx = s => String(s == null ? '' : s).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/•/g, '*').replace(/·/g, '|').replace(/[^\x00-\xFF]/g, '');
+  const fit = (s, w) => { s = tx(s); if (doc.getTextWidth(s) <= w) return s; while (s.length > 1 && doc.getTextWidth(s + '...') > w) s = s.slice(0, -1); return s + '...'; };
+  const font = (style, size, color) => { doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...(color || navy)); };
+  const pageOwner = [];
+  let y = 0;
+
+  reports.forEach((r, idx) => {
+    const st = r.staff, T = r.totals;
+    const showPay = opts.showPay && r.payType === 'hourly';
+    const name = `${st.first} ${st.last}`;
+    const rangeTxt = `${formatDateDisplay(r.from)} - ${formatDateDisplay(r.to)}`;
+    if (idx > 0) doc.addPage();
+    pageOwner.push(idx);
+
+    const cols = [
+      { h: 'Date', w: 66 }, { h: 'House worked', w: showPay ? 88 : 104 }, { h: 'In', w: 44 }, { h: 'Out', w: 54 },
+      { h: 'Meal', w: 28, num: true }, { h: 'Hours', w: 36, num: true }, { h: 'Regular', w: 40, num: true }, { h: 'OT', w: 32, num: true }
+    ].concat(showPay ? [{ h: 'Pay', w: 50, num: true }] : []);
+    cols.push({ h: 'Entry / notes', w: UW - cols.reduce((a, c) => a + c.w, 0), pad: true });
+    let cx = M; cols.forEach(c => { c.x = cx; cx += c.w; });
+    const cell = (c, text, yy) => {
+      if (c.num) doc.text(tx(text), c.x + c.w - 4, yy, { align: 'right' });
+      else doc.text(fit(text, c.w - (c.pad ? 12 : 6)), c.x + (c.pad ? 8 : 3), yy);
+    };
+    const tableHead = () => {
+      doc.setFillColor(...navy); doc.rect(M, y, UW, 15, 'F');
+      font('bold', 7.5, [255, 255, 255]);
+      cols.forEach(c => cell(c, c.h, y + 10.5));
+      y += 15;
+    };
+    const contHead = () => {
+      y = 44;
+      font('bold', 10, navy); doc.text(tx(`${name} (${st.id})`), M, y);
+      font('normal', 8, gray); doc.text(tx(`Staff Timesheet Report | ${rangeTxt} | continued`), R, y, { align: 'right' });
+      y += 8; doc.setDrawColor(...blue); doc.setLineWidth(0.8); doc.line(M, y, R, y); y += 14;
+    };
+    const ensure = (h, inTable) => {
+      if (y + h <= BOTTOM) return;
+      doc.addPage(); pageOwner.push(idx); contHead();
+      if (inTable) tableHead();
+    };
+    const heading = t => { ensure(30); font('bold', 8.5, blue); doc.text(tx(t).toUpperCase(), M, y); y += 5; doc.setDrawColor(...rule); doc.setLineWidth(0.6); doc.line(M, y, R, y); y += 11; };
+
+    // ── Letterhead ──
+    y = 50;
+    font('bold', 15, blue); doc.text('American Safety Options, Inc.', M, y);
+    font('bold', 11, navy); doc.text('Staff Timesheet Report', M, y + 16);
+    font('bold', 10, navy); doc.text(tx((meta.range.isPeriod ? 'Pay period ' : '') + rangeTxt), R, y, { align: 'right' });
+    font('bold', 8, meta.status.final ? [20, 110, 70] : red); doc.text(fit(meta.status.text, 300), R, y + 14, { align: 'right' });
+    y += 26; doc.setDrawColor(...blue); doc.setLineWidth(1.5); doc.line(M, y, R, y); y += 20;
+
+    // ── Employee ──
+    font('bold', 14, navy); doc.text(tx(name), M, y); y += 8;
+    const fields = [['STAFF ID', st.id], ['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
+    if (opts.showPay) fields.push(['PAY RATE', r.payType === 'salary' ? 'Salary' : r.payType === 'external' ? 'External payroll' : !r.rates.length ? (st.rate > 0 ? $fmt(st.rate) + '/hr' : 'House rate') : r.rates.length === 1 ? $fmt(r.rates[0]) + '/hr' : $fmt(r.rates[0]) + ' - ' + $fmt(r.rates[r.rates.length - 1]) + '/hr']);
+    const fw = UW / fields.length;
+    fields.forEach((f, i) => {
+      font('normal', 6.5, gray); doc.text(f[0], M + i * fw, y + 9);
+      font('bold', 9, navy); doc.text(fit(f[1], fw - 6), M + i * fw, y + 21);
+    });
+    y += 34;
+
+    // ── Summary tiles ──
+    const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+    if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
+    const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
+    tiles.forEach((t, i) => {
+      const bx = M + i * (tw + gap);
+      doc.setFillColor(...shade); doc.roundedRect(bx, y, tw, 40, 3, 3, 'F');
+      font('normal', 6.5, gray); doc.text(t[0], bx + 8, y + 12);
+      font('bold', 14, navy); doc.text(tx(t[1]), bx + 8, y + 26);
+      font('normal', 6.5, gray); if (t[2]) doc.text(fit(t[2], tw - 12), bx + 8, y + 35);
+    });
+    y += 50;
+
+    // ── Shift detail ──
+    tableHead();
+    const RH = 12.5;
+    r.weeks.forEach((w, wi) => {
+      ensure(RH * 2, true);
+      doc.setFillColor(...shade); doc.rect(M, y, UW, RH, 'F');
+      font('bold', 7.5, blue);
+      doc.text(tx(`Week ${wi + 1} | ${srDayName(w.start)} ${formatDateDisplay(w.start)} - ${srDayName(w.end)} ${formatDateDisplay(w.end)}${w.partial ? '  (only part of this week is inside the report range)' : ''}`), M + 3, y + 9);
+      y += RH;
+      if (!w.rows.length) { ensure(RH, true); font('italic', 7.5, gray); doc.text('No shifts this week', M + 3, y + 9); y += RH; }
+      w.rows.forEach(x => {
+        ensure(RH, true);
+        font('normal', 7.5, x.rejected ? gray : navy);
+        const vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.location && st.loc && x.location !== st.loc ? ' *' : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''),
+          x.mealMin === null ? '-' : x.mealMin + 'm', x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')];
+        if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
+        vals.push(srSourceLabel(x.source) + (x.flags.length ? ' | ' + x.flags.join('; ') : ''));
+        cols.forEach((c, i) => cell(c, vals[i], y + 9));
+        doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + RH, R, y + RH);
+        y += RH;
+      });
+      ensure(RH, true);
+      font('bold', 7.5, navy);
+      doc.text(tx(`Week ${wi + 1} total | ${w.days} day${w.days !== 1 ? 's' : ''} worked`), M + 3, y + 9);
+      const sub = { Hours: srHrs(w.hours), Regular: srHrs(w.reg), OT: srHrs(w.ot), Pay: $fmt(w.pay) };
+      cols.forEach(c => { if (sub[c.h] !== undefined) cell(c, sub[c.h], y + 9); });
+      doc.setDrawColor(...navy); doc.setLineWidth(0.6); doc.line(M, y + RH, R, y + RH);
+      y += RH + 3;
+    });
+    ensure(18, true);
+    doc.setFillColor(...navy); doc.rect(M, y, UW, 17, 'F');
+    font('bold', 8.5, [255, 255, 255]);
+    doc.text(`TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : 'DATE RANGE'}`, M + 3, y + 12);
+    const tot = { Hours: srHrs(T.hours), Regular: srHrs(T.reg), OT: srHrs(T.ot), Pay: $fmt(T.gross) };
+    cols.forEach(c => { if (tot[c.h] !== undefined) cell(c, tot[c.h], y + 12); });
+    y += 24;
+    font('normal', 6.3, gray);
+    doc.splitTextToSize('Meal = unpaid meal break recorded on a clocked shift, already taken out of Hours (- means the shift was typed in, so no break record exists). +1 = shift ended the next day. * = worked away from home house. (Hours in brackets) = rejected shift, not counted. Entry: Clock = employee clocked in and out; Manual = typed in by the office; Override = a supervisor clocked in or out for the employee.', UW)
+      .forEach(l => { ensure(8); doc.text(l, M, y); y += 8; });
+    y += 10;
+
+    // ── Hours by house ──
+    if (r.houses.length) {
+      heading('Hours by house');
+      r.houses.forEach(h => {
+        ensure(12); font('normal', 8, navy);
+        doc.text(fit(h.name + (h.home ? ' (home)' : ''), 190), M, y);
+        doc.text(`${h.shifts} shift${h.shifts !== 1 ? 's' : ''}`, M + 250, y, { align: 'right' });
+        doc.text(`${srHrs(h.hours)} hrs`, M + 330, y, { align: 'right' });
+        if (showPay) { doc.text(h.rates.length === 1 ? $fmt(h.rates[0]) + '/hr' : 'rate varies', M + 420, y, { align: 'right' }); doc.text($fmt(h.pay), R, y, { align: 'right' }); }
+        y += 11;
+      });
+      y += 6;
+    }
+
+    // ── Time off ──
+    heading('Time off in this range');
+    if (!r.leave.length) { font('normal', 8, gray); doc.text('None requested.', M, y); y += 12; }
+    r.leave.forEach(l => {
+      ensure(12); font('normal', 8, navy);
+      doc.text(tx(srLeaveLabel(l.type)), M, y);
+      doc.text(tx(formatDateDisplay(l.startDate) + (l.endDate !== l.startDate ? ' - ' + formatDateDisplay(l.endDate) : '')), M + 110, y);
+      doc.text(`${srHrs(l.hours)} hrs`, M + 330, y, { align: 'right' });
+      doc.text(l.status === 'approved' ? 'Approved' : 'Pending', M + 350, y);
+      y += 12;
+    });
+    ensure(12); font('normal', 7, gray); doc.text(`PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs`, M, y); y += 14;
+
+    // ── Items to review ──
+    if (opts.showNotes) {
+      heading('Items to review before signing');
+      if (!r.notes.length) { font('normal', 8, gray); doc.text('Nothing flagged - no missed meal breaks, overrides, rejected shifts or pending entries in this range.', M, y); y += 12; }
+      r.notes.forEach(nt => {
+        const lbl = nt.level === 'action' ? 'SETTLE FIRST' : nt.level === 'check' ? 'CHECK' : 'NOTE';
+        font('normal', 8, navy);
+        const lines = doc.splitTextToSize(tx(nt.text), UW - 70);
+        ensure(lines.length * 10 + 3);
+        font('bold', 6.5, nt.level === 'action' ? red : nt.level === 'check' ? [150, 95, 10] : gray); doc.text(lbl, M, y);
+        font('normal', 8, navy); lines.forEach((l, i) => doc.text(l, M + 70, y + i * 10));
+        y += lines.length * 10 + 3;
+      });
+      y += 8;
+    }
+
+    // ── Signatures ──
+    if (opts.showSign) {
+      const SH = 50;
+      ensure(SH * 2 + 8);
+      y += 4;
+      doc.setDrawColor(...rule); doc.setLineWidth(0.8); doc.roundedRect(M, y, UW, SH * 2, 3, 3, 'S');
+      doc.line(M, y + SH, R, y + SH);
+      [['EMPLOYEE', 'I have reviewed this timesheet. It is a true and complete record of all the time I worked in this period, and I have reported anything that is missing or wrong.'],
+       ['PROGRAM MANAGER / SUPERVISOR', 'I have reviewed these hours against the schedule and the items listed above, and I approve this timesheet for payroll.']].forEach((b, i) => {
+        const by = y + i * SH, lx = M + 232;
+        font('bold', 7.5, blue); doc.text(b[0], M + 10, by + 13);
+        font('normal', 6.5, gray); doc.splitTextToSize(b[1], 205).forEach((l, k) => doc.text(l, M + 10, by + 23 + k * 7.5));
+        doc.setDrawColor(...navy); doc.setLineWidth(0.6);
+        doc.line(lx, by + 34, lx + 118, by + 34); doc.line(lx + 130, by + 34, lx + 222, by + 34); doc.line(lx + 234, by + 34, R - 10, by + 34);
+        font('normal', 6.5, gray); doc.text('Signature', lx, by + 43); doc.text('Printed name', lx + 130, by + 43); doc.text('Date', lx + 234, by + 43);
+      });
+      y += SH * 2 + 8;
+    }
+  });
+
+  // ── Footers: "page x of y" restarts for each staff member ──
+  const perStaff = {}; pageOwner.forEach(o => { perStaff[o] = (perStaff[o] || 0) + 1; });
+  const seen = {};
+  pageOwner.forEach((o, p) => {
+    doc.setPage(p + 1);
+    seen[o] = (seen[o] || 0) + 1;
+    const st = reports[o].staff;
+    doc.setDrawColor(...rule); doc.setLineWidth(0.5); doc.line(M, H - 34, R, H - 34);
+    font('normal', 6.5, gray);
+    doc.text(tx(`Generated ${meta.generatedAt}${meta.generatedBy ? ' by ' + meta.generatedBy : ''} | ASO Time System | Confidential personnel and payroll record`), M, H - 23);
+    doc.text(tx(`${st.last}, ${st.first} - page ${seen[o]} of ${perStaff[o]}`), R, H - 23, { align: 'right' });
+  });
+
+  doc.save(srFileStem() + '.pdf');
+  showToast(`PDF downloaded — ${reports.length} timesheet${reports.length !== 1 ? 's' : ''} ✅`);
 }
 
 // ──────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ A prior session's handoff described a large amount of finished work (tax bracket
 
 ## How to verify anything in this project
 1. `npm install`
-2. `node test.js` — 41 automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
+2. `node test.js` — 117 automated HTTP-level checks at last count (the text below still says 41; the number has grown). Also run `node test-staff-report.js` (36 checks: pay-period dates across clock changes + the Staff Timesheet Report math). Original description: automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
 3. `node test-tax-brackets.js` — 7 checks of the federal withholding bracket math against hand-computed values, cross-checked against the actual 2026 IRS Publication 15-T numbers (fetched directly from irs.gov, not a third-party summary — see below for why that mattered). Extracts the real function straight from the live HTML file, so it can never silently drift from what ships.
 4. Whenever you edit `ASO_OT_SYSTEM_SQL.html`'s "DATABASE LAYER" script block, mirror the same edit in `patch_html.py`, then confirm with:
    ```
@@ -23,7 +23,33 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION — a full permission-system audit: inventoried every endpoint, every defined permission, checked each for real enforcement
+## THIS SESSION — Staff Timesheet Report (per-staff, signable), plus three real bugs found while building it
+
+### The new feature
+A new page, `page-staffreport` ("Staff Timesheet Report"), reachable from the Reports nav and from a new **Staff Report** button on the Timesheet Log (which hands over the current period/house/staff filters via `srOpenFromTimesheet()`). One sheet per staff member: employee block, summary tiles, every shift grouped by workweek with weekly subtotals, hours by house, time off, an "items to review before signing" list, and employee + Program Manager signature lines. Print (one staff per page, named `@page srpage`, isolated with `body.sr-printing`), a real jsPDF download (`srDownloadPDF`), and CSV (`srExportCSV`).
+
+- All of it is driven by ONE pure function, `srBuildStaffReport(st, fromISO, toISO, allComputed)`. Screen, PDF and CSV all read its output, so they cannot disagree. It does **not** redo pay math — hours/regular/OT/pay come from `computeShiftsWithOT()`.
+- Everything is prefixed `sr` (functions, CSS classes, element ids). None of it lives in the DATABASE LAYER block, so `patch_html.py` needed no change (sync check re-run: identical).
+- Access: `PAGE_ROLES.staffreport` = admin/supervisor/viewer; custom roles need `reports_view`. Pay amounts are gated by `srCanSeePay()`, which is the first place `staff_view_wage` is actually enforced for custom roles (it was another defined-but-unused permission; it is still not enforced on the Timesheet Log or Report Builder).
+- The "Overtime cross-check" note compares hours beyond 40 per workweek with the OT the engine pays under `PAY_CONFIG.otThreshold` per period. Display only. Whether 80-per-14-days is the right rule for ASO is a legal question that was flagged to the owner, not decided in code.
+- Verified in a real browser against a seeded database (DOM text extracted, print rendered to PDF, jsPDF output rendered to images, CSV opened), and by `test-staff-report.js` (36 checks).
+
+### Bug 1 — pay period boundaries were computed in milliseconds (clock-change bug)
+`getPeriodForDate()` and four siblings did `anchor + N * periodDays * 86400000`. A day is not always 24h. With a summer anchor, every winter period's Date objects sat at 11 PM the night before, so `fmtPeriod()` (local getters) labelled periods one day early from the Oct 24 – Nov 6, 2026 period onward. With a winter anchor it was worse: `Math.floor` on a diff that is one hour short put the FIRST day of every summer period into the PREVIOUS period, changing which hours count toward OT. Fixed with three shared helpers — `calendarDayDiff`, `periodIndexForDate`, `periodBoundsByIndex` — and `getPeriodForDate`, `getPeriodDatesWithOffset`, `autoAdvancePeriod`, `updatePeriodPreview`, `getPeriodsAroundToday` now all go through them. The payroll week-1/week-2 split and the "days left" counters got the same treatment. Proven with `TZ=America/New_York` for both a May and a January anchor (10 checks in `test-staff-report.js`). **Any new period math must use these helpers, never `* 86400000`.**
+
+### Bug 2 — "Print Timesheet" printed every page of the app
+The print stylesheet had `.page { display:block !important; }`, which un-hid all 19 pages (23 sheets of paper in the test database). Now `.page.active`. Confirmed by rendering the print output: 2 pages, Timesheet Log only.
+
+### Bug 3 — a fresh database could never be logged into
+Commit 73734db moved the seed admin password to `SEED_ADMIN_PASSWORD` and bcrypt-hashes it at startup — but `saveDB()` then hashed that hash again for any "new" user row, so the stored value never matched. Existing databases were unaffected; a brand-new one was locked out, and `test.js` had been crashing at its third check ever since. `saveDB()` now stores an already-bcrypt value as-is, and `test.js` passes `SEED_ADMIN_PASSWORD` to its scratch server. Back to 117 passed.
+
+### Not done / worth doing next
+- The printed Timesheet Log still includes the Add Shift form card. Harmless, but it wastes half a page.
+- `staff_view_wage` should be enforced on the Timesheet Log, Report Builder and server-side load for custom roles too.
+- Employees cannot open their own timesheet report from My Schedule & Pay. An electronic "I reviewed this" acknowledgement there would replace the paper signature.
+- The existing Report Builder "Individual Staff" report still counts rejected shifts' hours in its Total Hours pill, and its PDF button only exports the first person. The new page replaces it for that purpose; the old one was left alone.
+
+## EARLIER — a full permission-system audit: inventoried every endpoint, every defined permission, checked each for real enforcement
 
 Asked to do a "full and deep audit... check every function and logic flow." Started systematically: listed all 43 server endpoints, confirmed every one requires authentication except the 4 that should be public (login, logout, health, root page). Then went further — checked every single permission defined in the taxonomy for whether it's *actually* enforced anywhere, not just present as a checkbox on the Roles & Permissions page.
 

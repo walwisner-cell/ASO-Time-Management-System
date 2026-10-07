@@ -615,7 +615,11 @@ function saveDB(data) {
     if (pw === undefined) {
       // Genuinely new user row — hash whatever was supplied (falls back to a random
       // password if none was given, so a malformed row can never create a blank-password account)
-      pw = u.password ? bcrypt.hashSync(String(u.password), 10) : bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
+      // A value that is ALREADY a bcrypt hash (the seed admin, hashed once from
+      // SEED_ADMIN_PASSWORD at startup) is stored as-is. Hashing it a second time
+      // made the seeded admin impossible to log in with on a brand-new database.
+      pw = isBcryptHash(u.password) ? u.password
+         : u.password ? bcrypt.hashSync(String(u.password), 10) : bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
     }
     run('INSERT INTO users (id,username,password,name,role,staff_id) VALUES (?,?,?,?,?,?)',
         [u.id, u.username, pw, u.name, u.role, u.staffId || null]);
