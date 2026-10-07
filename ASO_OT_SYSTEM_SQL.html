@@ -11927,6 +11927,70 @@ function adpTimesheetChecks(input) {
 // Summary tab re-runs the verdicts in Excel) and the same colours. Each
 // formula also carries its worked-out value, so a viewer that does not
 // recalculate still shows the right numbers.
+// Late relief: at every shift change in a house, was the incoming staff late
+// on ADP, and did the staff going off stay until they arrived? The late minutes
+// are taken off the late staff and given to the staff who stayed.
+//   rows — one per timesheet shift: { staffId, name, status, shift:{id,date,start,end,location}, adp:{date,start,end}|null, ref }
+//   opts.grace — lateness under this many minutes is ignored (default 5)
+// Returns one line per late arrival:
+//   kind 'covered'  the staff going off stayed for all of it
+//        'part'     they stayed for some of it
+//        'gap'      they punched out on time: nobody to give the time to
+//        'nopunch'  they have no usable ADP punch, so ADP cannot show who covered
+//        'nobody'   no one is on the timesheet before this shift
+//        'shared'   the stay-over is already given once, against someone who was later at the same change
+function adpLateRelief(rows, opts) {
+  const grace = (opts && opts.grace) || 5;
+  const hm = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+  const list = (rows || []).filter(r => r.shift).map(r => {
+    const [s0, e0] = adpSpan(r.shift.date, r.shift.start, r.shift.end);
+    const good = (r.status === 'match' || r.status === 'differs') && r.adp && r.adp.end;
+    const a = good ? adpSpan(r.adp.date, r.adp.start, r.adp.end) : null;
+    return { r, s0, e0: e0 === s0 ? s0 + 1440 : e0, aIn: a ? a[0] : null, aOut: a ? a[1] : null };
+  });
+  const out = [];
+  list.forEach(inc => {
+    if (inc.aIn === null) return;
+    const late = inc.aIn - inc.s0;
+    if (late < grace || late >= inc.e0 - inc.s0) return;
+    const T = inc.s0, house = inc.r.shift.location;
+    const same = list.filter(x => x !== inc && x.r.staffId !== inc.r.staffId && x.r.shift.location === house);
+    const going = same.filter(x => Math.abs(x.e0 - T) <= 15).map(x => ({ x, stay: x.aOut === null ? null : x.aOut - x.e0 }));
+    const others = [...new Set(same.filter(x => x.s0 < T - 15 && x.e0 >= T + late).map(x => x.r.name))];
+    const stayed = going.filter(g => g.stay !== null && g.stay >= grace).sort((a, b) => b.stay - a.stay);
+    const item = { house, date: inc.r.shift.date, change: inc.r.shift.start, late, given: 0, uncovered: late, others,
+      inc: { staffId: inc.r.staffId, name: inc.r.name, shiftId: inc.r.shift.id, adpIn: inc.r.adp.start, newStart: inc.r.adp.start, sameDay: Math.floor(inc.aIn / 1440) === Math.floor(inc.s0 / 1440), ref: inc.r.ref }, out: null };
+    const who = g => ({ staffId: g.x.r.staffId, name: g.x.r.name, shiftId: g.x.r.shift.id, shiftDate: g.x.r.shift.date, shiftStart: g.x.r.shift.start, shiftEnd: g.x.r.shift.end, adpOut: g.x.aOut === null ? '' : hm(g.x.aOut), stay: g.stay, ref: g.x.r.ref });
+    if (stayed.length) {
+      const g = stayed[0];
+      item.given = Math.min(late, g.stay); item.uncovered = late - item.given;
+      item.kind = item.uncovered < grace ? 'covered' : 'part';
+      item.out = who(g); item.out.newEnd = hm(g.x.e0 + item.given); item.out.extra = Math.max(0, g.stay - late);
+    } else if (going.some(g => g.stay === null)) { item.kind = 'nopunch'; item.out = who(going.find(g => g.stay === null)); }
+    else if (going.length) { item.kind = 'gap'; item.out = who(going.sort((a, b) => b.stay - a.stay)[0]); }
+    else item.kind = 'nobody';
+    const first = n => String(n).split(',')[0], t12 = t => formatTimeDisplay(t);
+    const cover = others.length ? ` ${others.map(first).join(' and ')} ${others.length > 1 ? 'were' : 'was'} on shift at the house.` : '';
+    item.found =
+      item.kind === 'covered' ? `Give ${item.given} min to ${first(item.out.name)}: paid to ${t12(item.out.newEnd)} instead of ${t12(item.out.shiftEnd)}. ${first(item.inc.name)} is paid from ${t12(item.inc.adpIn)}.${item.out.extra >= grace ? ` ${first(item.out.name)} stayed ${item.out.extra} more min after relief arrived - see Shift Match.` : ''}` :
+      item.kind === 'part' ? `${first(item.out.name)} stayed ${item.out.stay} of the ${late} min. Give ${item.given} min: paid to ${t12(item.out.newEnd)}. ${first(item.inc.name)} is paid from ${t12(item.inc.adpIn)}. ${item.uncovered} min with no one from the earlier shift.${cover}` :
+      item.kind === 'gap' ? `${first(item.out.name)} punched out at ${t12(item.out.adpOut)}, so there is nobody to give the ${late} min to. ${first(item.inc.name)} is paid from ${t12(item.inc.adpIn)}.${cover || ' ADP shows the house without that shift for ' + late + ' min.'}` :
+      item.kind === 'nopunch' ? `${first(item.out.name)} was going off but has no usable ADP punch, so ADP cannot show who covered. Ask the Program Manager before moving any time.${cover}` :
+      `No one is on the timesheet going off at ${t12(item.change)}. ${first(item.inc.name)} is paid from ${t12(item.inc.adpIn)}.${cover}`;
+    out.push(item);
+  });
+  // One person's stay-over is only given once. When two staff were late at the
+  // same change, the stay is counted against the later one (it covers both).
+  const byOut = {};
+  out.filter(x => x.given > 0).forEach(x => { (byOut[x.out.shiftId] = byOut[x.out.shiftId] || []).push(x); });
+  Object.values(byOut).forEach(g => {
+    if (g.length < 2) return;
+    g.sort((a, b) => b.late - a.late);
+    g.slice(1).forEach(x => { const first = n => String(n).split(',')[0]; x.kind = 'shared'; x.given = 0; x.uncovered = 0; x.found = `${first(x.out.name)} stayed, and that time is already given once against ${first(g[0].inc.name)}, who was later. ${first(x.inc.name)} is paid from ${formatTimeDisplay(x.inc.adpIn)}.`; });
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.change.localeCompare(b.change) || a.house.localeCompare(b.house));
+}
+
 function adpWriteAuditXlsx(spec, ExcelJS) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'ASO Time System'; wb.created = new Date();
@@ -12010,6 +12074,13 @@ function adpWriteAuditXlsx(spec, ExcelJS) {
   head(c, ['Check', 'Who / where', 'When', 'What I found'], [34, 22, 22, 95]);
   spec.checks.forEach(x => c.addRow([x.check, x.who, x.when, x.found]));
   c.getColumn(4).alignment = { wrapText: true, vertical: 'top' };
+
+  const dl = iso => `${srDayName(iso)} ${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+  const l = wb.addWorksheet('Late Relief');
+  head(l, ['Date', 'House', 'Shift change', 'Late staff', 'ADP in', 'Minutes late', 'Staff going off', 'ADP out', 'Minutes stayed', 'Minutes to give', 'Minutes not covered', 'What happens'], [11, 18, 11, 22, 10, 9, 22, 10, 9, 9, 9, 90]);
+  (spec.late || []).forEach(x => l.addRow([dl(x.date), x.house, fmtTime(x.change), x.inc.name, fmtTime(x.inc.adpIn), x.late, x.out ? x.out.name : '', x.out && x.out.adpOut ? fmtTime(x.out.adpOut) : '', x.out && x.out.stay !== null ? Math.max(0, x.out.stay) : null, x.given, x.uncovered, x.found]));
+  l.getColumn(12).alignment = { wrapText: true, vertical: 'top' };
+  if ((spec.late || []).length) { const e = spec.late.length + 1; const row = l.addRow(['TOTAL', null, null, null, null, f(`SUM(F2:F${e})`, spec.late.reduce((a, x) => a + x.late, 0)), null, null, null, f(`SUM(J2:J${e})`, spec.late.reduce((a, x) => a + x.given, 0)), f(`SUM(K2:K${e})`, spec.late.reduce((a, x) => a + x.uncovered, 0))]); row.font = { bold: true }; }
   return wb;
 }
 
@@ -12210,6 +12281,7 @@ function adpAuditSpec(b) {
   const loose = b.people.flatMap(p => p.rows.filter(r => r.status === 'adp_only' && !r.na).map(r => ({ name: nm(p.staff), home: p.staff.loc || '', date: r.adp.date, start: r.adp.start, end: r.adp.end })));
   const checks = adpTimesheetChecks({ shifts: b.rangeComputed, edge: b.edgeComputed, from: b.from, to: b.to, houses: b.house ? [b.house] : LOCATIONS.map(l => l.name), loose,
     over: b.people.flatMap(p => p.rows.filter(r => (r.status === 'match' || r.status === 'differs') && r.shift && r.adp).map(r => ({ name: nm(p.staff), home: r.shift.location || '', date: r.adp.date, start: r.adp.start, end: r.adp.end }))) });
+  const late = adpLateRelief(b.people.flatMap(p => p.rows.filter(r => r.shift && !r.na).map(r => ({ staffId: p.staff.id, name: nm(p.staff), status: r.status, shift: r.shift, adp: r.adp, ref: { staff: p.staff, row: r } }))), { grace: 5 });
   const houses = [...new Set(shift.map(x => x.house).filter(Boolean))].sort();
   if (b.stats.naPunches || b.unmatched.some(u => b.skipAdmin && /admin/i.test((u.emp.entries[0] || {}).dept || ''))) notes.push('ADP Administrative staff with no timesheet shift are listed on the ADP Punches tab only - their office hours are not on the timesheet, so they are not audited.');
   return {
@@ -12218,8 +12290,45 @@ function adpAuditSpec(b) {
     tol: b.reviewMin, from: b.from, to: b.to, house: b.house,
     sources: `Sources: ASO Time System timesheet (read ${new Date().toLocaleString()}); ADP Timecard Report file "${_adp.fileName}".`,
     notes, totalsNote: calendarDayDiff(b.from, b.to) > 6 ? 'These dates cover more than one week, so "Hours over 40" compares the whole range to 40 - read it week by week on the Timesheet Checks tab.' : '',
-    shift, notOn, punches, totals, checks
+    shift, notOn, punches, totals, checks, late
   };
+}
+
+let _adpLate = [];       // late-relief lines currently on screen
+// Why a late-relief line cannot be applied from here ('' = it can).
+function adpLateBlocked(x) {
+  if (x.kind === 'nopunch') return 'Not applied from here - confirm who covered, then correct the Timesheet Log.';
+  if (!x.inc.sameDay) return 'Punch-in is on the next calendar day - correct on the Timesheet Log.';
+  const rows = [x.inc.ref].concat(x.given > 0 && x.out ? [x.out.ref] : []).filter(Boolean).map(r => r.row);
+  if (rows.some(r => r.signed)) return 'Signed off - reopen to change.';
+  if (rows.some(r => isPeriodLockedForDate(r.shift.date))) return 'Pay period is locked.';
+  return '';
+}
+function adpApplyLate(i) {
+  const x = _adpLate[i];
+  if (!x || !userCan('editShift') || adpLateBlocked(x)) return;
+  const give = x.given > 0 && x.out;
+  const iIdx = SHIFTS.findIndex(s => s.id === x.inc.shiftId), oIdx = give ? SHIFTS.findIndex(s => s.id === x.out.shiftId) : -1;
+  if (iIdx < 0 || (give && oIdx < 0)) { showToast('That shift no longer exists - upload the file again', 'warn'); return; }
+  const inc = SHIFTS[iIdx], out = give ? SHIFTS[oIdx] : null;
+  if (give) { const ov = findOverlappingShift(out.staff, out.date, out.start, x.out.newEnd, out.id); if (ov && ov.shiftStatus !== 'rejected') { showToast(`${x.out.name} already has a ${fmtTime(ov.start)} – ${fmtTime(ov.end)} shift at ${ov.location} that this would overlap. Correct that one first.`, 'warn'); return; } }
+  const incH = calcHours(x.inc.newStart, inc.end), outH = give ? calcHours(out.start, x.out.newEnd) : 0;
+  if (!confirm(`Apply late relief at ${x.house}, ${formatDateDisplay(x.date)}?\n\n` +
+    `• ${x.inc.name}: ${fmtTime(inc.start)} – ${fmtTime(inc.end)} becomes ${fmtTime(x.inc.newStart)} – ${fmtTime(inc.end)}  (${srHrs(inc.hours)} → ${srHrs(incH)} hrs)\n` +
+    (give ? `• ${x.out.name}: ${fmtTime(out.start)} – ${fmtTime(out.end)} becomes ${fmtTime(out.start)} – ${fmtTime(x.out.newEnd)}  (${srHrs(out.hours)} → ${srHrs(outH)} hrs)\n` : `• Nobody is given the ${x.late} minutes.\n`) +
+    `\nBoth changes are recorded in the Audit Trail under your name.`)) return;
+  const stamp = `ADP timecard ${_adp.fileName}`;
+  APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(e => e.shiftId !== inc.id && (!out || e.shiftId !== out.id));
+  SHIFTS[iIdx] = { ...inc, start: x.inc.newStart, hours: incH, _corrected: true, adpCorrected: { from: `${inc.start}-${inc.end}`, hours: inc.hours, at: todayLocalISO() } };
+  adpPushAudit('ADP_CORRECTION', `Late relief - late start: ${x.inc.name}`, `${inc.date} · Old: ${fmtTime(inc.start)} – ${fmtTime(inc.end)} (${numFmt(inc.hours)} hrs) → New: ${fmtTime(x.inc.newStart)} – ${fmtTime(inc.end)} (${numFmt(incH)} hrs) · ${inc.location} · ${x.late} min late on ADP${give ? ', ' + x.given + ' min given to ' + x.out.name : ', nobody stayed'} · ${stamp}`);
+  if (give) {
+    SHIFTS[oIdx] = { ...out, end: x.out.newEnd, hours: outH, _corrected: true, adpCorrected: { from: `${out.start}-${out.end}`, hours: out.hours, at: todayLocalISO() } };
+    adpPushAudit('ADP_CORRECTION', `Late relief - stayed over: ${x.out.name}`, `${out.date} · Old: ${fmtTime(out.start)} – ${fmtTime(out.end)} (${numFmt(out.hours)} hrs) → New: ${fmtTime(out.start)} – ${fmtTime(x.out.newEnd)} (${numFmt(outH)} hrs) · ${out.location} · covered ${x.given} min for ${x.inc.name}, punched out ${fmtTime(x.out.adpOut)} · ${stamp}`);
+  }
+  dbSave();
+  _adpRows = [];
+  adpRender();
+  showToast(give ? `${x.given} minutes moved from ${x.inc.name.split(',')[0]} to ${x.out.name.split(',')[0]} ✅` : `${x.inc.name.split(',')[0]} now starts at ${fmtTime(x.inc.newStart)} ✅`);
 }
 
 let _adpAuditTab = 'shift';
@@ -12231,9 +12340,10 @@ function adpAuditHtml(b) {
   const cnt = v => A.shift.filter(x => x.result === v).length;
   const noUse = A.shift.filter(x => x.result === 'No ADP punch' || x.result === 'Incomplete ADP punch').reduce((a, x) => a + x.thours, 0);
   const over40 = A.totals.filter(x => Math.max(x.ts, x.adp) > 40).length;
-  const tabs = [['summary', 'Summary'], ['shift', `Shift Match (${A.shift.length})`], ['noton', `ADP Not On Timesheet (${A.notOn.length})`], ['punches', `ADP Punches (${A.punches.length})`], ['totals', `Staff Totals (${A.totals.length})`], ['checks', `Timesheet Checks (${A.checks.length})`]];
+  const tabs = [['summary', 'Summary'], ['shift', `Shift Match (${A.shift.length})`], ['noton', `ADP Not On Timesheet (${A.notOn.length})`], ['punches', `ADP Punches (${A.punches.length})`], ['totals', `Staff Totals (${A.totals.length})`], ['checks', `Timesheet Checks (${A.checks.length})`], ['late', `Late Relief (${A.late.length})`]];
   const cls = { 'Match': 'adp-r-ok', 'Hours differ': 'adp-r-warn', 'No ADP punch': 'adp-r-bad', 'Incomplete ADP punch': 'adp-r-bad' };
   const num = n => n === null || n === undefined || n === '' ? '' : srHrs(n);
+  const dl = iso => `${srDayName(iso)} ${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
   const sign = n => Math.abs(n) < 0.005 ? '0.00' : (n > 0 ? '+' : '') + srHrs(n);
   let body = '';
   if (_adpAuditTab === 'summary') {
@@ -12268,6 +12378,16 @@ function adpAuditHtml(b) {
       ${A.totals.map(x => { const hi = Math.max(x.ts, x.adp); return `<tr><td style="color:var(--text)">${esc(x.staff)}</td><td class="${x.dept === 'No ADP card' ? 'adp-r-bad' : ''}">${esc(x.dept)}</td><td class="mono">${num(x.ts)}</td><td class="mono">${num(x.adp)}</td><td class="mono">${sign(x.adp - x.ts)}</td><td class="mono">${num(hi)}</td><td class="mono ${hi > 40 ? 'adp-r-warn' : ''}">${num(hi > 40 ? hi - 40 : 0)}</td></tr>`; }).join('')}
       <tr style="font-weight:700;background:var(--surface2)"><td style="color:var(--text)">TOTAL</td><td></td><td class="mono">${num(T.ts)}</td><td class="mono">${num(T.adp)}</td><td class="mono">${sign(T.adp - T.ts)}</td><td></td><td class="mono">${num(T.over)}</td></tr>
       </tbody></table></div>${A.totalsNote ? `<div class="adp-dim" style="margin-top:8px">${esc(A.totalsNote)}</div>` : ''}`;
+  } else if (_adpAuditTab === 'late') {
+    _adpLate = A.late;
+    const canEdit = userCan('editShift');
+    const kind = { covered: ['Covered', 'adp-r-ok'], part: ['Partly covered', 'adp-r-warn'], gap: ['Not covered', 'adp-r-bad'], nopunch: ['Ask Program Manager', 'adp-r-bad'], nobody: ['Late, no one going off', 'adp-r-warn'], shared: ['Covered (counted once)', 'adp-r-ok'] };
+    const tot = A.late.reduce((a, x) => ({ late: a.late + x.late, given: a.given + x.given, un: a.un + x.uncovered }), { late: 0, given: 0, un: 0 });
+    body = `<div class="adp-dim" style="margin:0 0 10px;line-height:1.6">At each shift change, this compares the ADP punch-in of the staff coming on with the ADP punch-out of the staff going off, at the same house. Lateness under 5 minutes is ignored. <b>Apply</b> moves the time on the timesheet: the late staff starts at their punch-in, and the staff who stayed is paid for the minutes they covered. Nothing changes until you press it. The extra minutes can take the staff who stayed over 40 hours for the week — look at Timesheet Checks afterwards.</div>
+      <div class="table-wrap"><table class="adp-audit"><thead><tr><th>Date</th><th>House</th><th>Shift change</th><th>Late staff</th><th>ADP in</th><th>Min late</th><th>Staff going off</th><th>ADP out</th><th>Min stayed</th><th>Min to give</th><th>Result</th><th>What happens</th><th></th></tr></thead><tbody>
+      ${A.late.map((x, i) => { const k = kind[x.kind]; const blocked = adpLateBlocked(x); return `<tr><td class="mono" style="white-space:nowrap">${esc(dl(x.date))}</td><td>${esc(x.house)}</td><td class="mono" style="white-space:nowrap">${esc(fmtTime(x.change))}</td><td style="color:var(--text);white-space:nowrap">${esc(x.inc.name)}</td><td class="mono" style="white-space:nowrap">${esc(fmtTime(x.inc.adpIn))}</td><td class="mono"><b>${x.late}</b></td><td style="color:var(--text);white-space:nowrap">${x.out ? esc(x.out.name) : '<span class="adp-dim">—</span>'}</td><td class="mono" style="white-space:nowrap">${x.out && x.out.adpOut ? esc(fmtTime(x.out.adpOut)) : ''}</td><td class="mono">${x.out && x.out.stay !== null ? Math.max(0, x.out.stay) : ''}</td><td class="mono"><b>${x.given}</b></td><td class="${k[1]}" style="white-space:nowrap">${k[0]}</td><td style="min-width:260px">${esc(x.found)}${blocked ? `<div class="adp-dim">${esc(blocked)}</div>` : ''}</td><td>${canEdit && !blocked ? `<button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="adpApplyLate(${i})">Apply</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="13" style="text-align:center;padding:24px;color:var(--text3)">No one punched in 5 minutes or more after their shift start.</td></tr>'}
+      ${A.late.length ? `<tr style="font-weight:700;background:var(--surface2)"><td colspan="5" style="color:var(--text)">TOTAL</td><td class="mono">${tot.late}</td><td colspan="3"></td><td class="mono">${tot.given}</td><td colspan="3" class="adp-dim">${tot.un} min not given to anyone</td></tr>` : ''}
+      </tbody></table></div>`;
   } else {
     body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Check</th><th>Who / where</th><th>When</th><th>What I found</th></tr></thead><tbody>
       ${A.checks.map(x => `<tr><td style="color:var(--text);white-space:nowrap">${esc(x.check)}</td><td style="white-space:nowrap">${esc(x.who)}</td><td class="mono" style="white-space:nowrap">${esc(x.when)}</td><td>${esc(x.found)}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">Nothing found.</td></tr>'}
@@ -12667,6 +12787,7 @@ function adpProcedureHtml() {
       ${step(3, 'Upload', 'On ADP Timecard Match, choose the PDF. Each timesheet shift is matched to the ADP punch that covers it and judged on hours.')}
       ${step(4, 'Read the audit', 'Open each tab: Shift Match, ADP Not On Timesheet, Staff Totals and Timesheet Checks. Download the Excel audit for the file.')}
       ${step(5, 'Fix the timesheet checks first', 'Overlapping shifts, coverage gaps and days with no entries usually mean a time log sheet was missed or mis-entered. Correct the Timesheet Log before going on.')}
+      ${step('5a', 'Late relief', 'On the Late Relief tab, where a staff member came on late and the staff going off stayed, apply it so the minutes move from one to the other. “Ask Program Manager” lines are confirmed first.')}
       ${step(6, 'Decide “Hours differ”', 'For each one, ask the Program Manager what happened. Set the shift to the ADP punch, or mark it reviewed with the reason.')}
       ${step(7, 'Confirm “ADP, not on timesheet”', 'Confirm the person worked and confirm the house, then add the shift. If they did not work, mark it reviewed with the reason.')}
       ${step(8, 'Fix punches in ADP', '“No ADP punch” and “Incomplete ADP punch” lines are corrected in ADP, then the file is uploaded again — or marked reviewed with the reason they are paid from the time log sheet. A shift is never removed just because the punch is missing.')}

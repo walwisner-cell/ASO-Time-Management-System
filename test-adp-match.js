@@ -18,7 +18,7 @@ function extractFunctions(names) {
     }
   }).join('\n\n');
 }
-eval(extractFunctions(['calendarDayDiff', 'formatTimeDisplay', 'fmtTime', 'numFmt', 'srAddDays', 'srDayName', 'adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing', 'adpClassify', 'adpSuggestHouse', 'adpPatterns', 'adpAuditState', 'adpDeptLabel', 'adpSpan', 'adpAbout', 'adpFindings', 'adpTimesheetChecks']));
+eval(extractFunctions(['calendarDayDiff', 'formatTimeDisplay', 'fmtTime', 'numFmt', 'srAddDays', 'srDayName', 'adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing', 'adpClassify', 'adpSuggestHouse', 'adpPatterns', 'adpAuditState', 'adpDeptLabel', 'adpSpan', 'adpAbout', 'adpFindings', 'adpTimesheetChecks', 'adpLateRelief']));
 
 let passed = 0, failed = 0;
 function check(name, condition) { if (condition) { passed++; console.log(`  ✓ ${name}`); } else { failed++; console.log(`  ✗ ${name}`); } }
@@ -166,6 +166,32 @@ check('a first shift starting at 8 AM on the first day is a 6–8 AM gap even wh
 check('the evening before an empty day is shown as the whole missing overnight', has(chk(noSat), 'Coverage gap on timesheet', /Fri 10\/02 - Sat 10\/03.*10:00 PM to 6:00 AM next day \(8 hours\)/));
 check('a late first morning IS a gap when the night before is known', has(chk(full.filter(x => !(x.date === '2026-09-27' && x.start === '06:00')), { edge: [cs('E2', 'Night, Lee', '2026-09-26', '22:00', '06:00', 'East House')] }), 'Coverage gap on timesheet', /Sun 09\/27.*6:00 AM to 2:00 PM/));
 check('a house with ADP punches from its staff but nothing on the timesheet is named', has(chk(full, { loose: [{ name: 'Mawolo, P', home: 'West House', date: '2026-09-27', start: '13:32', end: '22:42' }] }), 'House missing from timesheet', /West House.*1 of its staff have ADP punches/));
+
+console.log('\nLate relief (late staff, and who stayed):\n');
+const lr = (id, name, start, end, ain, aout, extra) => Object.assign({ staffId: id, name, status: ain ? 'match' : 'ts_only', shift: { id: 'S' + id + start, date: '2026-09-30', start, end, location: 'East House' }, adp: ain ? { date: '2026-09-30', start: ain, end: aout } : null }, extra || {});
+let L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:26'), lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')]);
+check('25 minutes late, the staff going off stayed 26: all 25 are given, zero-sum', L.length === 1 && L[0].kind === 'covered' && L[0].late === 25 && L[0].given === 25 && L[0].uncovered === 0 && L[0].out.newEnd === '14:25' && L[0].inc.newStart === '14:25');
+check('the note says who gets the minutes and from when the late staff is paid', /Give 25 min to Out: paid to 2:25 PM instead of 2:00 PM\. Late is paid from 2:25 PM\./.test(L[0].found));
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:10'), lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')]);
+check('stayed 10 of 25 minutes: 10 given, 15 not covered', L[0].kind === 'part' && L[0].given === 10 && L[0].uncovered === 15 && L[0].out.newEnd === '14:10');
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:01'), lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')]);
+check('the staff going off punched out on time: nothing to give, called not covered', L[0].kind === 'gap' && L[0].given === 0 && /nobody to give the 25 min to/.test(L[0].found));
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', null, null), lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')]);
+check('the staff going off has no ADP punch: no time is moved, ask the Program Manager', L[0].kind === 'nopunch' && L[0].given === 0 && /Ask the Program Manager/.test(L[0].found));
+check('nobody going off before the shift', adpLateRelief([lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')])[0].kind === 'nobody');
+check('4 minutes late is ignored; an early punch-in is not late', adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:30'), lr('B', 'Late, Lia', '14:00', '22:00', '14:04', '22:00')]).length === 0 && adpLateRelief([lr('B', 'Late, Lia', '14:00', '22:00', '13:40', '22:00')]).length === 0);
+check('a late staff with no usable punch cannot be calculated and is left out', adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:30'), lr('B', 'Late, Lia', '14:00', '22:00', null, null)]).length === 0);
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:50'), lr('B', 'Late, Lia', '14:00', '22:00', '14:20', '22:00')]);
+check('stayed 50 when relief was 20 late: only 20 are given, the other 30 are pointed to Shift Match', L[0].given === 20 && L[0].out.newEnd === '14:20' && /stayed 30 more min after relief arrived/.test(L[0].found));
+L = adpLateRelief([lr('A', 'Out, Olu', '14:00', '22:00', '14:00', '22:40'), Object.assign(lr('B', 'Late, Lia', '22:00', '06:00', '22:35', '06:00'))]);
+check('works at the 10 PM change into an overnight shift', L[0].kind === 'covered' && L[0].given === 35 && L[0].out.newEnd === '22:35');
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:30'), Object.assign(lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00'), { shift: { id: 'SB', date: '2026-09-30', start: '14:00', end: '22:00', location: 'West House' } })]);
+check('staff at a different house are never paired', L[0].kind === 'nobody' && !L[0].out);
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:02'), lr('C', 'Long, Lou', '06:00', '22:00', '06:00', '22:00'), lr('B', 'Late, Lia', '14:00', '22:00', '14:25', '22:00')]);
+check('someone else already on shift at the house is named', L[0].kind === 'gap' && /Long was on shift at the house/.test(L[0].found));
+
+L = adpLateRelief([lr('A', 'Out, Olu', '06:00', '14:00', '06:00', '14:35'), lr('B', 'Late, Lia', '14:00', '22:00', '14:32', '22:00'), lr('C', 'Also, Al', '14:00', '22:00', '14:06', '22:00')]);
+check('two staff late at one change: the stay-over is given once (32 min), not twice', L.length === 2 && L.reduce((a, x) => a + x.given, 0) === 32 && L.find(x => x.inc.name === 'Also, Al').kind === 'shared');
 
 console.log('\nWho is on one record but not the other:\n');
 const P = (id, first, last, entries, tsCount, tsTotal) => ({ staff: { id, first, last }, emp: { name: last + ' ' + first, entries }, tsCount, tsTotal, adpTotal: entries.reduce((a, x) => a + x.hours, 0) });

@@ -1,7 +1,7 @@
 # ADP Timecard Match — what I built and how I use it
 
 ## What it does
-I upload the Timecard Report PDF from ADP. The system takes every shift on the timesheet, finds the ADP punch that covers that shift period, and compares the hours. It then shows me an audit with six tabs — the same six tabs as my Excel audit workbook — and lets me download that workbook.
+I upload the Timecard Report PDF from ADP. The system takes every shift on the timesheet, finds the ADP punch that covers that shift period, and compares the hours. It then shows me an audit with the same six tabs as my Excel audit workbook, plus a Late Relief tab, and lets me download that workbook.
 
 Nothing that changes pay happens until a person confirms it.
 
@@ -38,6 +38,28 @@ Two more for punches:
 | **Timesheet Checks** | Problems on the timesheet itself (see below) |
 
 **Download Excel audit** saves the workbook as `ASO_Time_Audit_<from>_to_<to>.xlsx`. It has the same six tabs. The Result column is a formula, so if I change the tolerance on the Summary tab in Excel, the results and counts recalculate. Rows are coloured green, yellow and red the same way as my workbook.
+
+## Late Relief (a seventh tab)
+This is where I see who came on late and who stayed to cover, using the ADP punches.
+
+At every shift change in a house, the system compares the ADP punch-in of the staff coming on with the ADP punch-out of the staff going off. Lateness under 5 minutes is ignored.
+
+| Result | What it means | What Apply does |
+|---|---|---|
+| **Covered** | The staff going off stayed until the late staff arrived | The late staff's shift starts at their punch-in. The staff who stayed is paid to that same time. The minutes move from one to the other |
+| **Partly covered** | The staff going off stayed for some of it | Only the minutes they stayed are given. The rest is shown as not covered |
+| **Not covered** | The staff going off punched out on time | The late staff's shift starts at their punch-in. Nobody is given the minutes |
+| **Covered (counted once)** | Two staff were late at the same change | The stay-over is given once, against the later of the two |
+| **Late, no one going off** | Nobody is on the timesheet before this shift | The late staff's shift starts at their punch-in |
+| **Ask Program Manager** | The staff going off has no usable ADP punch | Nothing. ADP cannot show who covered, so I confirm it and correct the Timesheet Log myself |
+
+Things to know about it:
+- Minutes given are never more than the lateness. If someone stayed 50 minutes and relief was 20 minutes late, 20 are given here and the other 30 show on Shift Match as "Hours differ".
+- A late staff with no usable punch cannot be calculated, so they are not on this tab.
+- Apply asks me to confirm and shows the old and new times for both people. Both changes go in the Audit Trail as "Late relief".
+- The extra minutes can take the staff who stayed over 40 hours for the week. Timesheet Checks will show it.
+- It will not apply to a locked pay period or a signed-off house, or if the longer shift would overlap another shift that person has.
+- The Excel audit has a **Late Relief** sheet with the same lines.
 
 ## Timesheet Checks
 These need no ADP file to be true — they are about the timesheet:
@@ -106,7 +128,7 @@ These are my decisions as the employer, and I should confirm them with my payrol
 
 ## How I check it still works
 ```
-node test-adp-match.js         (95 checks)
+node test-adp-match.js         (108 checks)
 node test-staff-report.js      (63 checks)
 node test.js                   (117 checks)
 ```
