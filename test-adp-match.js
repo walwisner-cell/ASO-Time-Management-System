@@ -18,7 +18,7 @@ function extractFunctions(names) {
     }
   }).join('\n\n');
 }
-eval(extractFunctions(['adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing', 'adpInferFromErrors', 'adpClassify', 'adpSuggestHouse', 'adpPatterns', 'adpAuditState']));
+eval(extractFunctions(['calendarDayDiff', 'formatTimeDisplay', 'fmtTime', 'numFmt', 'srAddDays', 'srDayName', 'adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing', 'adpClassify', 'adpSuggestHouse', 'adpPatterns', 'adpAuditState', 'adpDeptLabel', 'adpSpan', 'adpAbout', 'adpFindings', 'adpTimesheetChecks']));
 
 let passed = 0, failed = 0;
 function check(name, condition) { if (condition) { passed++; console.log(`  ✓ ${name}`); } else { failed++; console.log(`  ✗ ${name}`); } }
@@ -81,31 +81,91 @@ check('an unknown name is left unmatched', adpMatchName('Nobody Here', staff, {}
 check('a match picked by hand wins and is reported as saved', adpMatchName('Baker Sam', staff, { 'Baker Sam': 'S4' }).staff.id === 'S4' && adpMatchName('Baker Sam', staff, { 'Baker Sam': 'S4' }).how === 'saved');
 check('a name marked "leave out" stays out', adpMatchName('Rivers Jordan M', staff, { 'Rivers Jordan M': '__skip__' }).how === 'skip' && adpMatchName('Rivers Jordan M', staff, { 'Rivers Jordan M': '__skip__' }).staff === null);
 
-console.log('\nComparing punches to the timesheet:\n');
-const ts = (id, date, start, end, hours) => ({ id, date, start, end, hours, location: 'House' });
-const shifts = [
-  ts('A', '2026-09-27', '06:00', '14:00', 8),      // 8 minutes short on the way out
-  ts('B', '2026-09-28', '22:00', '06:00', 8),      // overnight, 19 min late in
-  ts('C', '2026-09-29', '08:00', '16:00', 8),      // no ADP punch
-  ts('D', '2026-10-02', '14:00', '22:00', 8),      // day with an ADP punch error
-  ts('E', '2026-09-30', '13:00', '21:00', 8)       // 3.5 hours off, but overlapping the punch
-];
-const byDate = (rows, d) => rows.filter(r => r.date === d);
-let rows = adpCompareStaff(e.entries, shifts, 7);
-check('within 7 minutes in and out counts as a match only when BOTH ends are', byDate(rows, '2026-09-27')[0].status === 'differs' && byDate(rows, '2026-09-27')[0].dOut === 8 && byDate(rows, '2026-09-27')[0].dIn === 0);
-check('with a 10-minute tolerance the same row is a match, and is known not to be exact', byDate(adpCompareStaff(e.entries, shifts, 10), '2026-09-27')[0].status === 'match' && byDate(adpCompareStaff(e.entries, shifts, 10), '2026-09-27')[0].exact === false);
-check('overnight shifts are compared correctly across midnight (in +19 min, out +8 min)', byDate(rows, '2026-09-28')[0].status === 'differs' && byDate(rows, '2026-09-28')[0].dIn === 19 && byDate(rows, '2026-09-28')[0].dOut === 8);
-check('the hour difference is ADP minus timesheet', near(byDate(rows, '2026-09-27')[0].diffHours, 8 / 60) && near(byDate(rows, '2026-09-28')[0].diffHours, -11 / 60));
-check('a timesheet shift with no ADP punch is listed as not in ADP', byDate(rows, '2026-09-29').length === 1 && byDate(rows, '2026-09-29')[0].status === 'ts_only' && byDate(rows, '2026-09-29')[0].shift.id === 'C');
-check('ADP punches with no timesheet shift are listed as missing from the timesheet', byDate(rows, '2026-10-01')[0].status === 'adp_only' && byDate(rows, '2026-10-03')[0].status === 'adp_only');
-check('a punch and a shift more than 4 hours apart but overlapping are still treated as the same shift', byDate(rows, '2026-09-30').length === 1 && byDate(rows, '2026-09-30')[0].status === 'differs' && byDate(rows, '2026-09-30')[0].shift.id === 'E');
-const oct2 = byDate(rows, '2026-10-02');
-check('a punch error is shown on its own line and never paired with a shift', oct2.length === 2 && oct2.some(r => r.status === 'adp_zero') && oct2.some(r => r.status === 'ts_only' && r.shift.id === 'D'));
-check('every row on a punch-error day is marked so the timesheet shift cannot be bulk-rejected', oct2.every(r => r.adpIssue === true) && !byDate(rows, '2026-09-29')[0].adpIssue);
-check('an exact match is recognised as exact', adpCompareStaff([{ date: '2026-09-29', start: '08:00', end: '16:00', hours: 8 }], [shifts[2]], 0)[0].status === 'match' && adpCompareStaff([{ date: '2026-09-29', start: '08:00', end: '16:00', hours: 8 }], [shifts[2]], 0)[0].exact === true);
-const two = adpCompareStaff([{ date: '2026-09-27', start: '06:02', end: '14:01', hours: 7.98 }, { date: '2026-09-27', start: '22:00', end: '06:00', hours: 8 }], [ts('X', '2026-09-27', '22:00', '06:00', 8), ts('Y', '2026-09-27', '06:00', '14:00', 8)], 7);
-check('two shifts on one day are each paired with the right punch', two.length === 2 && two.every(r => r.status === 'match') && two[0].shift.id === 'Y' && two[1].shift.id === 'X');
-check('every punch and every shift appears exactly once in the result', rows.filter(r => r.adp).length === e.entries.length && rows.filter(r => r.shift).length === shifts.length);
+console.log('\nMatching punches to shift periods (the audit workbook’s rules):\n');
+const ts = (id, date, start, end, hours, extra) => Object.assign({ id, date, start, end, hours, location: 'House' }, extra || {});
+const pu = (date, start, end, hours, extra) => Object.assign({ date, start, end, hours: hours === undefined ? 0 : hours, zero: !!end && start === end, missingOut: !end }, extra || {});
+const one = (adp, shifts, tol) => adpCompareStaff(adp, shifts, tol === undefined ? 15 : tol);
+const lab = r => adpClassify(r).label;
+let rows = one([pu('2026-09-28', '06:19', '14:14', 7.92)], [ts('A', '2026-09-28', '06:00', '14:00', 8)]);
+check('a punch 19 minutes late in but with the same hours is a Match (hours decide, not clock times)', rows.length === 1 && lab(rows[0]) === 'Match' && rows[0].dIn === 19);
+check('16 minutes more on ADP than the timesheet is "Hours differ" at a 15-minute tolerance, and a Match at 30', lab(one([pu('2026-09-30', '06:02', '14:18', 8.27)], [ts('A', '2026-09-30', '06:00', '14:00', 8)])[0]) === 'Hours differ' && lab(one([pu('2026-09-30', '06:02', '14:18', 8.27)], [ts('A', '2026-09-30', '06:00', '14:00', 8)], 30)[0]) === 'Match');
+check('exactly at the tolerance still matches', lab(one([pu('2026-09-30', '06:00', '14:15', 8.25)], [ts('A', '2026-09-30', '06:00', '14:00', 8)])[0]) === 'Match');
+check('a shift with no punch at all is "No ADP punch"', lab(one([], [ts('A', '2026-09-28', '06:00', '14:00', 8)])[0]) === 'No ADP punch');
+rows = one([pu('2026-09-29', '06:14', '14:04', 7.83)], [ts('A', '2026-09-29', '14:00', '22:00', 8)]);
+check('a punch for the morning is NOT matched to an afternoon shift just because they touch for 4 minutes', rows.length === 2 && rows.some(r => r.status === 'ts_only') && rows.some(r => r.status === 'adp_only'));
+rows = one([pu('2026-09-27', '06:01', '12:46', 6.75), pu('2026-09-27', '12:47', '22:01', 9.2)], [ts('A', '2026-09-27', '12:00', '22:00', 10)]);
+check('two back-to-back punches covering one shift are joined into one stretch (6:01 AM – 10:01 PM, 15.95 hrs)', rows.length === 1 && rows[0].adp.start === '06:01' && rows[0].adp.end === '22:01' && near(rows[0].adp.hours, 15.95) && rows[0].adp.parts.length === 2 && lab(rows[0]) === 'Hours differ');
+rows = one([pu('2026-09-27', '13:32', '22:42', 9.17), pu('2026-09-27', '22:44', '06:03', 7.32)], []);
+check('back-to-back punches with NO shift stay as two separate lines', rows.length === 2 && rows.every(r => r.status === 'adp_only'));
+rows = one([pu('2026-10-02', '22:19', '06:08', 7.82), pu('2026-10-02', '06:00', '14:51', 8.85)], [ts('N', '2026-10-02', '22:00', '06:00', 8)]);
+check('an overnight shift takes the overnight punch; the day punch is left as "not on timesheet"', rows.find(r => r.shift).adp.start === '22:19' && lab(rows.find(r => r.shift)) === 'Match' && rows.find(r => !r.shift).adp.start === '06:00');
+rows = one([pu('2026-10-03', '23:50', '08:05', 8.25)], [ts('M', '2026-10-04', '00:00', '08:00', 8)]);
+check('a punch that starts just before midnight still finds the shift dated the next day', rows.length === 1 && lab(rows[0]) === 'Match');
+rows = one([pu('2026-10-03', '14:00', '22:00', 8)], [ts('L', '2026-10-03', '14:00', '06:00', 16)]);
+check('a 16-hour shift with only 8 hours punched is "Hours differ" by 8 hours', lab(rows[0]) === 'Hours differ' && near(rows[0].diffHours, -8) && rows[0].dOut === -480);
+rows = one([pu('2026-10-03', '22:20', '22:23', 0.05)], [ts('L', '2026-10-03', '06:00', '22:00', 16)]);
+check('a 3-minute punch just after the shift is pinned to it as "Incomplete ADP punch"', rows.length === 1 && lab(rows[0]) === 'Incomplete ADP punch' && near(rows[0].adpHours, 0.05));
+rows = one([pu('2026-09-28', '14:03', '14:03', 0), pu('2026-09-28', '22:09', '22:09', 0)], [ts('Z', '2026-09-28', '14:00', '22:00', 8)]);
+check('two zero-length punches at each end of a shift make ONE "Incomplete ADP punch" line carrying both', rows.length === 1 && lab(rows[0]) === 'Incomplete ADP punch' && rows[0].adpParts.length === 2 && rows[0].adpHours === 0);
+check('a zero-length punch with no shift near it is a stray, not a shift', (() => { const r = one([pu('2026-10-03', '15:19', '15:19', 0)], [ts('Q', '2026-10-01', '06:00', '14:00', 8)]); return r.length === 2 && r.some(x => x.status === 'adp_zero') && lab(r.find(x => x.status === 'adp_zero')) === 'Stray ADP punch'; })());
+check('a punch with no out time is never treated as a usable punch', lab(one([pu('2026-10-01', '06:00', null, 0)], [ts('Q', '2026-10-01', '06:00', '14:00', 8)])[0]) === 'Incomplete ADP punch');
+rows = one([pu('2026-09-27', '06:02', '14:01', 7.98), pu('2026-09-27', '22:00', '06:00', 8)], [ts('X', '2026-09-27', '22:00', '06:00', 8), ts('Y', '2026-09-27', '06:00', '14:00', 8)]);
+check('two shifts on one day each get their own punch', rows.length === 2 && rows.every(r => r.status === 'match') && rows[0].shift.id === 'Y' && rows[1].shift.id === 'X');
+const big = one(e.entries, [ts('A', '2026-09-27', '06:00', '14:00', 8), ts('B', '2026-09-28', '22:00', '06:00', 8), ts('C', '2026-09-29', '08:00', '16:00', 8), ts('D', '2026-10-02', '14:00', '22:00', 8)]);
+check('every punch and every shift appears exactly once', big.filter(r => r.shift).length === 4 && big.reduce((a, r) => a + (r.adp ? (r.adpParts || r.adp.parts || [r.adp]).length : 0), 0) === e.entries.length);
+check('sorting is by tier: Match needs nothing, Hours differ is for review, No/Incomplete punch are held, ADP-only is a suggestion',
+  adpClassify({ status: 'match' }).tier === 'ok' && adpClassify({ status: 'differs' }).tier === 'review' && adpClassify({ status: 'ts_only' }).tier === 'hold' && adpClassify({ status: 'incomplete' }).tier === 'hold' && adpClassify({ status: 'adp_only' }).tier === 'suggest' && adpClassify({ status: 'adp_zero' }).tier === 'blocked');
+
+console.log('\n"What I found" notes:\n');
+const person = (rws, loc) => ({ staff: { id: 'S1', first: 'Jordan', last: 'Rivers', loc: loc === undefined ? 'East House' : loc }, rows: rws });
+const find = (adp, shifts, ctx, loc) => { const p = person(one(adp, shifts), loc); adpFindings(p, Object.assign({ hasCard: true, tol: 15, rangeShifts: [] }, ctx || {})); return p.rows; };
+check('no ADP card at all is said plainly', /No ADP timecard for this person at all/.test(find([], [ts('A', '2026-09-28', '06:00', '14:00', 8)], { hasCard: false })[0].found));
+check('has a card but no punch for the shift', /Has an ADP timecard in these dates, but no punch for this shift/.test(find([], [ts('A', '2026-09-28', '06:00', '14:00', 8)])[0].found));
+let fr = find([pu('2026-09-29', '06:14', '14:04', 7.83)], [ts('A', '2026-09-29', '14:00', '22:00', 8)]);
+check('same hours on a different shift that day is called out on both lines', /Same hours, different shift - confirm which shift was worked/.test(fr.find(r => r.shift).found) && /Timesheet has them on 2:00 PM-10:00 PM that day instead/.test(fr.find(r => !r.shift).found));
+check('ADP running past the end of the shift', /ADP shows out at 4:09 PM; timesheet ends 2:00 PM\. About 2 hours on ADP not on the timesheet/.test(find([pu('2026-09-27', '06:12', '16:09', 9.95)], [ts('A', '2026-09-27', '06:00', '14:00', 8)])[0].found));
+check('ADP starting long before the shift', /ADP shows on the clock from 6:01 AM; timesheet starts at 12:00 PM\. About 6 hours/.test(find([pu('2026-09-27', '06:01', '22:01', 15.95)], [ts('A', '2026-09-27', '12:00', '22:00', 10)])[0].found));
+check('ADP stopping before the shift ends, with the long-shift note', (f => /ADP stops at 10:00 PM; timesheet runs to 6:00 AM\. About 8 hours on the timesheet have no punch/.test(f) && /Long shift \(16 hrs\)/.test(f))(find([pu('2026-10-03', '14:00', '22:00', 8)], [ts('L', '2026-10-03', '14:00', '06:00', 16)])[0].found));
+check('two zero-length punches are explained as in and out entered separately', /two zero-length punches \(2:03 PM and 10:09 PM\).*Fix in ADP so 8 hours pay/.test(find([pu('2026-09-28', '14:03', '14:03', 0), pu('2026-09-28', '22:09', '22:09', 0)], [ts('Z', '2026-09-28', '14:00', '22:00', 8)])[0].found));
+check('a single zero-length punch', /Only ADP punch is a single 10:21 PM entry \(in = out\)/.test(find([pu('2026-10-01', '22:21', '22:21', 0)], [ts('Z', '2026-10-01', '14:00', '22:00', 8)])[0].found));
+check('a 3-minute punch', /Only ADP punch is 10:20 PM-10:23 PM \(3 minutes\)\. The 16-hour shift has no usable punch/.test(find([pu('2026-10-03', '22:20', '22:23', 0.05)], [ts('L', '2026-10-03', '06:00', '22:00', 16)])[0].found));
+check('a stray punch with no shift', /Single punch at 3:19 PM \(in = out\), no timesheet shift\. Stray or incomplete punch/.test(find([pu('2026-10-03', '15:19', '15:19', 0)], [])[0].found));
+fr = find([pu('2026-10-01', '22:05', '06:06', 8.02)], [], { rangeShifts: [{ staff: 'S9', name: 'Mills, Dana', date: '2026-10-01', start: '14:00', end: '22:00', location: 'East House' }] });
+check('an ADP-only punch says the person is not on the timesheet and that their home house has no one listed then', /Not on the timesheet at all in these dates\. East House timesheet has no one listed for this time/.test(fr[0].found));
+fr = find([pu('2026-10-01', '14:10', '22:02', 7.87)], [], { rangeShifts: [{ staff: 'S9', name: 'Mills, Dana', date: '2026-10-01', start: '14:00', end: '22:00', location: 'East House' }] });
+check('…or names who the home house timesheet has on instead', /East House timesheet lists Mills, Dana for this time/.test(fr[0].found));
+check('a clean match gets no note; an edited one says so', find([pu('2026-09-28', '06:00', '14:00', 8)], [ts('A', '2026-09-28', '06:00', '14:00', 8)])[0].found === '' && /Entry marked Edited/.test(find([pu('2026-09-28', '06:00', '14:00', 8)], [ts('A', '2026-09-28', '06:00', '14:00', 8, { _corrected: true })])[0].found));
+check('ADP department labels are shortened the way the workbook shows them', adpDeptLabel('DSP (102)') === 'DSP' && adpDeptLabel('Administrative (101)') === 'Admin' && adpDeptLabel('') === '');
+
+console.log('\nTimesheet checks:\n');
+const cs = (staff, name, date, start, end, location, otHrs) => { let h = adpMin(end) - adpMin(start); if (h <= 0) h += 1440; return { staff, name, date, start, end, hours: h / 60, location, otHrs: otHrs || 0 }; };
+const wk = ['2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03'];
+// East House: fully staffed round the clock by three people, except where a test removes a shift.
+const full = wk.flatMap((d, i) => [cs('E' + (i % 3), 'Day, Pat', d, '06:00', '14:00', 'East House'), cs('E' + ((i + 1) % 3), 'Eve, Sam', d, '14:00', '22:00', 'East House'), cs('E' + ((i + 2) % 3), 'Night, Lee', d, '22:00', '06:00', 'East House')]);
+const chk = (shifts, extra) => adpTimesheetChecks(Object.assign({ shifts, from: '2026-09-27', to: '2026-10-03', houses: ['East House', 'West House', 'Office'] }, extra || {}));
+const has = (list, check, re) => list.some(x => x.check === check && (!re || re.test(x.who + ' | ' + x.when + ' | ' + x.found)));
+check('a fully staffed house raises no coverage findings (the first morning is not called a gap)', !has(chk(full), 'Coverage gap on timesheet') && !has(chk(full), 'House/day with no entries'));
+let c1 = chk(full.concat([cs('K', 'Kollie, Jo', '2026-10-02', '23:00', '07:00', 'West House'), cs('K', 'Kollie, Jo', '2026-10-03', '06:00', '16:30', 'East House')]));
+check('one person in two houses at once is caught, with the size of the overlap', has(c1, 'Overlapping shifts', /Kollie, Jo.*Fri 10\/02 - Sat 10\/03.*overlaps.*by 60 minutes\. They cannot be in both houses/));
+c1 = chk(wk.slice(0, 6).map(d => cs('W', 'Work, Al', d, '06:00', '14:00', 'Office')));
+check('over 40 hours in the week with no overtime showing is flagged', has(c1, 'Over 40 hours in the week, OT shows 0.00', /Work, Al.*09\/27 - 10\/03.*48 timesheet hours/));
+check('…but not when the timesheet already shows overtime, or at exactly 40', !has(chk(wk.slice(0, 6).map((d, i) => cs('W', 'Work, Al', d, '06:00', '14:00', 'Office', i === 5 ? 8 : 0))), 'Over 40 hours in the week, OT shows 0.00') && !has(chk(wk.slice(0, 5).map(d => cs('W', 'Work, Al', d, '06:00', '14:00', 'Office'))), 'Over 40 hours in the week, OT shows 0.00'));
+check('a single 22-hour entry is flagged; a 16-hour one is not', has(chk([cs('C', 'Chea, J', '2026-09-27', '08:00', '06:00', 'Office')]), 'Shift over 16 hours', /22 hours in one entry/) && !has(chk([cs('C', 'Chea, J', '2026-09-27', '06:00', '22:00', 'Office')]), 'Shift over 16 hours'));
+check('two entries running straight into each other for 16 hours are flagged', has(chk([cs('B', 'Back, Bo', '2026-10-01', '06:00', '14:00', 'Office'), cs('B', 'Back, Bo', '2026-10-01', '14:00', '22:00', 'Office')]), 'Back-to-back shifts', /2 entries running together = 16 hours straight/));
+check('…but not two shifts with a real break between them', !has(chk([cs('B', 'Back, Bo', '2026-10-01', '06:00', '14:00', 'Office'), cs('B', 'Back, Bo', '2026-10-01', '16:00', '23:59', 'Office')]), 'Back-to-back shifts'));
+const noNight = full.filter(x => !(x.date === '2026-09-29' && x.start === '22:00'));
+c1 = chk(noNight, { loose: [{ name: 'Johnson, Phil', home: 'East House', date: '2026-09-29', start: '22:06', end: '06:28' }] });
+check('a missing overnight at a round-the-clock house is a coverage gap, and says who ADP shows working it', has(c1, 'Coverage gap on timesheet', /East House.*Tue 09\/29 - Wed 09\/30.*10:00 PM to 6:00 AM next day \(8 hours\)\. ADP shows Johnson on 10:06 PM-6:28 AM/));
+check('a punch matched to a later shift at the same house is named when it reaches back into the gap', has(chk(noNight, { over: [{ name: 'Chambers, T', home: 'East House', date: '2026-09-29', start: '21:30', end: '06:05' }] }), 'Coverage gap on timesheet', /ADP shows Chambers on 9:30 PM-6:05 AM/));
+check('with no ADP punch for the gap it says so', has(chk(noNight), 'Coverage gap on timesheet', /No ADP punch found for it either/));
+const noSat = full.filter(x => x.date !== '2026-10-03' && !(x.date === '2026-10-02' && x.start === '22:00'));
+check('a whole day with nothing entered is reported as a day with no entries', has(chk(noSat), 'House/day with no entries', /East House.*Sat 10\/03.*No timesheet entries for the whole day/));
+check('a missing last overnight is caught even though it runs past the last date', has(chk(full.filter(x => !(x.date === '2026-10-03' && x.start === '22:00'))), 'Coverage gap on timesheet', /Sat 10\/03 - Sun 10\/04.*10:00 PM to 6:00 AM next day/));
+check('a place that is not staffed round the clock (the Office) never gets coverage gaps', !has(chk(wk.slice(1, 6).map(d => cs('O', 'Desk, Di', d, '09:00', '17:00', 'Office'))), 'Coverage gap on timesheet') && !has(chk(wk.slice(1, 6).map(d => cs('O', 'Desk, Di', d, '09:00', '17:00', 'Office'))), 'House/day with no entries'));
+check('a first shift starting at 8 AM on the first day is a 6–8 AM gap even when the night before is outside the dates', has(chk(full.filter(x => !(x.date === '2026-09-27' && x.start === '06:00')).concat([cs('E9', 'Late, Lu', '2026-09-27', '08:00', '14:00', 'East House')])), 'Coverage gap on timesheet', /Sun 09\/27.*6:00 AM to 8:00 AM \(2 hours\)/));
+check('the evening before an empty day is shown as the whole missing overnight', has(chk(noSat), 'Coverage gap on timesheet', /Fri 10\/02 - Sat 10\/03.*10:00 PM to 6:00 AM next day \(8 hours\)/));
+check('a late first morning IS a gap when the night before is known', has(chk(full.filter(x => !(x.date === '2026-09-27' && x.start === '06:00')), { edge: [cs('E2', 'Night, Lee', '2026-09-26', '22:00', '06:00', 'East House')] }), 'Coverage gap on timesheet', /Sun 09\/27.*6:00 AM to 2:00 PM/));
+check('a house with ADP punches from its staff but nothing on the timesheet is named', has(chk(full, { loose: [{ name: 'Mawolo, P', home: 'West House', date: '2026-09-27', start: '13:32', end: '22:42' }] }), 'House missing from timesheet', /West House.*1 of its staff have ADP punches/));
 
 console.log('\nWho is on one record but not the other:\n');
 const P = (id, first, last, entries, tsCount, tsTotal) => ({ staff: { id, first, last }, emp: { name: last + ' ' + first, entries }, tsCount, tsTotal, adpTotal: entries.reduce((a, x) => a + x.hours, 0) });
@@ -125,35 +185,6 @@ check('a name left out on purpose is still listed, marked as such', miss.adpOnly
 check('an ADP card with no punches at all is not reported as ADP only', !names(miss.adpOnly).includes('Empty Card') && miss.adpOnly.length === 3);
 check('staff with timesheet hours and no ADP timecard are listed as timesheet only', miss.tsOnly.some(x => x.id === 'S9' && x.shifts === 2 && near(x.hours, 16)));
 check('staff whose ADP card is empty, or has only punch errors, are listed as timesheet only', miss.tsOnly.some(x => x.id === 'S3') && miss.tsOnly.some(x => x.id === 'S4' && /punch errors/.test(x.why)) && miss.tsOnly.length === 3);
-
-console.log('\nBest-practice sorting (ready / suggested / needs review / punch correction):\n');
-const cls = (adp, shift, min) => adpClassify(adpCompareStaff(adp ? [adp] : [], shift ? [shift] : [], 0)[0], min === undefined ? 15 : min);
-const A1 = (start, end, hours, extra) => Object.assign({ date: '2026-09-29', start, end, hours }, extra || {});
-const T1 = ts('Z', '2026-09-29', '08:00', '16:00', 8);
-check('identical times need nothing', cls(A1('08:00', '16:00', 8), T1).tier === 'ok');
-check('a few minutes off is ready to apply (pre-ticked)', cls(A1('07:56', '16:09', 8.22), T1).tier === 'auto' && cls(A1('07:56', '16:09', 8.22), T1).off === 9);
-check('exactly at the limit is still ready; one minute over needs review', cls(A1('08:15', '16:00', 7.75), T1).tier === 'auto' && cls(A1('08:16', '16:00', 7.73), T1).tier === 'review');
-check('the limit follows the setting (20 min apart is review at 15, ready at 30)', cls(A1('08:00', '16:20', 8.33), T1, 15).tier === 'review' && cls(A1('08:00', '16:20', 8.33), T1, 30).tier === 'auto');
-check('a punch with no timesheet shift is a suggestion, never applied on its own', cls(A1('08:00', '16:00', 8), null).tier === 'suggest');
-check('a timesheet shift with no punch is held for a punch correction, not rejected', cls(null, T1).tier === 'hold' && /punch correction/i.test(cls(null, T1).label));
-check('a punch with no out time always needs review', cls(A1('08:00', null, 0, { missingOut: true }), T1).tier === 'review');
-
-const inf = adpInferFromErrors([
-  { date: '2026-09-28', day: 'Mon', start: '14:03', end: '14:03', hours: 0, zero: true },
-  { date: '2026-09-28', day: 'Mon', start: '22:09', end: '22:09', hours: 0, zero: true },
-  { date: '2026-09-29', day: 'Tue', start: '14:00', end: '22:10', hours: 8.17, zero: false },
-  { date: '2026-10-03', day: 'Sat', start: '15:19', end: '15:19', hours: 0, zero: true },
-  { date: '2026-10-01', day: 'Thu', start: '09:00', end: '09:00', hours: 0, zero: true }, { date: '2026-10-01', day: 'Thu', start: '09:20', end: '09:20', hours: 0, zero: true }
-]);
-const built = inf.filter(x => x.inferred);
-check('two 0:00 punch-error lines on one day are rebuilt into one proposed shift (2:03 PM \u2013 10:09 PM, 8.10 hrs)', built.length === 1 && built[0].date === '2026-09-28' && built[0].start === '14:03' && built[0].end === '22:09' && near(built[0].hours, 8.1));
-check('the two error lines are kept and marked as used', inf.filter(x => x.zero && x.usedInInference).length === 2);
-check('a single error line, or two only 20 minutes apart, is NOT turned into a shift', !inf.some(x => x.inferred && (x.date === '2026-10-03' || x.date === '2026-10-01')));
-check('real punches pass through untouched', inf.some(x => x.date === '2026-09-29' && !x.inferred && near(x.hours, 8.17)));
-const infRows = adpCompareStaff(inf.filter(x => x.date === '2026-09-28'), [ts('W', '2026-09-28', '14:00', '22:00', 8)], 0);
-const infPair = infRows.find(r => r.adp && r.adp.inferred);
-check('a rebuilt shift is paired with the timesheet shift but ALWAYS sent to review, even when the times are close', infPair.shift.id === 'W' && adpClassify(infPair, 15).tier === 'review' && /punch-error/.test(adpClassify(infPair, 15).why));
-check('the error lines themselves are information only', infRows.filter(r => r.status === 'adp_zero').every(r => adpClassify(r, 15).tier === 'blocked'));
 
 console.log('\nSuggesting the house for a shift added from ADP:\n');
 const who = { id: 'S1', loc: 'Home House' };

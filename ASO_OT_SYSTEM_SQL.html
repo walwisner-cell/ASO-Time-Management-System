@@ -1501,6 +1501,13 @@
   #adp-report { overflow-x:auto; padding-bottom:8px; }
   .adp-rep .sr-tiles + .sr-tiles { margin-top:8px; }
   .adp-rep .sr-two b { font-size:10.5px; }
+  table.adp-audit { width:100%; font-size:12.5px; }
+  table.adp-audit td { vertical-align:top; }
+  table.adp-audit th, table.adp-audit td { padding:8px 9px; }
+  table.adp-audit th { letter-spacing:.04em; }
+  .adp-r-ok { background:rgba(31,146,104,0.20); color:var(--text) !important; font-weight:600; }
+  .adp-r-warn { background:rgba(198,138,30,0.24); color:var(--text) !important; font-weight:600; }
+  .adp-r-bad { background:rgba(194,74,70,0.26); color:var(--text) !important; font-weight:600; }
   .adp-map-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px 18px; }
   .adp-map-row { display:flex; align-items:center; gap:12px; justify-content:space-between; }
   .adp-map-row b { display:block; font-size:13px; color:var(--text); }
@@ -2195,10 +2202,11 @@
         <div class="page-header">
           <div class="page-header-left">
             <div class="page-title">ADP Timecard Match</div>
-            <div class="page-sub">Upload the ADP Timecard Report. Every punch is matched to the Timesheet Log and sorted by what it needs: ready to apply, suggested, needs review, or needs a punch correction. Nothing changes pay until a person confirms it.</div>
+            <div class="page-sub">Upload the ADP Timecard Report. Every timesheet shift is matched to the ADP punch that covers it and judged on hours: Match, Hours differ, No ADP punch or Incomplete ADP punch. Nothing changes pay until a person confirms it.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="rb-export-btn" onclick="adpPrint('procedure')">🖨️ Procedure</button>
+            <button class="rb-export-btn" onclick="adpExportAuditXlsx()">⬇ Excel audit</button>
             <button class="rb-export-btn" onclick="adpExportCSV()">⬇ CSV</button>
             <button class="rb-print-btn" onclick="adpPrint('report')">🖨️ Print report</button>
           </div>
@@ -2210,9 +2218,9 @@
               <label class="btn btn-primary" style="display:inline-block;cursor:pointer">Choose file…<input type="file" id="adp-file" accept="application/pdf,.pdf" onchange="adpFileChosen(this)" style="display:none"></label>
             </div>
             <div>
-              <label for="adp-review-min" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">⏱️ Needs review when times differ by more than</label>
+              <label for="adp-review-min" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">⏱️ Match when hours are within</label>
               <select id="adp-review-min" onchange="if(_adp){_adpRows=[];adpRender()}" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px">
-                <option value="7">7 minutes</option>
+                <option value="5">5 minutes</option>
                 <option value="10">10 minutes</option>
                 <option value="15" selected>15 minutes</option>
                 <option value="30">30 minutes</option>
@@ -2222,9 +2230,11 @@
               <label for="adp-house" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">🏠 House</label>
               <select id="adp-house" onchange="if(_adp){_adpRows=[];adpRender()}" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px"><option value="">All houses</option></select>
             </div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Hide exact matches</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Hide matches on the worklist</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px" title="ADP Administrative (office) staff punch at the office, which has no timesheet shift. Leave ticked to list those punches without chasing them."><input type="checkbox" id="adp-skip-admin" checked onchange="if(_adp){_adpRows=[];adpRender()}" style="width:15px;height:15px"> Don’t audit office (Admin) punches</label>
             <div id="adp-view-btns" class="adp-views" style="display:none;margin-left:auto">
-              <button data-view="work" class="active" onclick="adpSetView('work')">Worklist</button>
+              <button data-view="audit" class="active" onclick="adpSetView('audit')">Audit</button>
+              <button data-view="work" onclick="adpSetView('work')">Worklist</button>
               <button data-view="report" onclick="adpSetView('report')">Reconciliation report</button>
               <button data-view="procedure" onclick="adpSetView('procedure')">Procedure</button>
             </div>
@@ -11545,43 +11555,81 @@ function adpMatchName(adpName, staffList, savedMap) {
   return { staff: null, how: null };
 }
 
-// Lines one person's ADP punches up against their timesheet shifts, day by
-// day. Within a day each punch is paired with the shift whose start time
-// is nearest (within 4 hours, or any two that overlap). `tol` is how many minutes in
-// and out may differ and still count as the same.
-//   match    — in and out agree within the tolerance
-//   differs  — same shift, but the times are further apart than that
-//   adp_only — punched in ADP, nothing on the timesheet
-//   ts_only  — on the timesheet, no ADP punch
-//   adp_zero — an ADP punch error (in and out at the same minute, 0:00 paid)
-// Any row on a day that has a punch error carries adpIssue = true, so a
-// timesheet shift is never rejected just because ADP's own punch was bad.
+// Matches one person's ADP punches to their timesheet SHIFT PERIODS — the
+// way the owner's own audit workbook does it:
+//   * A punch belongs to a shift when the two overlap in time (at least 30
+//     minutes, and at least a quarter of the shorter one). It does not
+//     matter whether the punch-in was a few minutes early or late.
+//   * The verdict is then about HOURS, not clock times:
+//       match      — ADP hours and timesheet hours are within `tol` minutes
+//       differs    — "Hours differ": same shift, but the hours are further apart
+//       ts_only    — "No ADP punch": a timesheet shift with no punch at all
+//       incomplete — "Incomplete ADP punch": the only punch near the shift is
+//                    unusable (in = out, under 15 minutes, or no out punch)
+//       adp_only   — a real ADP punch with no timesheet shift
+//       adp_zero   — a stray unusable punch with no shift anywhere near it
+// Real date+time intervals are used, so an overnight shift and a punch that
+// starts just before midnight still find each other.
 function adpCompareStaff(adpEntries, shifts, tol) {
+  const dayNo = iso => { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
+  const span = (date, start, end) => { const s0 = dayNo(date) * 1440 + adpMin(start); if (!end) return [s0, s0]; let e0 = dayNo(date) * 1440 + adpMin(end); if (e0 < s0) e0 += 1440; return [s0, e0]; };
+  const usable = a => !!a.end && !a.zero && a.hours >= 0.25;
+  const T = shifts.map(t => { const [s0, e0] = span(t.date, t.start, t.end); return { t, s: s0, e: e0 === s0 ? s0 + 1440 : e0, used: false, parts: [] }; });
+  const P = adpEntries.filter(usable).map(a => { const [s0, e0] = span(a.date, a.start, a.end); return { a, s: s0, e: e0 === s0 ? s0 + 1440 : e0, used: false }; });
+  const U = adpEntries.filter(a => !usable(a)).map(a => { const [s0, e0] = span(a.date, a.start, a.end); return { a, s: s0, e: e0, used: false }; });
   const rows = [];
-  const dates = [...new Set(adpEntries.map(a => a.date).concat(shifts.map(s => s.date)))].sort();
-  const endAbs = (start, end) => { const s = adpMin(start); let e = adpMin(end); if (e <= s) e += 1440; return e; };
-  dates.forEach(date => {
-    const zeros = adpEntries.filter(a => a.date === date && a.zero);
-    const A = adpEntries.filter(a => a.date === date && !a.zero), T = shifts.filter(s => s.date === date);
-    const usedA = new Set(), usedT = new Set();
-    const first = rows.length;
-    for (;;) {
-      let best = null;
-      A.forEach((a, ai) => { if (usedA.has(ai)) return; T.forEach((t, ti) => { if (usedT.has(ti)) return; const d = Math.abs(adpMin(a.start) - adpMin(t.start)); const overlaps = a.end && adpMin(a.start) < endAbs(t.start, t.end) && adpMin(t.start) < endAbs(a.start, a.end); if ((d <= 240 || overlaps) && (!best || d < best.d)) best = { ai, ti, d }; }); });
-      if (!best) break;
-      usedA.add(best.ai); usedT.add(best.ti);
-      const a = A[best.ai], t = T[best.ti];
-      const dIn = adpMin(a.start) - adpMin(t.start);
-      const dOut = a.end ? endAbs(a.start, a.end) - endAbs(t.start, t.end) : null;
-      const same = dOut !== null && Math.abs(dIn) <= tol && Math.abs(dOut) <= tol;
-      rows.push({ date, status: same ? 'match' : 'differs', exact: dIn === 0 && dOut === 0, adp: a, shift: t, dIn, dOut, diffHours: a.hours - t.hours });
-    }
-    A.forEach((a, ai) => { if (!usedA.has(ai)) rows.push({ date, status: 'adp_only', exact: false, adp: a, shift: null, dIn: null, dOut: null, diffHours: a.hours }); });
-    T.forEach((t, ti) => { if (!usedT.has(ti)) rows.push({ date, status: 'ts_only', exact: false, adp: null, shift: t, dIn: null, dOut: null, diffHours: -t.hours }); });
-    zeros.forEach(a => rows.push({ date, status: 'adp_zero', exact: false, adp: a, shift: null, dIn: null, dOut: null, diffHours: 0 }));
-    if (zeros.length) for (let i = first; i < rows.length; i++) rows[i].adpIssue = true;
+
+  // 1. Punch <-> shift by overlap, largest overlap first.
+  const cand = [];
+  P.forEach((p, pi) => T.forEach((t, ti) => {
+    const ov = Math.min(p.e, t.e) - Math.max(p.s, t.s);
+    if (ov >= 30 && ov >= 0.25 * Math.min(p.e - p.s, t.e - t.s)) cand.push({ pi, ti, ov });
+  }));
+  const pairs = [];
+  cand.sort((x, y) => y.ov - x.ov || x.pi - y.pi).forEach(c => {
+    const p = P[c.pi], t = T[c.ti];
+    if (p.used || t.used) return;
+    p.used = t.used = true;
+    pairs.push({ t, ps: [p], s: p.s, e: p.e });
   });
-  rows.sort((x, y) => x.date.localeCompare(y.date) || String((x.adp || x.shift).start).localeCompare(String((y.adp || y.shift).start)));
+  // A shift that was punched as two or three back-to-back pieces (out and
+  // straight back in) is one stretch of work: a leftover punch that starts
+  // or ends within 30 minutes of a matched one joins it.
+  for (let grew = true; grew;) {
+    grew = false;
+    P.forEach(p => {
+      if (p.used) return;
+      const host = pairs.find(pr => Math.abs(p.s - pr.e) <= 30 || Math.abs(pr.s - p.e) <= 30);
+      if (!host) return;
+      p.used = true; grew = true;
+      host.ps.push(p); host.s = Math.min(host.s, p.s); host.e = Math.max(host.e, p.e);
+    });
+  }
+  pairs.forEach(pr => {
+    const ps = pr.ps.sort((x, y) => x.s - y.s), t = pr.t;
+    const sum = k => ps.reduce((a, x) => a + (x.a[k] || 0), 0);
+    const adp = ps.length === 1 ? ps[0].a : { ...ps[0].a, end: ps[ps.length - 1].a.end, hours: sum('hours'), reg: sum('reg'), ot: sum('ot'), dt: sum('dt'), elapsed: (pr.e - pr.s) / 60, parts: ps.map(x => x.a) };
+    const diffHours = adp.hours - t.t.hours;
+    rows.push({ date: t.t.date, status: Math.abs(diffHours) * 60 <= tol + 1e-6 ? 'match' : 'differs', exact: pr.s === t.s && pr.e === t.e, adp, shift: t.t, dIn: pr.s - t.s, dOut: pr.e - t.e, diffHours });
+  });
+
+  // 2. An unusable punch is pinned to the nearest shift that has no real punch, if it is inside it or within 2 hours of it.
+  U.forEach(u => {
+    let best = null;
+    T.forEach(t => { if (t.used) return; const gap = u.e < t.s ? t.s - u.e : u.s > t.e ? u.s - t.e : 0; if (gap <= 120 && (!best || gap < best.gap)) best = { t, gap }; });
+    if (best) { best.t.parts.push(u.a); u.used = true; }
+  });
+  T.forEach(t => {
+    if (t.used) return;
+    if (t.parts.length) {
+      const parts = t.parts.slice().sort((x, y) => x.date.localeCompare(y.date) || x.start.localeCompare(y.start));
+      const hrs = parts.reduce((a, x) => a + x.hours, 0);
+      rows.push({ date: t.t.date, status: 'incomplete', exact: false, adp: parts[0], adpParts: parts, adpHours: hrs, shift: t.t, dIn: null, dOut: null, diffHours: hrs - t.t.hours, adpIssue: true });
+    } else rows.push({ date: t.t.date, status: 'ts_only', exact: false, adp: null, shift: t.t, dIn: null, dOut: null, diffHours: -t.t.hours });
+  });
+  P.forEach(p => { if (!p.used) rows.push({ date: p.a.date, status: 'adp_only', exact: false, adp: p.a, shift: null, dIn: null, dOut: null, diffHours: p.a.hours }); });
+  U.forEach(u => { if (!u.used) rows.push({ date: u.a.date, status: 'adp_zero', exact: false, adp: u.a, shift: null, dIn: null, dOut: null, diffHours: u.a.hours || 0 }); });
+  rows.sort((x, y) => x.date.localeCompare(y.date) || String((x.shift || x.adp).start).localeCompare(String((y.shift || y.adp).start)));
   return rows;
 }
 
@@ -11638,7 +11686,7 @@ async function adpFileChosen(input) {
     if (!employees.length || !punches) throw new Error('No timecards were found in this file. It needs to be the ADP "Timecard Report" PDF.');
     const froms = employees.map(e => e.from).filter(Boolean).sort(), tos = employees.map(e => e.to).filter(Boolean).sort();
     const allDates = employees.flatMap(e => e.entries.map(x => x.date)).sort();
-    _adpRows = []; _adpHouse = {}; _adpView = 'work';
+    _adpRows = []; _adpHouse = {}; _adpView = 'audit'; _adpAuditTab = 'shift';
     _adp = { fileName: file.name, employees, from: froms[0] || allDates[0], to: tos[tos.length - 1] || allDates[allDates.length - 1] };
     adpRender();
   } catch (e) {
@@ -11683,34 +11731,286 @@ function adpSetMap(sel) {
 //   hold    — on the timesheet with no ADP punch: kept and paid as entered until the punch is fixed in ADP
 //   blocked — an ADP punch error line: information only, fixed in ADP
 
-// Two 0:00 punch-error lines on the same day are almost always ONE shift
-// whose in and out were each keyed as a separate line. This rebuilds that
-// shift as a proposal (never as a fact): it is always sent to "review".
-function adpInferFromErrors(entries) {
-  const out = entries.map(e => ({ ...e }));
-  const byDate = {};
-  out.forEach(e => { if (e.zero) (byDate[e.date] = byDate[e.date] || []).push(e); });
-  Object.keys(byDate).forEach(date => {
-    const z = byDate[date].sort((a, b) => a.start.localeCompare(b.start));
-    if (z.length !== 2) return;
-    const mins = adpMin(z[1].start) - adpMin(z[0].start);
-    if (mins < 60 || mins > 16 * 60) return; // too short to be a shift, or implausibly long
-    z[0].usedInInference = z[1].usedInInference = true;
-    out.push({ date, day: z[0].day, start: z[0].start, end: z[1].start, reg: 0, ot: 0, dt: 0, hours: mins / 60, elapsed: mins / 60, missingOut: false, zero: false, inferred: true, dept: z[0].dept });
-  });
-  return out.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+function adpClassify(row) {
+  switch (row.status) {
+    case 'match': return { tier: 'ok', label: 'Match' };
+    case 'differs': return { tier: 'review', label: 'Hours differ' };
+    case 'ts_only': return { tier: 'hold', label: 'No ADP punch' };
+    case 'incomplete': return { tier: 'hold', label: 'Incomplete ADP punch' };
+    case 'adp_only': return { tier: 'suggest', label: 'ADP punch, not on timesheet' };
+    default: return { tier: 'blocked', label: 'Stray ADP punch' };
+  }
 }
 
-function adpClassify(row, reviewMin) {
-  if (row.status === 'adp_zero') return { tier: 'blocked', label: 'ADP punch error' };
-  if (row.status === 'ts_only') return { tier: 'hold', label: 'Needs punch correction' };
-  const inferred = !!(row.adp && row.adp.inferred);
-  if (row.adp && row.adp.missingOut) return { tier: 'review', label: 'Needs review', why: 'ADP has no out punch' };
-  if (row.status === 'adp_only') return inferred ? { tier: 'review', label: 'Needs review', why: 'Rebuilt from two ADP punch-error lines' } : { tier: 'suggest', label: 'Suggested — confirm' };
-  if (row.exact) return { tier: 'ok', label: 'Match' };
-  const off = Math.max(Math.abs(row.dIn || 0), Math.abs(row.dOut || 0));
-  if (inferred) return { tier: 'review', label: 'Needs review', why: 'Rebuilt from two ADP punch-error lines', off };
-  return off <= reviewMin ? { tier: 'auto', label: 'Ready to apply', off } : { tier: 'review', label: 'Needs review', why: `Times are ${off} minutes apart`, off };
+// ── Time Audit (the owner's workbook, produced by the system) ──────────
+// Everything below builds the same six tabs as the audit workbook the
+// owner supplied: Summary, Shift Match, ADP Not On Timesheet, ADP Punches,
+// Staff Totals and Timesheet Checks.
+
+function adpDeptLabel(dept) {
+  const d = String(dept || '').trim();
+  if (!d) return '';
+  if (/admin/i.test(d)) return 'Admin';
+  return d.replace(/\s*\(.*$/, '').trim() || d;
+}
+// A date + start + end as minutes on one continuous timeline, so shifts and punches that cross midnight compare correctly.
+function adpSpan(date, start, end) {
+  const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
+  const s0 = Math.round(Date.UTC(y, m - 1, d) / 86400000) * 1440 + adpMin(start);
+  if (!end) return [s0, s0];
+  let e0 = Math.round(Date.UTC(y, m - 1, d) / 86400000) * 1440 + adpMin(end);
+  if (e0 < s0) e0 += 1440;
+  return [s0, e0];
+}
+function adpAbout(mins) {
+  mins = Math.abs(Math.round(mins));
+  if (mins < 90) return `${mins} minutes`;
+  const h = Math.round(mins / 30) / 2;
+  return `${h} hour${h === 1 ? '' : 's'}`;
+}
+
+// Writes the plain-language "What I found" note onto every row for one
+// person. `ctx.hasCard` = this person has an ADP timecard in the file;
+// `ctx.rangeShifts` = every counted timesheet shift in the dates (all staff),
+// each with a `name`; `ctx.tol` = match tolerance in minutes.
+function adpFindings(person, ctx) {
+  const t12 = t => t ? fmtTime(t) : '?';
+  const tol = ctx.tol;
+  const mine = person.rows.filter(r => r.shift);
+  person.rows.forEach(r => {
+    let f = '';
+    const sh = r.shift, a = r.adp;
+    if (r.status === 'ts_only') {
+      const swap = person.rows.find(o => o.status === 'adp_only' && o.date === r.date && Math.abs(o.adp.hours - sh.hours) <= 0.5);
+      f = !ctx.hasCard ? 'No ADP timecard for this person at all in these dates.'
+        : swap ? `Timesheet says ${t12(sh.start)}-${t12(sh.end)}; ADP shows a punch ${t12(swap.adp.start)}-${t12(swap.adp.end)} that day. Same hours, different shift - confirm which shift was worked.`
+        : 'Has an ADP timecard in these dates, but no punch for this shift.';
+    } else if (r.status === 'incomplete') {
+      const parts = r.adpParts || [a];
+      const zeros = parts.filter(x => x.zero || x.start === x.end);
+      if (parts.some(x => x.missingOut)) f = `ADP has an in punch at ${t12(parts.find(x => x.missingOut).start)} with no out punch.`;
+      else if (zeros.length >= 2) f = `ADP has ${zeros.length === 2 ? 'two' : zeros.length} zero-length punches (${zeros.map(x => t12(x.start)).join(' and ')}) - looks like the in and out were entered as separate punches. Fix in ADP so ${numFmt(sh.hours)} hours pay.`;
+      else if (zeros.length === 1 && parts.length === 1) f = `Only ADP punch is a single ${t12(a.start)} entry (in = out). No clock-in recorded.`;
+      else f = `Only ADP punch is ${t12(a.start)}-${t12(a.end)} (${Math.round(a.hours * 60)} minutes). The ${numFmt(sh.hours)}-hour shift has no usable punch.`;
+    } else if (r.status === 'differs') {
+      const bits = [];
+      if (r.dOut > tol) bits.push(`ADP shows out at ${t12(a.end)}; timesheet ends ${t12(sh.end)}. About ${adpAbout(r.dOut)} on ADP not on the timesheet.`);
+      if (r.dIn < -tol) bits.push(`ADP shows on the clock from ${t12(a.start)}; timesheet starts at ${t12(sh.start)}. About ${adpAbout(r.dIn)} on ADP not on the timesheet.`);
+      if (r.dOut < -tol) bits.push(`ADP stops at ${t12(a.end)}; timesheet runs to ${t12(sh.end)}. About ${adpAbout(r.dOut)} on the timesheet have no punch.`);
+      if (r.dIn > tol) bits.push(`ADP punch-in is ${t12(a.start)}; timesheet starts ${t12(sh.start)}. About ${adpAbout(r.dIn)} on the timesheet have no punch.`);
+      f = bits.join(' ') || `ADP ${t12(a.start)}-${t12(a.end)} is ${adpAbout(r.diffHours * 60)} ${r.diffHours > 0 ? 'longer' : 'shorter'} than the timesheet shift.`;
+      if (a.parts && a.parts.length > 1) f += ` ADP has this as ${a.parts.length} back-to-back punches.`;
+    } else if (r.status === 'adp_zero') {
+      f = a.missingOut ? `In punch at ${t12(a.start)} with no out punch, and no timesheet shift.`
+        : a.start === a.end ? `Single punch at ${t12(a.start)} (in = out), no timesheet shift. Stray or incomplete punch.`
+        : `Punch ${t12(a.start)}-${t12(a.end)} (${Math.round(a.hours * 60)} minutes), no timesheet shift. Stray or incomplete punch.`;
+    } else if (r.status === 'adp_only') {
+      const sameDay = mine.filter(o => o.date === r.date);
+      const instead = sameDay.find(o => o.status === 'ts_only');
+      if (instead) f = `Timesheet has them on ${t12(instead.shift.start)}-${t12(instead.shift.end)} that day instead (see Shift Match).`;
+      else if (sameDay.length) f = `Timesheet shows only ${sameDay.map(o => `${t12(o.shift.start)}-${t12(o.shift.end)} at ${o.shift.location}`).join(' and ')} that day; ADP shows another stretch ${t12(a.start)}-${t12(a.end)}.`;
+      else if (mine.length) f = 'Has other shifts on the timesheet, but not this one.';
+      else f = 'Not on the timesheet at all in these dates.';
+      const home = person.staff.loc || '';
+      if (home) {
+        const [ps, pe] = adpSpan(a.date, a.start, a.end);
+        const cover = (ctx.rangeShifts || []).filter(s => s.location === home && s.staff !== person.staff.id).filter(s => { const [ss, se] = adpSpan(s.date, s.start, s.end); return Math.min(pe, se) - Math.max(ps, ss) >= 30; });
+        const who = [...new Set(cover.map(s => s.name))];
+        f += who.length ? ` ${home} timesheet lists ${who.slice(0, 3).join(', ')}${who.length > 3 ? ' and others' : ''} for this time.` : ` ${home} timesheet has no one listed for this time.`;
+      }
+    }
+    if (sh && sh.hours >= 16) f += (f ? ' ' : '') + `Long shift (${numFmt(sh.hours)} hrs).`;
+    if (sh && sh._corrected) f += (f ? ' ' : '') + 'Entry marked Edited.';
+    r.found = f;
+  });
+}
+
+// Checks on the timesheet itself, independent of ADP. Pure.
+//   input.shifts  — counted shifts in the dates: { staff, name, date, start, end, hours, location, otHrs }
+//   input.from/to — the dates; input.houses — every house name
+//   input.loose   — ADP punches with no timesheet shift: { name, home, date, start, end }
+//   input.over    — ADP punches matched to a shift at a house (home = that house); used only to say who ADP shows in a gap
+function adpTimesheetChecks(input) {
+  const out = [];
+  const t12 = t => fmtTime(t);
+  const dayLabel = iso => `${srDayName(iso)} ${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+  const shifts = input.shifts.map(s => { const [a, b] = adpSpan(s.date, s.start, s.end); return { ...s, s0: a, e0: b === a ? a + 1440 : b }; });
+  const byStaff = {};
+  shifts.forEach(s => { (byStaff[s.staff] = byStaff[s.staff] || []).push(s); });
+  const where = s => `${s.location} ${t12(s.start)}-${t12(s.end)}`;
+
+  // 1. One person in two places at once.
+  Object.values(byStaff).forEach(list => {
+    list.sort((a, b) => a.s0 - b.s0);
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const ov = Math.min(list[i].e0, list[j].e0) - Math.max(list[i].s0, list[j].s0);
+      if (ov > 0) out.push({ check: 'Overlapping shifts', who: list[i].name, when: list[i].date === list[j].date ? dayLabel(list[i].date) : `${dayLabel(list[i].date)} - ${dayLabel(list[j].date)}`, found: `${where(list[i])} overlaps ${where(list[j])} by ${adpAbout(ov)}. ${list[i].location !== list[j].location ? 'They cannot be in both houses.' : 'The same hours are entered twice.'}` });
+    }
+  });
+
+  // 2. Over 40 hours in a workweek while the timesheet shows no overtime.
+  const weeks = {};
+  shifts.forEach(s => { const wk = Math.floor(calendarDayDiff(input.from, s.date) / 7); const k = s.staff + '|' + wk; const w = weeks[k] = weeks[k] || { name: s.name, wk, hours: 0, ot: 0 }; w.hours += s.hours; w.ot += s.otHrs || 0; });
+  Object.values(weeks).filter(w => w.hours > 40 + 1e-6 && w.ot < 0.005).sort((a, b) => b.hours - a.hours).forEach(w => {
+    const ws = srAddDays(input.from, w.wk * 7), we = srAddDays(ws, 6) > input.to ? input.to : srAddDays(ws, 6);
+    out.push({ check: 'Over 40 hours in the week, OT shows 0.00', who: w.name, when: `${ws.slice(5, 7)}/${ws.slice(8, 10)} - ${we.slice(5, 7)}/${we.slice(8, 10)}`, found: `${numFmt(w.hours)} timesheet hours in the week; the timesheet shows 0.00 overtime for them.` });
+  });
+
+  // 3. A single entry longer than 16 hours.
+  shifts.filter(s => s.hours > 16 + 1e-6).forEach(s => out.push({ check: 'Shift over 16 hours', who: s.name, when: dayLabel(s.date), found: `${where(s)} = ${numFmt(s.hours)} hours in one entry.` }));
+
+  // 4. Entries that run straight into each other for 16 hours or more.
+  Object.values(byStaff).forEach(list => {
+    list.sort((a, b) => a.s0 - b.s0);
+    let run = [];
+    const flush = () => { if (run.length > 1) { const hrs = (run[run.length - 1].e0 - run[0].s0) / 60; if (hrs >= 16 - 1e-6) out.push({ check: 'Back-to-back shifts', who: run[0].name, when: dayLabel(run[0].date), found: `${run.length} entries running together = ${numFmt(hrs)} hours straight (${run.map(where).join(', then ')}).` }); } };
+    list.forEach(s => { if (run.length && s.s0 - run[run.length - 1].e0 >= 0 && s.s0 - run[run.length - 1].e0 <= 15) run.push(s); else { flush(); run = [s]; } });
+    flush();
+  });
+
+  // 5-6. For houses that are staffed round the clock: a day with nothing entered, and hours with nobody listed.
+  const days = []; for (let d = input.from, g = 0; d <= input.to && g < 400; d = srAddDays(d, 1), g++) days.push(d);
+  const rangeS = adpSpan(input.from, '00:00', null)[0], rangeE = rangeS + days.length * 1440;
+  const looseAt = (house, a, b) => (input.loose || []).concat(input.over || []).filter(p => p.home === house).filter(p => { const [ps, pe] = adpSpan(p.date, p.start, p.end); return Math.min(pe, b) - Math.max(ps, a) >= 30; });
+  const looseText = l => l.length ? ` ADP shows ${l.slice(0, 2).map(p => `${p.name.split(',')[0]} on ${t12(p.start)}-${t12(p.end)}`).join(' and ')}.` : '';
+  // Shifts dated the day before / the day after the range are used for
+  // coverage only, so an overnight shift that started the night before does
+  // not show up as a false gap on the first morning.
+  const edge = (input.edge || []).map(s => { const [a, b] = adpSpan(s.date, s.start, s.end); return { ...s, s0: a, e0: b === a ? a + 1440 : b }; });
+  const winE = rangeE + 360; // look as far as 6 AM after the last day, to catch a missing last overnight
+  (input.houses || []).forEach(house => {
+    const hs = shifts.filter(s => s.location === house);
+    if (!hs.length) return;
+    const covered = hs.reduce((a, s) => a + (Math.min(s.e0, rangeE) - Math.max(s.s0, rangeS)), 0) / 60;
+    if (covered < days.length * 24 * 0.6) return; // not a round-the-clock house (Office, day program…)
+    const he = edge.filter(s => s.location === house);
+    const knowBefore = he.some(s => s.s0 < rangeS);
+    const iv = hs.concat(he).map(s => [Math.max(s.s0, rangeS), Math.min(s.e0, winE)]).filter(x => x[1] > x[0]).sort((a, b) => a[0] - b[0]);
+    const gaps = []; let cur = rangeS;
+    iv.forEach(x => { if (x[0] - cur >= 60) gaps.push([cur, x[0]]); cur = Math.max(cur, x[1]); });
+    if (winE - cur >= 60) gaps.push([cur, winE]);
+    const at = m => { const d = srAddDays(input.from, Math.floor((m - rangeS) / 1440)); const mm = (m - rangeS) % 1440; return { d, t: String(Math.floor(mm / 60)).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0') }; };
+    // A gap that swallows whole calendar days is split: each empty day is
+    // reported as a day with no entries, and what is left either side as a gap.
+    const pieces = [];
+    gaps.forEach(g => {
+      // First morning, and the night before is outside these dates: assume the
+      // usual overnight ran to 6 AM, and only call it a gap from there.
+      if (g[0] === rangeS && !knowBefore && g[1] - g[0] < 1440) { g = [rangeS + 360, g[1]]; if (g[1] - g[0] < 60) return; }
+      const d0 = rangeS + Math.ceil((g[0] - rangeS) / 1440) * 1440, d1 = rangeS + Math.floor((g[1] - rangeS) / 1440) * 1440;
+      if (d1 - d0 >= 1440) {
+        if (d0 - g[0] >= 60) pieces.push([g[0], Math.min(g[1], d0 + 360), false]); // the evening before an empty day: show it through to 6 AM, as the missing overnight it is
+        for (let m = d0; m < d1; m += 1440) pieces.push([m, m + 1440, true]);
+        if (g[1] - d1 >= 60) pieces.push([d1, g[1], false]);
+      } else pieces.push([g[0], g[1], false]);
+    });
+    pieces.forEach(g => {
+      if (g[0] >= rangeE) return;                                        // entirely after the last day
+      const a = at(g[0]), b = at(g[1]);
+      const loose = looseAt(house, g[0], g[1]);
+      if (g[2]) out.push({ check: 'House/day with no entries', who: house, when: dayLabel(a.d), found: `No timesheet entries for the whole day.${looseText(loose) || ' No ADP punch found for it either.'}` });
+      else out.push({ check: 'Coverage gap on timesheet', who: house, when: a.d === b.d ? dayLabel(a.d) : `${dayLabel(a.d)} - ${dayLabel(b.d)}`, found: `No staff listed from ${t12(a.t)} to ${t12(b.t)}${a.d === b.d ? '' : ' next day'} (${adpAbout(g[1] - g[0])}).${looseText(loose) || ' No ADP punch found for it either.'}` });
+    });
+  });
+
+  // 7. A house with ADP punches from its staff but nothing on the timesheet at all.
+  (input.houses || []).forEach(house => {
+    if (shifts.some(s => s.location === house)) return;
+    const l = [...new Set((input.loose || []).filter(p => p.home === house).map(p => p.name))];
+    if (l.length) out.push({ check: 'House missing from timesheet', who: house, when: 'All dates', found: `No timesheet entries at ${house} in these dates, but ${l.length} of its staff have ADP punches (${l.slice(0, 4).join('; ')}${l.length > 4 ? '…' : ''}).` });
+  });
+  return out;
+}
+
+// Builds the workbook with ExcelJS in the owner's layout: the same six
+// tabs, the same columns, live formulas (so changing the tolerance on the
+// Summary tab re-runs the verdicts in Excel) and the same colours. Each
+// formula also carries its worked-out value, so a viewer that does not
+// recalculate still shows the right numbers.
+function adpWriteAuditXlsx(spec, ExcelJS) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'ASO Time System'; wb.created = new Date();
+  const head = (ws, titles, widths) => {
+    ws.addRow(titles);
+    ws.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } }; c.alignment = { vertical: 'middle', wrapText: true }; });
+    widths.forEach((w, i) => { if (w) ws.getColumn(i + 1).width = w; });
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+  };
+  const f = (formula, result) => ({ formula, result });
+  const r2 = n => Math.round(n * 100) / 100;
+  const nS = spec.shift.length, nN = spec.notOn.length, nP = spec.punches.length, nT = spec.totals.length;
+  const eS = Math.max(nS + 1, 2), eN = Math.max(nN + 1, 2), eP = Math.max(nP + 1, 2), eT = Math.max(nT + 1, 2);
+  const tolH = spec.tol / 60;
+  const verdict = (i, fh) => i === null || i === undefined ? 'No ADP punch' : i < 0.25 ? 'Incomplete ADP punch' : Math.abs(i - fh) > tolH + 1e-9 ? 'Hours differ' : 'Match';
+  const count = v => spec.shift.filter(x => verdict(x.ahours, x.thours) === v).length;
+
+  const s = wb.addWorksheet('Summary');
+  s.getColumn(1).width = 52; s.getColumn(2).width = 12; s.getColumn(3).width = 90;
+  s.getCell('A1').value = spec.title; s.getCell('A1').font = { bold: true, size: 14 };
+  s.getCell('A2').value = spec.week;
+  s.getCell('A4').value = 'Match tolerance (minutes) - change to re-run'; s.getCell('B4').value = spec.tol;
+  s.getCell('B4').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }; s.getCell('B4').font = { bold: true };
+  s.getCell('C4').value = 'A shift counts as a match if ADP and timesheet hours are within this many minutes.';
+  const noUse = spec.shift.filter(x => ['No ADP punch', 'Incomplete ADP punch'].includes(verdict(x.ahours, x.thours))).reduce((a, x) => a + x.thours, 0);
+  [[6, 'Timesheet shifts checked', f(`COUNTA('Shift Match'!A2:A${eS})`, nS)],
+   [7, '  Match', f(`COUNTIF('Shift Match'!K2:K${eS},"Match")`, count('Match'))],
+   [8, '  Hours differ', f(`COUNTIF('Shift Match'!K2:K${eS},"Hours differ")`, count('Hours differ'))],
+   [9, '  No ADP punch', f(`COUNTIF('Shift Match'!K2:K${eS},"No ADP punch")`, count('No ADP punch'))],
+   [10, '  Incomplete ADP punch', f(`COUNTIF('Shift Match'!K2:K${eS},"Incomplete ADP punch")`, count('Incomplete ADP punch'))],
+   [11, 'Timesheet hours checked', f(`SUM('Shift Match'!F2:F${eS})`, r2(spec.shift.reduce((a, x) => a + x.thours, 0)))],
+   [12, 'Timesheet hours with no usable ADP punch', f(`SUMIF('Shift Match'!K2:K${eS},"No ADP punch",'Shift Match'!F2:F${eS})+SUMIF('Shift Match'!K2:K${eS},"Incomplete ADP punch",'Shift Match'!F2:F${eS})`, r2(noUse))],
+   [13, 'Punches on ADP with no timesheet shift', f(`COUNTA('ADP Not On Timesheet'!A2:A${eN})`, nN)],
+   [14, 'ADP hours with no timesheet shift', f(`SUM('ADP Not On Timesheet'!E2:E${eN})`, r2(spec.notOn.reduce((a, x) => a + x.ahours, 0)))],
+   [15, 'Staff on timesheet with no ADP timecard at all', f(`COUNTIFS('Staff Totals'!B2:B${eT},"No ADP card")`, spec.totals.filter(x => x.dept === 'No ADP card').length)],
+   [16, 'Staff over 40 hours in the week (higher of the two)', f(`COUNTIF('Staff Totals'!G2:G${eT},">0")`, spec.totals.filter(x => Math.max(x.ts, x.adp) > 40).length)]
+  ].forEach(([row, label, val]) => { s.getCell('A' + row).value = label; s.getCell('B' + row).value = val; });
+  s.getCell('A6').font = { bold: true }; s.getCell('A11').font = { bold: true };
+  let nr = 19;
+  [spec.sources].concat(spec.notes || []).forEach(t => { if (t) { s.getCell('A' + nr).value = t; nr++; } });
+
+  const m = wb.addWorksheet('Shift Match');
+  head(m, ['Staff', 'Date', 'House', 'Timesheet In', 'Timesheet Out', 'Timesheet Hours', 'ADP In', 'ADP Out', 'ADP Hours', 'ADP minus Timesheet', 'Result', 'What I found'], [22, 11, 16, 12, 12, 10, 10, 10, 9, 10, 20, 70]);
+  spec.shift.forEach((x, i) => {
+    const n = i + 2, has = x.ahours !== null && x.ahours !== undefined;
+    m.addRow([x.staff, x.date, x.house, x.tin, x.tout, r2(x.thours), x.ain || null, x.aout || null, has ? r2(x.ahours) : null,
+      f(`IF(I${n}="","",I${n}-F${n})`, has ? r2(x.ahours - x.thours) : ''),
+      f(`IF(I${n}="","No ADP punch",IF(I${n}<0.25,"Incomplete ADP punch",IF(ABS(J${n})>Summary!$B$4/60,"Hours differ","Match")))`, verdict(has ? x.ahours : null, x.thours)),
+      x.found || null]);
+  });
+  m.getColumn(12).alignment = { wrapText: true, vertical: 'top' };
+  [['Match', 'FFE2EFDA'], ['Hours differ', 'FFFFF2CC'], ['No ADP punch', 'FFF8CBAD'], ['Incomplete ADP punch', 'FFF8CBAD']].forEach(([v, argb]) =>
+    m.addConditionalFormatting({ ref: `K2:K${eS}`, rules: [{ type: 'expression', priority: 1, formulae: [`$K2="${v}"`], style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb } } } }] }));
+  m.autoFilter = { from: 'A1', to: `L${eS}` };
+
+  const n = wb.addWorksheet('ADP Not On Timesheet');
+  head(n, ['Staff', 'Date', 'ADP In', 'ADP Out', 'ADP Hours', 'What I found'], [22, 11, 10, 10, 10, 80]);
+  spec.notOn.forEach(x => n.addRow([x.staff, x.date, x.ain, x.aout, r2(x.ahours), x.found || null]));
+  n.getColumn(6).alignment = { wrapText: true, vertical: 'top' };
+
+  const p = wb.addWorksheet('ADP Punches');
+  head(p, ['Staff', 'ADP Dept', 'Date', 'In', 'Out', 'Hours', 'Matched to a timesheet shift'], [22, 10, 11, 10, 10, 9, 16]);
+  spec.punches.forEach(x => p.addRow([x.staff, x.dept, x.date, x.in, x.out, r2(x.hours), x.matched]));
+  p.autoFilter = { from: 'A1', to: `G${eP}` };
+
+  const t = wb.addWorksheet('Staff Totals');
+  head(t, ['Staff', 'ADP Dept', 'Timesheet Hours', 'ADP Hours', 'ADP minus Timesheet', 'Higher of the two', 'Hours over 40 (possible OT)'], [24, 12, 14, 12, 12, 12, 14]);
+  spec.totals.forEach((x, i) => {
+    const k = i + 2, hi = Math.max(x.ts, x.adp);
+    t.addRow([x.staff, x.dept, f(`SUMIF('Shift Match'!$A$2:$A$${eS},A${k},'Shift Match'!$F$2:$F$${eS})`, r2(x.ts)), f(`SUMIF('ADP Punches'!$A$2:$A$${eP},A${k},'ADP Punches'!$F$2:$F$${eP})`, r2(x.adp)), f(`D${k}-C${k}`, r2(x.adp - x.ts)), f(`MAX(C${k},D${k})`, r2(hi)), f(`IF(F${k}>40,F${k}-40,0)`, r2(hi > 40 ? hi - 40 : 0))]);
+  });
+  if (nT) {
+    const sum = k => spec.totals.reduce((a, x) => a + k(x), 0);
+    const row = t.addRow(['TOTAL', null, f(`SUM(C2:C${eT})`, r2(sum(x => x.ts))), f(`SUM(D2:D${eT})`, r2(sum(x => x.adp))), f(`SUM(E2:E${eT})`, r2(sum(x => x.adp - x.ts))), null, f(`SUM(G2:G${eT})`, r2(sum(x => Math.max(x.ts, x.adp) > 40 ? Math.max(x.ts, x.adp) - 40 : 0)))]);
+    row.font = { bold: true };
+    t.addConditionalFormatting({ ref: `G2:G${eT}`, rules: [{ type: 'cellIs', priority: 1, operator: 'greaterThan', formulae: [0], style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFF2CC' } } } }] });
+  }
+  if (spec.totalsNote) { t.addRow([]); t.addRow([spec.totalsNote]); }
+
+  const c = wb.addWorksheet('Timesheet Checks');
+  head(c, ['Check', 'Who / where', 'When', 'What I found'], [34, 22, 22, 95]);
+  spec.checks.forEach(x => c.addRow([x.check, x.who, x.when, x.found]));
+  c.getColumn(4).alignment = { wrapText: true, vertical: 'top' };
+  return wb;
 }
 
 // Which house a shift added from ADP most likely belongs to. ADP only knows
@@ -11736,12 +12036,12 @@ function adpPatterns(people) {
     const paired = p.rows.filter(r => r.adp && r.shift && !r.adp.inferred);
     const x = {
       name: `${p.staff.first} ${p.staff.last}`, id: p.staff.id,
-      missed: p.rows.filter(r => r.status === 'ts_only').length + p.rows.filter(r => r.status === 'adp_zero').length,
+      missed: p.noCard ? 0 : p.rows.filter(r => !r.na && ['ts_only', 'incomplete', 'adp_zero'].includes(r.status)).length,
       early: paired.filter(r => r.dIn <= -8).length, lateIn: paired.filter(r => r.dIn >= 8).length, lateOut: paired.filter(r => r.dOut >= 8).length,
-      unscheduled: p.rows.filter(r => r.status === 'adp_only' && !r.adp.inferred).length
+      unscheduled: p.rows.filter(r => r.status === 'adp_only' && !r.na).length
     };
     if (x.missed || x.early || x.lateIn || x.lateOut || x.unscheduled) who.push(x);
-    p.rows.forEach(r => {
+    p.rows.filter(r => !r.na).forEach(r => {
       const h = (r.shift && r.shift.location) || r.house || p.staff.loc || 'No house';
       const o = houses[h] = houses[h] || { house: h, lines: 0, differences: 0, hours: 0 };
       o.lines++; if (r.cls && r.cls.tier !== 'ok') { o.differences++; o.hours += r.diffHours; }
@@ -11775,7 +12075,8 @@ function adpRate(staff, house, date) { return staff.rate > 0 ? staff.rate : getL
 
 // Works out everything shown on the page and in the report from _adp + the live timesheet.
 function adpBuild() {
-  const reviewMin = parseInt(document.getElementById('adp-review-min').value, 10) || 15;
+  const reviewMin = parseInt(document.getElementById('adp-review-min').value, 10) || 15; // match tolerance, in minutes of HOURS difference
+  const skipAdmin = document.getElementById('adp-skip-admin').checked;
   const map = adpLoadMap();
   const from = _adp.from, to = _adp.to;
   const houseSel = document.getElementById('adp-house');
@@ -11792,33 +12093,49 @@ function adpBuild() {
     if (!m.staff || usedStaff.has(m.staff.id)) { unmatched.push({ emp, skipped: m.how === 'skip' }); return; }
     usedStaff.add(m.staff.id);
     const shifts = SHIFTS.filter(s => s.staff === m.staff.id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected');
-    const rows = adpCompareStaff(adpInferFromErrors(emp.entries), shifts, 0);
+    const rows = adpCompareStaff(emp.entries, shifts, reviewMin);
+    const dept = adpDeptLabel((emp.entries[0] || {}).dept) || 'DSP';
     rows.forEach(r => {
-      r.cls = adpClassify(r, reviewMin);
+      r.cls = adpClassify(r);
+      // Office (ADP "Administrative") staff punch all day at the office, which has no timesheet shift to match. Unless asked, those punches are listed but not chased.
+      r.na = skipAdmin && dept === 'Admin' && !r.shift;
       r.key = adpRowKey(m.staff.id, r);
       r.reviewed = state.reviewed[r.key] || null;
       if (r.status === 'adp_only') { const sg = adpSuggestHouse(m.staff, r.date, SHIFTS); r.house = _adpHouse[r.key] || sg.house; r.houseWhy = sg.why; r.houseSuggested = sg.house; }
       r.pay = r.diffHours * adpRate(m.staff, r.shift ? r.shift.location : r.house, r.date);
-      r.open = r.cls.tier !== 'ok' && !r.reviewed && !(r.status === 'adp_zero' && r.adp.usedInInference);
+      r.open = r.cls.tier !== 'ok' && !r.reviewed && !r.na;
       // The house a line belongs to: where the timesheet shift was worked, else the
       // house proposed for a shift to be added, else the person's home house.
       r.rowHouse = (r.shift && r.shift.location) || r.house || m.staff.loc || '';
       r.signed = allSigned || houseSigned[r.rowHouse] || null;
     });
-    people.push({ emp, staff: m.staff, how: m.how, rows, tsCount: shifts.length, adpTotal: emp.entries.reduce((a, x) => a + x.hours, 0), tsTotal: shifts.reduce((a, s) => a + s.hours, 0) });
+    people.push({ emp, staff: m.staff, how: m.how, dept, rows, tsCount: shifts.length, adpTotal: emp.entries.reduce((a, x) => a + x.hours, 0), tsTotal: shifts.reduce((a, s) => a + s.hours, 0) });
   });
   const noCard = STAFF.filter(s => !usedStaff.has(s.id)).map(s => { const sh = SHIFTS.filter(x => x.staff === s.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected' && (!house || x.location === house)); return { staff: s, shifts: sh.length, hours: sh.reduce((a, x) => a + x.hours, 0) }; }).filter(x => x.shifts > 0);
+  // Staff with timesheet shifts but no ADP timecard at all still get their shifts audited (every one is "No ADP punch").
+  STAFF.filter(st => !usedStaff.has(st.id)).forEach(st => {
+    const shifts = SHIFTS.filter(x => x.staff === st.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected');
+    if (!shifts.length) return;
+    const rows = adpCompareStaff([], shifts, reviewMin);
+    rows.forEach(r => { r.cls = adpClassify(r); r.na = false; r.key = adpRowKey(st.id, r); r.reviewed = state.reviewed[r.key] || null; r.pay = 0; r.open = !r.reviewed; r.rowHouse = r.shift.location || st.loc || ''; r.signed = allSigned || houseSigned[r.rowHouse] || null; });
+    people.push({ emp: { name: '', entries: [] }, staff: st, how: null, dept: 'No ADP card', noCard: true, rows, tsCount: shifts.length, adpTotal: 0, tsTotal: shifts.reduce((a, x) => a + x.hours, 0) });
+  });
+  people.sort((a, b) => (a.staff.last + a.staff.first).localeCompare(b.staff.last + b.staff.first));
+  // "What I found" is written while each person's whole week is still in view, before any house filter.
+  const nameOf = id => { const st = STAFF.find(x => x.id === id); return st ? `${st.last}, ${st.first}` : id; };
+  const rangeShifts = SHIFTS.filter(x => x.date >= from && x.date <= to && x.shiftStatus !== 'rejected').map(x => ({ ...x, name: nameOf(x.staff) }));
+  people.forEach(p => adpFindings(p, { hasCard: !p.noCard, tol: reviewMin, rangeShifts }));
   const unmatchedAll = unmatched;
   if (house) {
     // One house: keep only that house's lines, and count each person's hours from those lines.
     people = people.map(p => {
       const rows = p.rows.filter(r => r.rowHouse === house);
-      const real = rows.filter(r => r.adp && !r.adp.inferred).map(r => r.adp);
+      const real = rows.filter(r => r.adp).flatMap(r => r.adpParts || r.adp.parts || [r.adp]);
       return { ...p, rows, emp: { ...p.emp, entries: real }, tsCount: rows.filter(r => r.shift).length, adpTotal: real.reduce((a, x) => a + x.hours, 0), tsTotal: rows.reduce((a, r) => a + (r.shift ? r.shift.hours : 0), 0) };
     }).filter(p => p.rows.length);
     unmatched = []; // an ADP name that is not matched to anyone has no house yet — it is handled under "All houses"
   }
-  const missing = adpWhoIsMissing(people, unmatched, noCard);
+  const missing = adpWhoIsMissing(people.filter(p => !p.noCard), unmatched, noCard);
 
   // What payroll would look like if every proposed correction were applied
   // (holds stay as they are). One run of the real overtime engine on a copy.
@@ -11826,7 +12143,7 @@ function adpBuild() {
   const live = SHIFTS;
   let sim = SHIFTS.map(s => ({ ...s }));
   people.forEach(p => p.rows.forEach(r => {
-    if (!['auto', 'suggest', 'review'].includes(r.cls.tier) || !r.adp || !r.adp.end || r.reviewed) return;
+    if (!['suggest', 'review'].includes(r.cls.tier) || !r.adp || !r.adp.end || r.reviewed || r.na) return;
     if (r.shift) { const t = sim.find(s => s.id === r.shift.id); if (t) { t.start = r.adp.start; t.end = r.adp.end; t.hours = r.adp.hours; } }
     else if (r.house) sim.push({ id: 'SIM' + sim.length, staff: p.staff.id, date: r.date, location: r.house, start: r.adp.start, end: r.adp.end, hours: r.adp.hours, source: 'adp', shiftStatus: 'active' });
   }));
@@ -11835,12 +12152,15 @@ function adpBuild() {
   const agg = (list, id) => list.filter(s => s.staff === id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected' && (!house || s.location === house)).reduce((a, s) => ({ hours: a.hours + s.hours, ot: a.ot + s.otHrs, pay: a.pay + s.shiftPay }), { hours: 0, ot: 0, pay: 0 });
   people.forEach(p => { p.before = agg(before, p.staff.id); p.after = agg(after, p.staff.id); });
 
-  const all = people.flatMap(p => p.rows.map(r => ({ p, r })));
+  const all = people.flatMap(p => p.rows.filter(r => !r.na).map(r => ({ p, r })));
   const count = t => all.filter(x => x.r.cls.tier === t).length;
+  const byStatus = st => all.filter(x => x.r.status === st).length;
   const stats = {
     timecards: _adp.employees.length, punches: _adp.employees.reduce((a, e) => a + e.entries.length, 0), staff: people.length,
     unmatchedNames: unmatchedAll.filter(u => !u.skipped && u.emp.entries.length).length,
-    ok: count('ok'), auto: count('auto'), suggest: count('suggest'), review: count('review'), hold: count('hold'), blocked: count('blocked'),
+    match: byStatus('match'), differs: byStatus('differs'), noPunch: byStatus('ts_only'), incomplete: byStatus('incomplete'), adpOnly: byStatus('adp_only'), stray: byStatus('adp_zero'),
+    naPunches: people.reduce((a, p) => a + p.rows.filter(r => r.na).length, 0),
+    ok: count('ok'), auto: 0, suggest: count('suggest'), review: count('review'), hold: count('hold'), blocked: count('blocked'),
     reviewed: all.filter(x => x.r.reviewed).length,
     open: all.filter(x => x.r.open).length + unmatched.filter(u => !u.skipped && u.emp.entries.length).length,
     adpHours: people.reduce((a, p) => a + p.adpTotal, 0), tsHours: people.reduce((a, p) => a + p.tsTotal, 0),
@@ -11848,18 +12168,160 @@ function adpBuild() {
     otBefore: people.reduce((a, p) => a + p.before.ot, 0), otAfter: people.reduce((a, p) => a + p.after.ot, 0)
   };
   const signoff = house ? (allSigned || houseSigned[house] || null) : allSigned;
-  return { reviewMin, from, to, house, people, unmatched, noCard, missing, state: { ...state, signoff, corrections: house ? state.corrections.filter(e => String(e.meta || '').includes(' \u00B7 ' + house)) : state.corrections }, houseSigned, stats, patterns: adpPatterns(people) };
+  const rangeComputed = before.filter(x => x.date >= from && x.date <= to && x.shiftStatus !== 'rejected' && (!house || x.location === house)).map(x => ({ ...x, name: nameOf(x.staff) }));
+  const dBefore = srAddDays(from, -1), dAfter = srAddDays(to, 1);
+  const edgeComputed = before.filter(x => (x.date === dBefore || x.date === dAfter) && x.shiftStatus !== 'rejected' && (!house || x.location === house));
+  return { reviewMin, skipAdmin, rangeComputed, edgeComputed, from, to, house, people, unmatched, noCard, missing, state: { ...state, signoff, corrections: house ? state.corrections.filter(e => String(e.meta || '').includes(' \u00B7 ' + house)) : state.corrections }, houseSigned, stats, patterns: adpPatterns(people) };
+}
+
+// Gathers the six audit tabs from what adpBuild() worked out.
+function adpAuditSpec(b) {
+  const dl = iso => `${srDayName(iso)} ${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+  const nm = st => `${st.last}, ${st.first}`;
+  const adpNm = n => { const t = String(n).trim().split(/\s+/); return t.length > 1 ? `${t[0]}, ${t[1]}` : n; };
+  const shift = [], notOn = [], punches = [], totals = [], notes = [];
+  b.people.forEach(p => {
+    const yes = new Set(), na = new Set();
+    p.rows.forEach(r => {
+      const parts = r.adpParts || (r.adp && r.adp.parts) || (r.adp ? [r.adp] : []);
+      if (r.shift) parts.forEach(x => yes.add(x)); else if (r.na) parts.forEach(x => na.add(x));
+      if (r.shift) {
+        const sh = r.shift, last = parts[parts.length - 1];
+        shift.push({ staff: nm(p.staff), iso: sh.date + sh.start, date: dl(sh.date), house: sh.location || '', tin: fmtTime(sh.start), tout: fmtTime(sh.end) + (String(sh.end).slice(0, 5) <= String(sh.start).slice(0, 5) ? ' +1' : ''), thours: sh.hours,
+          ain: r.adp ? fmtTime(parts[0].start) : '', aout: r.adp ? fmtTime(r.status === 'incomplete' && parts.length > 1 ? last.start : (r.adp.end || last.end || last.start)) : '',
+          ahours: r.status === 'ts_only' ? null : r.status === 'incomplete' ? r.adpHours : r.adp.hours, result: r.cls.label, found: r.found || '', reviewed: r.reviewed });
+      } else if (!r.na) notOn.push({ staff: nm(p.staff), iso: r.adp.date + r.adp.start, date: dl(r.adp.date), ain: fmtTime(r.adp.start), aout: fmtTime(r.adp.end || r.adp.start), ahours: r.adp.hours, found: r.found || '' });
+    });
+    p.emp.entries.forEach(x => punches.push({ staff: nm(p.staff), iso: x.date + x.start, dept: adpDeptLabel(x.dept) || p.dept, date: dl(x.date), in: fmtTime(x.start), out: fmtTime(x.end || x.start), hours: x.hours, matched: yes.has(x) ? 'Yes' : na.has(x) ? 'n/a (admin)' : 'No' }));
+    totals.push({ staff: nm(p.staff), dept: p.noCard ? 'No ADP card' : p.dept, ts: p.tsTotal, adp: p.adpTotal });
+    if (p.how === 'saved' || p.how === 'close') { const tk = p.emp.name.trim().split(/\s+/); if (tk[0].toLowerCase() !== p.staff.last.toLowerCase() || (tk[1] || '').toLowerCase() !== p.staff.first.toLowerCase()) notes.push(`ADP has "${p.emp.name}"; the Time System has "${nm(p.staff)}". Treated as the same person${p.how === 'close' ? ' (matched on last name and first initial - please confirm)' : ''}.`); }
+  });
+  b.unmatched.forEach(u => {
+    if (!u.emp.entries.length) return;
+    const dept = adpDeptLabel(u.emp.entries[0].dept) || 'DSP', skip = u.skipped || (b.skipAdmin && dept === 'Admin');
+    u.emp.entries.forEach(x => {
+      punches.push({ staff: adpNm(u.emp.name), iso: x.date + x.start, dept, date: dl(x.date), in: fmtTime(x.start), out: fmtTime(x.end || x.start), hours: x.hours, matched: skip ? (dept === 'Admin' ? 'n/a (admin)' : 'n/a (left out)') : 'No' });
+      if (!skip) notOn.push({ staff: adpNm(u.emp.name), iso: x.date + x.start, date: dl(x.date), ain: fmtTime(x.start), aout: fmtTime(x.end || x.start), ahours: x.hours, found: 'This ADP name is not matched to a staff member in the Time System yet.' });
+    });
+    totals.push({ staff: adpNm(u.emp.name), dept, ts: 0, adp: u.emp.entries.reduce((a, x) => a + x.hours, 0) });
+  });
+  const by = (a, c) => a.staff.localeCompare(c.staff) || a.iso.localeCompare(c.iso);
+  shift.sort(by); notOn.sort(by); punches.sort(by); totals.sort((a, c) => a.staff.localeCompare(c.staff));
+  const loose = b.people.flatMap(p => p.rows.filter(r => r.status === 'adp_only' && !r.na).map(r => ({ name: nm(p.staff), home: p.staff.loc || '', date: r.adp.date, start: r.adp.start, end: r.adp.end })));
+  const checks = adpTimesheetChecks({ shifts: b.rangeComputed, edge: b.edgeComputed, from: b.from, to: b.to, houses: b.house ? [b.house] : LOCATIONS.map(l => l.name), loose,
+    over: b.people.flatMap(p => p.rows.filter(r => (r.status === 'match' || r.status === 'differs') && r.shift && r.adp).map(r => ({ name: nm(p.staff), home: r.shift.location || '', date: r.adp.date, start: r.adp.start, end: r.adp.end }))) });
+  const houses = [...new Set(shift.map(x => x.house).filter(Boolean))].sort();
+  if (b.stats.naPunches || b.unmatched.some(u => b.skipAdmin && /admin/i.test((u.emp.entries[0] || {}).dept || ''))) notes.push('ADP Administrative staff with no timesheet shift are listed on the ADP Punches tab only - their office hours are not on the timesheet, so they are not audited.');
+  return {
+    title: 'ASO Time Audit - Timesheet vs ADP Timecard Report',
+    week: `Dates audited: ${srDayName(b.from)} ${formatDateDisplay(b.from)} - ${srDayName(b.to)} ${formatDateDisplay(b.to)}. ${b.house ? 'House: ' + b.house + ' only.' : 'Houses on the timesheet: ' + (houses.join(', ') || 'none') + '.'}`,
+    tol: b.reviewMin, from: b.from, to: b.to, house: b.house,
+    sources: `Sources: ASO Time System timesheet (read ${new Date().toLocaleString()}); ADP Timecard Report file "${_adp.fileName}".`,
+    notes, totalsNote: calendarDayDiff(b.from, b.to) > 6 ? 'These dates cover more than one week, so "Hours over 40" compares the whole range to 40 - read it week by week on the Timesheet Checks tab.' : '',
+    shift, notOn, punches, totals, checks
+  };
+}
+
+let _adpAuditTab = 'shift';
+function adpSetAuditTab(t) { _adpAuditTab = t; adpRender(); }
+
+// The audit on screen: the same six tabs as the Excel file.
+function adpAuditHtml(b) {
+  const A = adpAuditSpec(b);
+  const cnt = v => A.shift.filter(x => x.result === v).length;
+  const noUse = A.shift.filter(x => x.result === 'No ADP punch' || x.result === 'Incomplete ADP punch').reduce((a, x) => a + x.thours, 0);
+  const over40 = A.totals.filter(x => Math.max(x.ts, x.adp) > 40).length;
+  const tabs = [['summary', 'Summary'], ['shift', `Shift Match (${A.shift.length})`], ['noton', `ADP Not On Timesheet (${A.notOn.length})`], ['punches', `ADP Punches (${A.punches.length})`], ['totals', `Staff Totals (${A.totals.length})`], ['checks', `Timesheet Checks (${A.checks.length})`]];
+  const cls = { 'Match': 'adp-r-ok', 'Hours differ': 'adp-r-warn', 'No ADP punch': 'adp-r-bad', 'Incomplete ADP punch': 'adp-r-bad' };
+  const num = n => n === null || n === undefined || n === '' ? '' : srHrs(n);
+  const sign = n => Math.abs(n) < 0.005 ? '0.00' : (n > 0 ? '+' : '') + srHrs(n);
+  let body = '';
+  if (_adpAuditTab === 'summary') {
+    const row = (l, v, sub) => `<tr><td style="${sub ? 'padding-left:28px;color:var(--text2)' : 'color:var(--text);font-weight:600'}">${l}</td><td class="mono" style="text-align:right;color:var(--text)">${v}</td></tr>`;
+    body = `<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(A.week)}</div>
+      <table class="adp-audit" style="max-width:640px"><tbody>
+      ${row('Match tolerance (minutes)', A.tol)}
+      ${row('Timesheet shifts checked', A.shift.length)}${row('Match', cnt('Match'), 1)}${row('Hours differ', cnt('Hours differ'), 1)}${row('No ADP punch', cnt('No ADP punch'), 1)}${row('Incomplete ADP punch', cnt('Incomplete ADP punch'), 1)}
+      ${row('Timesheet hours checked', srHrs(A.shift.reduce((a, x) => a + x.thours, 0)))}
+      ${row('Timesheet hours with no usable ADP punch', srHrs(noUse))}
+      ${row('Punches on ADP with no timesheet shift', A.notOn.length)}
+      ${row('ADP hours with no timesheet shift', srHrs(A.notOn.reduce((a, x) => a + x.ahours, 0)))}
+      ${row('Staff on timesheet with no ADP timecard at all', A.totals.filter(x => x.dept === 'No ADP card').length)}
+      ${row('Staff over 40 hours in the week (higher of the two)', over40)}
+      </tbody></table>
+      <div class="adp-dim" style="margin-top:12px;line-height:1.7">${esc(A.sources)}${A.notes.map(n => '<br>' + esc(n)).join('')}</div>`;
+  } else if (_adpAuditTab === 'shift') {
+    body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Staff</th><th>Date</th><th>House</th><th>Timesheet in</th><th>Timesheet out</th><th>Hrs</th><th>ADP in</th><th>ADP out</th><th>ADP hrs</th><th>ADP − timesheet</th><th>Result</th><th>What I found</th></tr></thead><tbody>
+      ${A.shift.map(x => `<tr><td style="color:var(--text);white-space:nowrap">${esc(x.staff)}</td><td class="mono" style="white-space:nowrap">${esc(x.date)}</td><td>${esc(x.house)}</td><td class="mono" style="white-space:nowrap">${esc(x.tin)}</td><td class="mono" style="white-space:nowrap">${esc(x.tout)}</td><td class="mono">${num(x.thours)}</td><td class="mono" style="white-space:nowrap">${esc(x.ain)}</td><td class="mono" style="white-space:nowrap">${esc(x.aout)}</td><td class="mono">${num(x.ahours)}</td><td class="mono">${x.ahours === null ? '' : sign(x.ahours - x.thours)}</td><td class="${cls[x.result] || ''}" style="white-space:nowrap">${esc(x.result)}</td><td style="min-width:260px">${esc(x.found)}${x.reviewed ? `<div class="adp-dim">Reviewed, no change — ${esc(x.reviewed.by)}${x.reviewed.note ? ': “' + esc(x.reviewed.note) + '”' : ''}</div>` : ''}</td></tr>`).join('') || '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text3)">No timesheet shifts in these dates.</td></tr>'}
+      </tbody></table></div>`;
+  } else if (_adpAuditTab === 'noton') {
+    body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Staff</th><th>Date</th><th>ADP in</th><th>ADP out</th><th>ADP hrs</th><th>What I found</th></tr></thead><tbody>
+      ${A.notOn.map(x => `<tr><td style="color:var(--text);white-space:nowrap">${esc(x.staff)}</td><td class="mono" style="white-space:nowrap">${esc(x.date)}</td><td class="mono">${esc(x.ain)}</td><td class="mono">${esc(x.aout)}</td><td class="mono">${num(x.ahours)}</td><td>${esc(x.found)}</td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">Every ADP punch has a timesheet shift.</td></tr>'}
+      </tbody></table></div>`;
+  } else if (_adpAuditTab === 'punches') {
+    body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Staff</th><th>ADP dept</th><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Matched to a timesheet shift</th></tr></thead><tbody>
+      ${A.punches.map(x => `<tr><td style="color:var(--text)">${esc(x.staff)}</td><td>${esc(x.dept)}</td><td class="mono">${esc(x.date)}</td><td class="mono">${esc(x.in)}</td><td class="mono">${esc(x.out)}</td><td class="mono">${num(x.hours)}</td><td class="${x.matched === 'Yes' ? 'adp-r-ok' : x.matched === 'No' ? 'adp-r-bad' : ''}">${esc(x.matched)}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  } else if (_adpAuditTab === 'totals') {
+    const T = A.totals.reduce((a, x) => ({ ts: a.ts + x.ts, adp: a.adp + x.adp, over: a.over + Math.max(0, Math.max(x.ts, x.adp) - 40) }), { ts: 0, adp: 0, over: 0 });
+    body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Staff</th><th>ADP dept</th><th>Timesheet hours</th><th>ADP hours</th><th>ADP − timesheet</th><th>Higher of the two</th><th>Hours over 40 (possible OT)</th></tr></thead><tbody>
+      ${A.totals.map(x => { const hi = Math.max(x.ts, x.adp); return `<tr><td style="color:var(--text)">${esc(x.staff)}</td><td class="${x.dept === 'No ADP card' ? 'adp-r-bad' : ''}">${esc(x.dept)}</td><td class="mono">${num(x.ts)}</td><td class="mono">${num(x.adp)}</td><td class="mono">${sign(x.adp - x.ts)}</td><td class="mono">${num(hi)}</td><td class="mono ${hi > 40 ? 'adp-r-warn' : ''}">${num(hi > 40 ? hi - 40 : 0)}</td></tr>`; }).join('')}
+      <tr style="font-weight:700;background:var(--surface2)"><td style="color:var(--text)">TOTAL</td><td></td><td class="mono">${num(T.ts)}</td><td class="mono">${num(T.adp)}</td><td class="mono">${sign(T.adp - T.ts)}</td><td></td><td class="mono">${num(T.over)}</td></tr>
+      </tbody></table></div>${A.totalsNote ? `<div class="adp-dim" style="margin-top:8px">${esc(A.totalsNote)}</div>` : ''}`;
+  } else {
+    body = `<div class="table-wrap"><table class="adp-audit"><thead><tr><th>Check</th><th>Who / where</th><th>When</th><th>What I found</th></tr></thead><tbody>
+      ${A.checks.map(x => `<tr><td style="color:var(--text);white-space:nowrap">${esc(x.check)}</td><td style="white-space:nowrap">${esc(x.who)}</td><td class="mono" style="white-space:nowrap">${esc(x.when)}</td><td>${esc(x.found)}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">Nothing found.</td></tr>'}
+      </tbody></table></div>`;
+  }
+  return `<div class="adp-tiles">
+      <div class="adp-tile"><div class="adp-tile-l">Shifts checked</div><div class="adp-tile-v">${A.shift.length}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">Match</div><div class="adp-tile-v" style="color:var(--success)">${cnt('Match')}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">Hours differ</div><div class="adp-tile-v" style="color:var(--warn)">${cnt('Hours differ')}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">No ADP punch</div><div class="adp-tile-v" style="color:var(--danger2)">${cnt('No ADP punch')}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">Incomplete ADP punch</div><div class="adp-tile-v" style="color:var(--danger2)">${cnt('Incomplete ADP punch')}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">ADP, not on timesheet</div><div class="adp-tile-v" style="color:var(--warn)">${A.notOn.length}</div></div>
+      <div class="adp-tile"><div class="adp-tile-l">Timesheet checks</div><div class="adp-tile-v">${A.checks.length}</div></div>
+    </div>
+    <div class="adp-bar"><div class="adp-views">${tabs.map(([k, l]) => `<button class="${_adpAuditTab === k ? 'active' : ''}" onclick="adpSetAuditTab('${k}')">${l}</button>`).join('')}</div>
+      <button class="btn btn-primary" style="margin-left:auto" onclick="adpExportAuditXlsx()">⬇ Download Excel audit</button></div>
+    ${body}`;
+}
+
+function adpLoadExcelJs() {
+  return new Promise((resolve, reject) => {
+    if (window.ExcelJS) return resolve(window.ExcelJS);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload = () => window.ExcelJS ? resolve(window.ExcelJS) : reject(new Error('Excel writer did not start'));
+    s.onerror = () => reject(new Error('Could not load the Excel writer — check the internet connection and try again'));
+    document.head.appendChild(s);
+  });
+}
+async function adpExportAuditXlsx() {
+  if (!_adp) { showToast('Choose an ADP Timecard Report first', 'warn'); return; }
+  try {
+    const lib = await adpLoadExcelJs();
+    const spec = adpAuditSpec(adpBuild());
+    const buf = await adpWriteAuditXlsx(spec, lib).xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `ASO_Time_Audit_${spec.house ? spec.house.replace(/[^a-z0-9]+/gi, '_') + '_' : ''}${spec.from}_to_${spec.to}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Excel audit downloaded ✅');
+  } catch (e) { showToast(e.message || 'Could not create the Excel file', 'danger'); }
 }
 
 let _adpHouse = {};      // house picked by hand for a shift to be added, by row key
-let _adpView = 'work';   // 'work' = the worklist, 'report' = the reconciliation report, 'procedure' = the one-page procedure
+let _adpView = 'audit';  // 'audit' = the six-tab audit, 'work' = the worklist, 'report' = the reconciliation report, 'procedure' = the one-page procedure
 
 function adpActionText(r, staff) {
   const t = r.cls.tier;
-  if (t === 'blocked') return r.adp.usedInInference ? 'In and out at the same minute. Used to rebuild the shift shown on this day — also fix it in ADP.' : 'In and out at the same minute, 0:00 paid — usually a missed punch. Fix it in ADP and upload again.';
-  if (t === 'hold') return r.adpIssue ? 'ADP has a punch error this day, so this shift was probably worked. It stays on the timesheet. Fix the punch in ADP.' : 'Stays on the timesheet and is paid as entered. Get the missed punch corrected in ADP. Tick only if this shift was NOT worked — it will be rejected.';
-  if (r.shift) return `Set timesheet to ${srTime(r.adp.start)} – ${srTime(r.adp.end)} (${srHrs(r.adp.hours)} hrs)${r.cls.why ? ' · ' + r.cls.why : ''}`;
-  return `Add ${srHrs(r.adp.hours)} hr shift${r.cls.why ? ' · ' + r.cls.why : ''}`;
+  if (t === 'blocked') return 'Stray or incomplete punch with no timesheet shift. Fix it in ADP; nothing is corrected from it.';
+  if (r.status === 'incomplete') return 'The shift stays on the timesheet and is paid as entered. Fix the punch in ADP and upload again.';
+  if (t === 'hold') return 'Stays on the timesheet and is paid as entered. Get the punch corrected in ADP. Tick only if this shift was NOT worked — it will be rejected.';
+  if (r.shift) return `Tick to set the timesheet to the ADP time ${srTime(r.adp.start)} – ${srTime(r.adp.end)} (${srHrs(r.adp.hours)} hrs), or mark reviewed to keep the timesheet hours.`;
+  return `Tick to add this ${srHrs(r.adp.hours)} hr shift to the timesheet.`;
 }
 
 function adpRender() {
@@ -11878,6 +12340,11 @@ function adpRender() {
   document.getElementById('adp-view-btns').style.display = '';
   document.querySelectorAll('#adp-view-btns [data-view]').forEach(el => el.classList.toggle('active', el.getAttribute('data-view') === _adpView));
 
+  if (_adpView === 'audit') {
+    document.getElementById('adp-map').innerHTML = b.stats.unmatchedNames && !b.house ? `<div class="adp-banner">${b.stats.unmatchedNames} ADP name${b.stats.unmatchedNames !== 1 ? 's are' : ' is'} not matched to a staff member yet, so their punches show as “not on timesheet”. Match them on the <a href="#" onclick="adpSetView('work');return false;">Worklist</a>.</div>` : '';
+    document.getElementById('adp-output').innerHTML = adpAuditHtml(b);
+    return;
+  }
   if (_adpView !== 'work') {
     document.getElementById('adp-map').innerHTML = '';
     document.getElementById('adp-output').innerHTML = `<div id="adp-report">${_adpView === 'report' ? adpReportHtml(b) : adpProcedureHtml()}</div>`;
@@ -11929,10 +12396,11 @@ function adpRender() {
   const houseOpts = sel => LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name === sel ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
   let body = '';
   b.people.forEach(p => {
-    const shown = p.rows.filter(r => !onlyDiff || r.cls.tier !== 'ok');
+    const shown = p.rows.filter(r => !r.na && (!onlyDiff || r.cls.tier !== 'ok'));
     if (!shown.length) return;
+    const openHere = shown.filter(r => r.open && !r.signed && !isPeriodLockedForDate(r.date)).length;
     const diff = p.adpTotal - p.tsTotal, dPay = p.after.pay - p.before.pay, dOT = p.after.ot - p.before.ot;
-    body += `<tr class="adp-person"><td colspan="8"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b> <span class="adp-dim">${esc(p.staff.id)} · ADP name “${esc(p.emp.name)}”${p.how === 'close' ? ' · matched on last name + first initial — please confirm' : ''}</span>
+    body += `<tr class="adp-person"><td colspan="8"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b> <span class="adp-dim">${esc(p.staff.id)} · ${p.noCard ? '<b style="color:var(--danger2)">no ADP timecard in this file</b>' : 'ADP name “' + esc(p.emp.name) + '”'}${p.how === 'close' ? ' · matched on last name + first initial — please confirm' : ''}${canEdit && openHere > 1 ? ` · <a href="#" data-staff="${esc(p.staff.id)}" onclick="adpMarkAllReviewed(this);return false;" style="color:var(--accent2)">Mark all ${openHere} reviewed — no change</a>` : ''}</span>
       <span style="float:right" class="mono">Timesheet ${srHrs(p.tsTotal)} · ADP ${srHrs(p.adpTotal)} · <b style="color:${Math.abs(diff) < 0.005 ? 'var(--success)' : 'var(--warn)'}">${diff > 0 ? '+' : ''}${srHrs(diff)}</b></span>
       ${Math.abs(dPay) >= 0.005 || Math.abs(dOT) >= 0.005 ? `<div class="adp-dim" style="margin-top:3px">If everything proposed is applied: pay ${dPay >= 0 ? '+' : '−'}${$fmt(Math.abs(dPay))}${Math.abs(dOT) >= 0.005 ? ` · <b style="color:var(--warn)">overtime ${dOT > 0 ? '+' : ''}${srHrs(dOT)} hrs</b> (${srHrs(p.before.ot)} → ${srHrs(p.after.ot)})` : ''}</div>` : ''}</td></tr>`;
     shown.forEach(r => {
@@ -11949,11 +12417,11 @@ function adpRender() {
         <td class="mono" style="white-space:nowrap"><b>${srDayName(r.date)}</b> ${esc(formatDateDisplay(r.date))}</td>
         <td>${r.shift ? `<span class="mono">${esc(srTime(r.shift.start))} – ${esc(srTime(r.shift.end))}</span><div class="adp-dim">${esc(r.shift.location || '')}</div>` : '<span class="adp-dim">—</span>'}</td>
         <td class="mono">${r.shift ? srHrs(r.shift.hours) : ''}</td>
-        <td>${r.adp ? `<span class="mono">${esc(srTime(r.adp.start))} – ${r.adp.end ? esc(srTime(r.adp.end)) : '<b style="color:var(--danger2)">no out punch</b>'}</span>${r.adp.inferred ? '<div class="adp-dim">rebuilt from 2 punch-error lines</div>' : ''}${r.adp.ot > 0 ? `<div class="adp-dim">ADP overtime ${adpHm(r.adp.ot)}</div>` : ''}` : '<span class="adp-dim">—</span>'}</td>
-        <td class="mono">${r.adp ? srHrs(r.adp.hours) : ''}</td>
+        <td>${r.adp ? `<span class="mono">${esc(srTime(r.adp.start))} – ${r.status === 'incomplete' && (r.adpParts || []).length > 1 ? esc(srTime(r.adpParts[r.adpParts.length - 1].start)) : r.adp.end ? esc(srTime(r.adp.end)) : '<b style="color:var(--danger2)">no out punch</b>'}</span>${r.adp.parts ? `<div class="adp-dim">${r.adp.parts.length} back-to-back punches</div>` : ''}${r.adp.inferred ? '<div class="adp-dim">rebuilt from 2 punch-error lines</div>' : ''}${r.adp.ot > 0 ? `<div class="adp-dim">ADP overtime ${adpHm(r.adp.ot)}</div>` : ''}` : '<span class="adp-dim">—</span>'}</td>
+        <td class="mono">${r.adp ? srHrs(r.status === 'incomplete' ? r.adpHours : r.adp.hours) : ''}</td>
         <td class="mono" style="color:${Math.abs(r.diffHours) < 0.005 ? 'var(--text3)' : 'var(--warn)'}">${Math.abs(r.diffHours) < 0.005 ? '0.00' : (r.diffHours > 0 ? '+' : '') + srHrs(r.diffHours)}${tier !== 'hold' && Math.abs(r.pay) >= 0.005 ? `<div class="adp-dim">${r.pay > 0 ? '+' : '−'}${$fmt(Math.abs(r.pay))}</div>` : ''}</td>
         <td><span class="badge ${badge[tier]}" style="font-size:10px">${esc(r.cls.label)}</span>
-          ${r.reviewed ? `<div class="adp-dim" style="margin-top:3px">Reviewed — no change. ${esc(r.reviewed.by)}, ${esc(r.reviewed.at)}${r.reviewed.note ? ' · “' + esc(r.reviewed.note) + '”' : ''}${canEdit && !r.signed ? ` <a href="#" data-adp-idx="${idx}" onclick="adpUndoReviewed(this);return false;" style="color:var(--accent2)">undo</a>` : ''}</div>` : tier === 'ok' ? '' : `<div class="adp-dim" style="margin-top:3px">${note ? esc(note) : esc(adpActionText(r, p.staff))}</div>`}
+          ${r.reviewed ? `<div class="adp-dim" style="margin-top:3px">Reviewed — no change. ${esc(r.reviewed.by)}, ${esc(r.reviewed.at)}${r.reviewed.note ? ' · “' + esc(r.reviewed.note) + '”' : ''}${canEdit && !r.signed ? ` <a href="#" data-adp-idx="${idx}" onclick="adpUndoReviewed(this);return false;" style="color:var(--accent2)">undo</a>` : ''}</div>` : `${r.found ? `<div style="margin-top:3px;font-size:12px;color:var(--text2)">${esc(r.found)}</div>` : ''}${tier === 'ok' ? '' : `<div class="adp-dim" style="margin-top:3px">${note ? esc(note) : esc(adpActionText(r, p.staff))}</div>`}`}
           ${!r.reviewed && r.status === 'adp_only' ? `<div class="adp-dim" style="margin-top:4px">House: <select data-adp-idx="${idx}" onchange="adpSetHouse(this)" ${can ? '' : 'disabled'} class="adp-house"><option value="">— pick —</option>${houseOpts(r.house)}</select> <span>${r.house === r.houseSuggested ? 'suggested: ' + esc(r.houseWhy) : 'changed by hand'}</span></div>` : ''}
           ${!r.reviewed && tier !== 'ok' && canEdit && !r.signed && !locked ? `<a href="#" class="adp-dim" data-adp-idx="${idx}" onclick="adpMarkReviewed(this);return false;" style="color:var(--accent2);display:inline-block;margin-top:4px">Mark reviewed — no change</a>` : ''}</td>
       </tr>`;
@@ -11965,27 +12433,26 @@ function adpRender() {
   const n = t => _adpRows.filter(r => r.can && r.row.cls.tier === t).length;
   document.getElementById('adp-output').innerHTML = `
     <div class="adp-tiles">
-      ${tile('Exact matches', S.ok, 'var(--success)', 'nothing to do')}
-      ${tile('Ready to apply', S.auto, S.auto ? 'var(--accent2)' : '', `within ${b.reviewMin} min — set to ADP`)}
-      ${tile('Suggested', S.suggest, S.suggest ? 'var(--warn)' : '', 'in ADP, not on timesheet')}
-      ${tile('Needs review', S.review, S.review ? 'var(--danger2)' : '', `more than ${b.reviewMin} min apart`)}
-      ${tile('Needs punch correction', S.hold, S.hold ? 'var(--warn)' : '', 'on timesheet, not in ADP')}
-      ${tile('ADP punch errors', S.blocked, S.blocked ? 'var(--danger2)' : '', 'fix in ADP')}
+      ${tile('Match', S.match, 'var(--success)', `hours within ${b.reviewMin} min`)}
+      ${tile('Hours differ', S.differs, S.differs ? 'var(--warn)' : '', 'same shift, different hours')}
+      ${tile('No ADP punch', S.noPunch, S.noPunch ? 'var(--danger2)' : '', 'on timesheet only')}
+      ${tile('Incomplete ADP punch', S.incomplete, S.incomplete ? 'var(--danger2)' : '', 'fix in ADP')}
+      ${tile('ADP, not on timesheet', S.adpOnly + S.stray, S.adpOnly + S.stray ? 'var(--warn)' : '', S.stray ? `${S.stray} stray` : 'punched, no shift')}
       ${tile('Pay effect if applied', (dPayAll >= 0 ? '+' : '−') + $fmt(Math.abs(dPayAll)), Math.abs(dPayAll) < 0.005 ? '' : 'var(--warn)', `overtime ${dOTAll > 0 ? '+' : ''}${srHrs(dOTAll)} hrs`)}
       ${tile('Still open', S.open, S.open ? 'var(--danger2)' : 'var(--success)', S.reviewed ? `${S.reviewed} marked reviewed` : 'before sign-off')}
     </div>
     ${!b.people.length ? '<div class="sr-empty">None of the ADP names matched a staff member yet — pick them in the list above.</div>' : `
     <div class="adp-bar">
       <span style="font-size:12px;color:var(--text3)">Tick:</span>
-      <button class="btn btn-ghost" onclick="adpSelect('auto')">All ready (${n('auto')})</button>
-      <button class="btn btn-ghost" onclick="adpSelect('suggest')">All suggested (${n('suggest')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('review')">All “Hours differ” (${n('review')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('suggest')">All “ADP, not on timesheet” (${n('suggest')})</button>
       <button class="btn btn-ghost" onclick="adpSelect('')">Clear</button>
-      <span style="font-size:11.5px;color:var(--text3)">“Needs review” and “Needs punch correction” are ticked one at a time, on purpose.</span>
+      <span style="font-size:11.5px;color:var(--text3)">“No ADP punch” is ticked one at a time, on purpose — ticking it rejects the shift.</span>
       <button class="btn btn-primary" id="adp-apply-btn" style="margin-left:auto" onclick="adpApplySelected()">Apply corrections</button>
     </div>
     <div class="table-wrap"><table class="adp-table">
       <thead><tr><th></th><th>Date</th><th>Timesheet</th><th>Hrs</th><th>ADP punches</th><th>Hrs</th><th>Diff</th><th>What the system recommends</th></tr></thead>
-      <tbody>${body || '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:28px">Every punch matches the timesheet exactly. Nothing to correct.</td></tr>'}</tbody>
+      <tbody>${body || `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:28px">Every shift's ADP hours are within ${b.reviewMin} minutes of the timesheet. Nothing to correct.</td></tr>`}</tbody>
     </table></div>`}`;
   adpUpdateApplyBtn();
 }
@@ -12017,6 +12484,16 @@ function adpMarkReviewed(el) {
   if (note === null) return;
   if (note.trim().length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
   adpPushAudit('ADP_REVIEWED', `ADP difference reviewed, no change: ${r.staff.last}, ${r.staff.first}`, `key=${r.key} · ${r.row.date} · ${r.row.cls.label} · note=${note.trim().replace(/\s+/g, ' ')}`);
+  dbSave(); adpRender();
+}
+function adpMarkAllReviewed(el) {
+  const id = el.getAttribute('data-staff');
+  const rows = _adpRows.filter(r => r.staff.id === id && r.row.open && !r.row.signed && !isPeriodLockedForDate(r.row.date));
+  if (!rows.length) return;
+  const note = prompt(`Why is no change needed for these ${rows.length} items for ${rows[0].staff.first} ${rows[0].staff.last}? (required — kept in the Audit Trail)\n\nExample: "Not on ADP — paid from the signed time log sheets."`);
+  if (note === null) return;
+  if (note.trim().length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
+  rows.forEach(r => adpPushAudit('ADP_REVIEWED', `ADP difference reviewed, no change: ${r.staff.last}, ${r.staff.first}`, `key=${r.key} · ${r.row.date} · ${r.row.cls.label} · note=${note.trim().replace(/\s+/g, ' ')}`));
   dbSave(); adpRender();
 }
 function adpUndoReviewed(el) {
@@ -12116,8 +12593,8 @@ function adpReportHtml(b) {
   const dPay = S.payAfter - S.payBefore, dOT = S.otAfter - S.otBefore;
   const tile = (l, v, sub) => `<div class="sr-tile"><div class="sr-tile-l">${l}</div><div class="sr-tile-v">${v}</div>${sub ? `<div class="sr-tile-s">${sub}</div>` : ''}</div>`;
   const signNum = (v, money) => Math.abs(v) < 0.005 ? (money ? '$0.00' : '0.00') : (v > 0 ? '+' : '−') + (money ? $fmt(Math.abs(v)) : srHrs(Math.abs(v)));
-  const status = r => r.reviewed ? `Reviewed, no change — ${esc(r.reviewed.by)}${r.reviewed.note ? ': “' + esc(r.reviewed.note) + '”' : ''}` : r.status === 'adp_zero' && r.adp.usedInInference ? 'Used to rebuild the shift' : 'Open';
-  const diffs = b.people.flatMap(p => p.rows.filter(r => r.cls.tier !== 'ok').map(r => ({ p, r })));
+  const status = r => r.reviewed ? `Reviewed, no change — ${esc(r.reviewed.by)}${r.reviewed.note ? ': “' + esc(r.reviewed.note) + '”' : ''}` : 'Open';
+  const diffs = b.people.flatMap(p => p.rows.filter(r => r.cls.tier !== 'ok' && !r.na).map(r => ({ p, r })));
   const P = b.patterns;
   return `<section class="sr-sheet adp-rep">
     <div class="sr-head">
@@ -12125,11 +12602,11 @@ function adpReportHtml(b) {
       <div class="sr-head-r"><div class="sr-period">${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}</div>
         <div class="sr-status ${signed ? 'sr-final' : 'sr-draft'}">${signed ? `Signed off by ${esc(signed.by)}, ${esc(signed.at)}` : S.open ? `Open — ${S.open} item${S.open !== 1 ? 's' : ''} unresolved` : 'Ready for sign-off — nothing unresolved'}</div></div>
     </div>
-    <div class="sr-key" style="margin-top:8px">${b.house ? 'House: <b>' + esc(b.house) + '</b> (lines worked at, or proposed for, this house only) · ' : 'All houses · '}ADP file: ${esc(_adp.fileName)} · ${S.timecards} timecards, ${S.punches} punches · A time difference of up to ${b.reviewMin} minutes is “ready to apply”; more than that needs review · Generated ${esc(new Date().toLocaleString())}${_currentUser ? ' by ' + esc(_currentUser.name) : ''}</div>
+    <div class="sr-key" style="margin-top:8px">${b.house ? 'House: <b>' + esc(b.house) + '</b> (lines worked at, or proposed for, this house only) · ' : 'All houses · '}ADP file: ${esc(_adp.fileName)} · ${S.timecards} timecards, ${S.punches} punches · A shift is a match when ADP and timesheet hours are within ${b.reviewMin} minutes · Generated ${esc(new Date().toLocaleString())}${_currentUser ? ' by ' + esc(_currentUser.name) : ''}</div>
 
     <div class="sr-h" style="margin-top:14px">1. Summary</div>
     <div class="sr-tiles">${tile('Staff compared', S.staff, `${S.timecards} ADP timecards`)}${tile('ADP hours', srHrs(S.adpHours), '')}${tile('Timesheet hours', srHrs(S.tsHours), '')}${tile('Difference', signNum(S.adpHours - S.tsHours), 'ADP minus timesheet')}${tile('Pay effect', signNum(dPay, true), `overtime ${signNum(dOT)} hrs, if all applied`)}</div>
-    <div class="sr-tiles">${tile('Exact matches', S.ok, '')}${tile('Ready to apply', S.auto, 'small difference')}${tile('Suggested', S.suggest, 'in ADP only')}${tile('Needs review', S.review, 'large difference')}${tile('Punch correction', S.hold, 'timesheet only')}${tile('ADP punch errors', S.blocked, '')}${tile('Still open', S.open, `${b.state.corrections.length} corrected, ${S.reviewed} reviewed`)}</div>
+    <div class="sr-tiles">${tile('Match', S.match, `within ${b.reviewMin} min`)}${tile('Hours differ', S.differs, '')}${tile('No ADP punch', S.noPunch, 'timesheet only')}${tile('Incomplete punch', S.incomplete, 'fix in ADP')}${tile('ADP, no shift', S.adpOnly + S.stray, '')}${tile('Still open', S.open, `${b.state.corrections.length} corrected, ${S.reviewed} reviewed`)}</div>
 
     <div class="sr-h" style="margin-top:14px">2. Who is on one record but not the other</div>
     <div class="sr-two" style="margin-top:4px">
@@ -12140,17 +12617,17 @@ function adpReportHtml(b) {
     </div>
 
     <div class="sr-h" style="margin-top:14px">3. By person</div>
-    <table class="sr-table"><thead><tr><th>Staff</th><th class="sr-num">Timesheet</th><th class="sr-num">ADP</th><th class="sr-num">Diff</th><th class="sr-num">Match</th><th class="sr-num">Ready</th><th class="sr-num">Suggest</th><th class="sr-num">Review</th><th class="sr-num">Punch fix</th><th class="sr-num">Open</th><th class="sr-num">OT change</th><th class="sr-num">Pay effect</th></tr></thead>
-      <tbody>${b.people.map(p => { const c = t => p.rows.filter(r => r.cls.tier === t).length; return `<tr><td class="sr-nw"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b></td><td class="sr-num">${srHrs(p.tsTotal)}</td><td class="sr-num">${srHrs(p.adpTotal)}</td><td class="sr-num">${signNum(p.adpTotal - p.tsTotal)}</td><td class="sr-num">${c('ok')}</td><td class="sr-num">${c('auto')}</td><td class="sr-num">${c('suggest')}</td><td class="sr-num">${c('review')}</td><td class="sr-num">${c('hold') + c('blocked')}</td><td class="sr-num"><b>${p.rows.filter(r => r.open).length}</b></td><td class="sr-num">${signNum(p.after.ot - p.before.ot)}</td><td class="sr-num">${signNum(p.after.pay - p.before.pay, true)}</td></tr>`; }).join('')}
-      <tr class="sr-tot"><td>TOTAL</td><td class="sr-num">${srHrs(S.tsHours)}</td><td class="sr-num">${srHrs(S.adpHours)}</td><td class="sr-num">${signNum(S.adpHours - S.tsHours)}</td><td class="sr-num">${S.ok}</td><td class="sr-num">${S.auto}</td><td class="sr-num">${S.suggest}</td><td class="sr-num">${S.review}</td><td class="sr-num">${S.hold + S.blocked}</td><td class="sr-num">${S.open}</td><td class="sr-num">${signNum(dOT)}</td><td class="sr-num">${signNum(dPay, true)}</td></tr></tbody></table>
+    <table class="sr-table"><thead><tr><th>Staff</th><th class="sr-num">Timesheet</th><th class="sr-num">ADP</th><th class="sr-num">Diff</th><th class="sr-num">Match</th><th class="sr-num">Hours differ</th><th class="sr-num">No punch</th><th class="sr-num">Incomplete</th><th class="sr-num">ADP only</th><th class="sr-num">Open</th><th class="sr-num">OT change</th><th class="sr-num">Pay effect</th></tr></thead>
+      <tbody>${b.people.map(p => { const c = t => p.rows.filter(r => !r.na && r.status === t).length; return `<tr><td class="sr-nw"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b></td><td class="sr-num">${srHrs(p.tsTotal)}</td><td class="sr-num">${srHrs(p.adpTotal)}</td><td class="sr-num">${signNum(p.adpTotal - p.tsTotal)}</td><td class="sr-num">${c('match')}</td><td class="sr-num">${c('differs')}</td><td class="sr-num">${c('ts_only')}</td><td class="sr-num">${c('incomplete')}</td><td class="sr-num">${c('adp_only') + c('adp_zero')}</td><td class="sr-num"><b>${p.rows.filter(r => r.open).length}</b></td><td class="sr-num">${signNum(p.after.ot - p.before.ot)}</td><td class="sr-num">${signNum(p.after.pay - p.before.pay, true)}</td></tr>`; }).join('')}
+      <tr class="sr-tot"><td>TOTAL</td><td class="sr-num">${srHrs(S.tsHours)}</td><td class="sr-num">${srHrs(S.adpHours)}</td><td class="sr-num">${signNum(S.adpHours - S.tsHours)}</td><td class="sr-num">${S.match}</td><td class="sr-num">${S.differs}</td><td class="sr-num">${S.noPunch}</td><td class="sr-num">${S.incomplete}</td><td class="sr-num">${S.adpOnly + S.stray}</td><td class="sr-num">${S.open}</td><td class="sr-num">${signNum(dOT)}</td><td class="sr-num">${signNum(dPay, true)}</td></tr></tbody></table>
 
     <div class="sr-h" style="margin-top:14px">4. By house</div>
     <table class="sr-table sr-mini"><thead><tr><th>House</th><th class="sr-num">Lines compared</th><th class="sr-num">Differences</th><th class="sr-num">Hours difference</th></tr></thead>
       <tbody>${P.houses.map(h => `<tr><td>${esc(h.house)}</td><td class="sr-num">${h.lines}</td><td class="sr-num">${h.differences}</td><td class="sr-num">${signNum(h.hours)}</td></tr>`).join('') || '<tr><td colspan="4" class="sr-dim">Nothing compared.</td></tr>'}</tbody></table>
 
     <div class="sr-h" style="margin-top:14px">5. Every difference</div>
-    ${diffs.length ? `<table class="sr-table"><thead><tr><th>Staff</th><th>Date</th><th>Timesheet</th><th>ADP</th><th class="sr-num">Diff</th><th>Class</th><th>Recommended / status</th></tr></thead>
-      <tbody>${diffs.map(({ p, r }) => `<tr><td class="sr-nw">${esc(p.staff.last)}, ${esc(p.staff.first)}</td><td class="sr-nw">${srDayName(r.date)} ${esc(formatDateDisplay(r.date))}</td><td class="sr-nw">${r.shift ? esc(srTime(r.shift.start)) + ' – ' + esc(srTime(r.shift.end)) : '—'}</td><td class="sr-nw">${r.adp ? esc(srTime(r.adp.start)) + ' – ' + (r.adp.end ? esc(srTime(r.adp.end)) : '?') + (r.adp.inferred ? ' *' : '') : '—'}</td><td class="sr-num">${signNum(r.diffHours)}</td><td class="sr-nw">${esc(r.cls.label)}</td><td>${r.reviewed || (r.status === 'adp_zero' && r.adp.usedInInference) ? status(r) : esc(adpActionText(r, p.staff)) + (r.status === 'adp_only' && r.house ? ' at ' + esc(r.house) : '')}</td></tr>`).join('')}</tbody></table>
+    ${diffs.length ? `<table class="sr-table"><thead><tr><th>Staff</th><th>Date</th><th>Timesheet</th><th>ADP</th><th class="sr-num">Diff</th><th>Result</th><th>What was found / decision</th></tr></thead>
+      <tbody>${diffs.map(({ p, r }) => `<tr><td class="sr-nw">${esc(p.staff.last)}, ${esc(p.staff.first)}</td><td class="sr-nw">${srDayName(r.date)} ${esc(formatDateDisplay(r.date))}</td><td class="sr-nw">${r.shift ? esc(srTime(r.shift.start)) + ' – ' + esc(srTime(r.shift.end)) : '—'}</td><td class="sr-nw">${r.adp ? esc(srTime(r.adp.start)) + ' – ' + (r.adp.end ? esc(srTime(r.adp.end)) : '?') + (r.adp.inferred ? ' *' : '') : '—'}</td><td class="sr-num">${signNum(r.diffHours)}</td><td class="sr-nw">${esc(r.cls.label)}</td><td>${esc(r.found || '')}${r.reviewed ? '<br>' + status(r) : ''}</td></tr>`).join('')}</tbody></table>
       <div class="sr-key">* = shift rebuilt from two ADP punch-error lines on the same day. It is a proposal and always needs review.</div>` : '<div class="sr-dim">No differences — every ADP punch matches the timesheet exactly.</div>'}
 
     <div class="sr-h" style="margin-top:14px">6. Corrections made (from the Audit Trail)</div>
@@ -12187,12 +12664,12 @@ function adpProcedureHtml() {
     <table class="sr-table" style="margin-top:4px"><tbody>
       ${step(1, 'Enter the time log sheets', 'All signed time log sheets for the week are entered on the Timesheet Log.')}
       ${step(2, 'Export from ADP', 'Run the Timecard Report in ADP for the same dates and save it as a PDF.')}
-      ${step(3, 'Upload', 'On ADP Timecard Match, choose the PDF. The system matches every punch.')}
-      ${step(4, 'Check the two lists', 'Anyone on ADP but not on the timesheet, and anyone on the timesheet but not on ADP, is explained before going further.')}
-      ${step(5, 'Apply “Ready”', 'Small time differences are set to the ADP punch. One click, already ticked.')}
-      ${step(6, 'Confirm “Suggested”', 'For a punch with no timesheet shift, confirm the person worked and confirm the house, then apply.')}
-      ${step(7, 'Decide “Needs review”', 'For each large difference, ask the Program Manager what happened. Apply the ADP time, or mark it reviewed with the reason.')}
-      ${step(8, 'Fix punches in ADP', '“Needs punch correction” and “ADP punch error” lines are corrected in ADP, then the file is uploaded again. A shift is never removed just because the punch is missing.')}
+      ${step(3, 'Upload', 'On ADP Timecard Match, choose the PDF. Each timesheet shift is matched to the ADP punch that covers it and judged on hours.')}
+      ${step(4, 'Read the audit', 'Open each tab: Shift Match, ADP Not On Timesheet, Staff Totals and Timesheet Checks. Download the Excel audit for the file.')}
+      ${step(5, 'Fix the timesheet checks first', 'Overlapping shifts, coverage gaps and days with no entries usually mean a time log sheet was missed or mis-entered. Correct the Timesheet Log before going on.')}
+      ${step(6, 'Decide “Hours differ”', 'For each one, ask the Program Manager what happened. Set the shift to the ADP punch, or mark it reviewed with the reason.')}
+      ${step(7, 'Confirm “ADP, not on timesheet”', 'Confirm the person worked and confirm the house, then add the shift. If they did not work, mark it reviewed with the reason.')}
+      ${step(8, 'Fix punches in ADP', '“No ADP punch” and “Incomplete ADP punch” lines are corrected in ADP, then the file is uploaded again — or marked reviewed with the reason they are paid from the time log sheet. A shift is never removed just because the punch is missing.')}
       ${step(9, 'Sign off', 'When nothing is open, the Program Manager or admin signs off the week.')}
       ${step(10, 'File the report', 'Print or save the Reconciliation Report and keep it with the payroll records.')}
     </tbody></table>
@@ -12234,7 +12711,7 @@ function adpExportCSV() {
   const q = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
   const line = arr => arr.map(q).join(',') + '\n';
   let csv = line(['American Safety Options, Inc. — ADP Timecard Reconciliation']);
-  csv += line(['House', b.house || 'All houses']) + line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Review needed above (minutes)', b.reviewMin]) + line(['Status', b.state.signoff ? `Signed off by ${b.state.signoff.by}, ${b.state.signoff.at}` : `${b.stats.open} open`]) + line(['Generated', new Date().toLocaleString()]) + '\n';
+  csv += line(['House', b.house || 'All houses']) + line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Match tolerance (minutes of hours)', b.reviewMin]) + line(['Status', b.state.signoff ? `Signed off by ${b.state.signoff.by}, ${b.state.signoff.at}` : `${b.stats.open} open`]) + line(['Generated', new Date().toLocaleString()]) + '\n';
   csv += line(['PEOPLE ON THE ADP TIMECARD WITH NOTHING ON THE TIMESHEET']) + line(['Name', 'Staff ID', 'ADP punches', 'ADP hrs', 'Note']);
   b.missing.adpOnly.forEach(x => { csv += line([x.name, x.id, x.punches, srHrs(x.hours), x.known ? '' : x.skipped ? 'Left out on purpose' : 'Not a staff member in this system / not matched yet']); });
   if (!b.missing.adpOnly.length) csv += line(['Nobody']);
@@ -12242,9 +12719,9 @@ function adpExportCSV() {
   b.missing.tsOnly.forEach(x => { csv += line([x.name, x.id, x.shifts, srHrs(x.hours), x.why]); });
   if (!b.missing.tsOnly.length) csv += line(['Nobody']);
   csv += '\n' + line(['PUNCH BY PUNCH']);
-  csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Approx pay effect', 'Class', 'Recommended', 'Suggested house', 'Status']);
+  csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Approx pay effect', 'Result', 'What was found', 'Suggested house', 'Status']);
   b.people.forEach(p => p.rows.forEach(r => {
-    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : (b.house ? '' : ''), r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), r.pay.toFixed(2), r.cls.label, r.cls.tier === 'ok' ? '' : adpActionText(r, p.staff), r.status === 'adp_only' ? `${r.house} (${r.houseWhy})` : '', r.cls.tier === 'ok' ? 'Match' : r.reviewed ? `Reviewed, no change - ${r.reviewed.by}: ${r.reviewed.note}` : r.open ? 'Open' : '']);
+    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : (b.house ? '' : ''), r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), r.pay.toFixed(2), r.cls.label, r.found || '', r.status === 'adp_only' ? `${r.house} (${r.houseWhy})` : '', r.cls.tier === 'ok' ? 'Match' : r.reviewed ? `Reviewed, no change - ${r.reviewed.by}: ${r.reviewed.note}` : r.open ? 'Open' : '']);
   }));
   b.unmatched.forEach(u => u.emp.entries.forEach(x => { csv += line(['', '', '', u.emp.name, formatDateDisplay(x.date), x.day, '', '', '', '', srTime(x.start), x.end ? srTime(x.end) : '', srHrs(x.hours), srHrs(x.ot), '', '', '', '', '', u.skipped ? 'Left out on purpose' : 'ADP name not matched to a staff member']); }));
   csv += '\n' + line(['CORRECTIONS MADE (AUDIT TRAIL)']) + line(['When', 'By', 'What', 'Detail']);
