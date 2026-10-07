@@ -4429,6 +4429,15 @@ function formatTimeDisplay(hhmm) {
   return `${h12}:${String(m).padStart(2,'0')} ${period}`;
 }
 
+// Safe wrapper for showing a stored shift time ("06:00", "16:30", or with
+// seconds) as "6:00 AM" / "4:30 PM". Times are always STORED in 24-hour
+// form — every calculation depends on that — and only converted here, at
+// the point of display. Anything that is not a time is shown unchanged.
+function fmtTime(t) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t == null ? '' : t));
+  return m ? formatTimeDisplay(m[1].padStart(2, '0') + ':' + m[2]) : (t || '');
+}
+
 // ISO "YYYY-MM-DD" (how dates are stored everywhere, for correct sorting
 // and comparison) to "MM/DD/YYYY" for display. Dates are always stored in
 // ISO internally — only ever convert at the point of display.
@@ -5788,7 +5797,7 @@ function renderMyPortal() {
     html += `<tr style="${isRejected?'opacity:0.6':''}">
       <td class="mono">${esc(formatDateDisplay(s.date))}</td>
       <td>${esc(s.location)}</td>
-      <td class="mono">${s.start}\u2013${s.end}</td>
+      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}</td>
       <td class="mono">${numFmt(s.regHrs+s.otHrs)}</td>
       <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${s.otHrs>0?numFmt(s.otHrs):'\u2014'}</td>
       <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected${s.rejectedReason ? ': '+esc(s.rejectedReason) : ''}</span>` : '<span class="badge badge-success" style="font-size:10px">✓ Active</span>'}</td>
@@ -6928,7 +6937,7 @@ function renderTimesheetTable() {
       <td class="mono">${esc(formatDateDisplay(s.date))}</td>
       <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}<div style="font-size:10px;color:var(--text3);font-weight:400">${esc(s.staff)}</div></td>
       <td style="color:var(--text2)">${esc(s.location)}</td>
-      <td class="mono">${esc(s.start)}\u2013${esc(s.end)}</td>
+      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}</td>
       <td class="mono" style="color:var(--accent2);font-weight:600">${numFmt(s.hours)}</td>
       <td class="mono">${$fmt(s.locRate)}</td>
       <td class="mono">${$fmt(s.regPay)}</td>
@@ -7004,7 +7013,7 @@ function addShift() {
   // Block genuinely overlapping shift times for the same staff member on the same day
   const overlap = findOverlappingShift(staff, date, start, end, null);
   if (overlap) {
-    showToast(`⚠ This overlaps with an existing shift for this staff member: ${overlap.location} ${overlap.start}–${overlap.end} on ${date}. Fix the times or edit the existing shift instead.`, 'danger');
+    showToast(`⚠ This overlaps with an existing shift for this staff member: ${overlap.location} ${fmtTime(overlap.start)} – ${fmtTime(overlap.end)} on ${date}. Fix the times or edit the existing shift instead.`, 'danger');
     return;
   }
 
@@ -7025,7 +7034,7 @@ function addShift() {
     let detHtml = '<div style="margin-bottom:12px">';
     detHtml += `<div style="font-size:11px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Existing shifts on ${date}</div>`;
     existing.forEach(s => {
-      detHtml += `<div class="info-row"><span class="info-label">${s.location} · ${s.start}–${s.end}</span><span class="info-val">${numFmt(s.hours)} hrs</span></div>`;
+      detHtml += `<div class="info-row"><span class="info-label">${s.location} · ${fmtTime(s.start)} – ${fmtTime(s.end)}</span><span class="info-val">${numFmt(s.hours)} hrs</span></div>`;
     });
     detHtml += `<div class="info-row" style="border-top:2px solid var(--border2);margin-top:4px"><span class="info-label">+ New: ${location} · ${start}–${end}</span><span class="info-val" style="color:var(--accent2)">${numFmt(hours)} hrs</span></div>`;
     detHtml += `<div class="info-row"><span class="info-label" style="color:var(--warn)">TOTAL DAILY HOURS</span><span class="info-val" style="color:var(--danger);font-size:16px">${numFmt(check.total)} hrs</span></div>`;
@@ -7155,7 +7164,7 @@ function deleteShift(id) {
       <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">STAFF</span><br><b style="color:var(--text)">${name}</b> <span style="color:var(--text3);font-size:11px">${s.staff}</span></div>
       <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">DATE</span><br><b style="color:var(--text)">${s.date}</b></div>
       <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">LOCATION</span><br><span style="color:var(--text2)">${s.location}</span></div>
-      <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">SHIFT</span><br><span style="color:var(--accent2);font-family:var(--mono)">${s.start} → ${s.end} (${numFmt(s.hours)} hrs)</span></div>
+      <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">SHIFT</span><br><span style="color:var(--accent2);font-family:var(--mono)">${fmtTime(s.start)} → ${fmtTime(s.end)} (${numFmt(s.hours)} hrs)</span></div>
       <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">SHIFT PAY</span><br><span style="color:var(--success);font-family:var(--mono)">${$fmt(s.shiftPay)}</span></div>
       <div><span style="color:var(--text3);font-family:var(--mono);font-size:11px">PAY PERIOD</span><br><span style="color:var(--text2);font-size:11px">${s.period}</span></div>
     </div>`;
@@ -7186,7 +7195,7 @@ function confirmDeleteShift() {
     });
     const stN = STAFF.find(x=>x.id===s.staff);
     auditLog('DELETE_SHIFT', `Shift deleted: ${stN ? stN.last+', '+stN.first : s.staff} @ ${s.location}`,
-      `Date: ${s.date} · ${s.start}–${s.end} · ${numFmt(s.hours)} hrs`);
+      `Date: ${s.date} · ${fmtTime(s.start)} – ${fmtTime(s.end)} · ${numFmt(s.hours)} hrs`);
   }
   SHIFTS = SHIFTS.filter(s => s.id !== _deleteShiftId);
   APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(a => a.shiftId !== _deleteShiftId);
@@ -7313,7 +7322,7 @@ function saveEditShift() {
 
   const overlap = findOverlappingShift(staff, date, start, end, _editShiftId);
   if (overlap) {
-    showToast(`⚠ This overlaps with another shift for this staff member: ${overlap.location} ${overlap.start}–${overlap.end} on ${date}.`, 'danger');
+    showToast(`⚠ This overlaps with another shift for this staff member: ${overlap.location} ${fmtTime(overlap.start)} – ${fmtTime(overlap.end)} on ${date}.`, 'danger');
     return;
   }
 
@@ -7328,8 +7337,8 @@ function saveEditShift() {
 
   const oldShift = SHIFTS[idx];
   const stN = STAFF.find(x=>x.id===staff);
-  const oldMeta = `Old: ${oldShift.date} · ${oldShift.start}–${oldShift.end} · ${oldShift.location}`;
-  const newMeta = `New: ${date} · ${start}–${end} · ${location} · ${numFmt(hours)} hrs`;
+  const oldMeta = `Old: ${oldShift.date} · ${fmtTime(oldShift.start)} – ${fmtTime(oldShift.end)} · ${oldShift.location}`;
+  const newMeta = `New: ${date} · ${fmtTime(start)} – ${fmtTime(end)} · ${location} · ${numFmt(hours)} hrs`;
 
   // Patch in place, mark as corrected
   SHIFTS[idx] = { ...SHIFTS[idx], date, staff, location, start, end, hours, _corrected: true };
@@ -8666,7 +8675,7 @@ function renderStaffTable() {
       <td style="color:var(--text3)">${s.type}</td>
       <td>${s.loc}</td>
       <td class="mono">${$fmt(s.rate)}</td>
-      <td class="mono" style="color:var(--text3)">${s.start}</td>
+      <td class="mono" style="color:var(--text3);white-space:nowrap">${fmtTime(s.start)}</td>
       <td class="mono" style="color:${bal<0?'var(--danger)':'var(--success)'}">${numFmt(bal)}h
         ${userCan('adjustPto') ? `<button class="btn btn-ghost" style="padding:2px 8px;font-size:10px;margin-left:4px" onclick="adjustPtoBalance('${s.id}','${esc(s.first)} ${esc(s.last)}')">Adjust</button>` : ''}
       </td>
@@ -9755,8 +9764,8 @@ function rbBuildIndividualReport(staffArr, allComputed, fromDate, toDate, otThre
             ${shifts.map(s => `<tr>
               <td class="mono">${formatDateDisplay(s.date)}</td>
               <td style="color:var(--text)">${s.location}</td>
-              <td class="mono">${s.start}</td>
-              <td class="mono">${s.end}</td>
+              <td class="mono" style="white-space:nowrap">${fmtTime(s.start)}</td>
+              <td class="mono" style="white-space:nowrap">${fmtTime(s.end)}</td>
               <td class="mono">${numFmt(s.hours)}</td>
               <td class="mono">${numFmt(s.regHrs)}</td>
               <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(s.otHrs)}</td>
@@ -9823,7 +9832,7 @@ function rbBuildLocationReport(locs, allComputed, fromDate, toDate) {
             return `<tr>
               <td class="mono">${formatDateDisplay(s.date)}</td>
               <td style="color:var(--text)">${name}</td>
-              <td class="mono">${s.start}</td><td class="mono">${s.end}</td>
+              <td class="mono" style="white-space:nowrap">${fmtTime(s.start)}</td><td class="mono" style="white-space:nowrap">${fmtTime(s.end)}</td>
               <td class="mono">${numFmt(s.hours)}</td>
               <td class="mono">${numFmt(s.regHrs)}</td>
               <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(s.otHrs)}</td>
@@ -9989,7 +9998,7 @@ function rbBuildDateRangeReport(allComputed, fromDate, toDate, staffIds) {
           <td class="mono">${formatDateDisplay(s.date)}</td>
           <td style="color:var(--text)">${name}</td>
           <td>${s.location}</td>
-          <td class="mono">${s.start}</td><td class="mono">${s.end}</td>
+          <td class="mono" style="white-space:nowrap">${fmtTime(s.start)}</td><td class="mono" style="white-space:nowrap">${fmtTime(s.end)}</td>
           <td class="mono">${numFmt(s.hours)}</td>
           <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(s.otHrs)}</td>
           <td class="mono">${$fmt(s.regPay)}</td>
@@ -10052,8 +10061,8 @@ function rbBuildAttendanceReport(allComputed, fromDate, toDate, staffIds) {
           ${d.shifts.sort((a,b)=>a.date.localeCompare(b.date)).map(sh=>`<tr>
             <td class="mono">${formatDateDisplay(sh.date)}</td>
             <td>${sh.location}</td>
-            <td class="mono">${sh.start}</td>
-            <td class="mono">${sh.end}</td>
+            <td class="mono" style="white-space:nowrap">${fmtTime(sh.start)}</td>
+            <td class="mono" style="white-space:nowrap">${fmtTime(sh.end)}</td>
             <td class="mono">${numFmt(sh.hours)}</td>
             <td class="mono" style="color:${sh.otHrs>0?'var(--warn)':'var(--text3)'}">${numFmt(sh.otHrs)}</td>
             <td><span class="badge ${sh.otHrs>0?'badge-warn':'badge-success'}">${sh.otHrs>0?'OT':'Regular'}</span></td>
@@ -11765,7 +11774,7 @@ async function adpApplySelected() {
         if (!res.ok) { let msg = 'could not reject'; try { msg = (await res.json()).error || msg; } catch (e) {} skipped.push(`${who(r)} — ${msg}`); continue; }
         const sh = SHIFTS.find(s => s.id === row.shift.id);
         if (sh) { sh.shiftStatus = 'rejected'; sh.rejectedReason = 'Not worked — no punch on the ADP timecard'; sh.rejectedBy = _currentUser ? _currentUser.name : ''; }
-        adpPushAudit('ADP_CORRECTION', `Shift rejected from ADP match: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${row.shift.start}–${row.shift.end} · ${row.shift.location} · not worked, no ADP punch · ${stamp}`);
+        adpPushAudit('ADP_CORRECTION', `Shift rejected from ADP match: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${fmtTime(row.shift.start)} – ${fmtTime(row.shift.end)} · ${row.shift.location} · not worked, no ADP punch · ${stamp}`);
         done.push(r);
       } catch (e) { skipped.push(`${who(r)} — could not reach the server`); }
       continue;
@@ -11774,7 +11783,7 @@ async function adpApplySelected() {
     if (!a.end) { skipped.push(`${who(r)} — ADP has no out punch`); continue; }
     if (!(a.hours > 0) || a.hours > 24) { skipped.push(`${who(r)} — ADP hours are not valid`); continue; }
     const overlap = findOverlappingShift(r.staff.id, row.date, a.start, a.end, row.shift ? row.shift.id : null);
-    if (overlap && overlap.shiftStatus !== 'rejected') { skipped.push(`${who(r)} — would overlap the ${overlap.start}–${overlap.end} shift at ${overlap.location}; correct that one first`); continue; }
+    if (overlap && overlap.shiftStatus !== 'rejected') { skipped.push(`${who(r)} — would overlap the ${fmtTime(overlap.start)} – ${fmtTime(overlap.end)} shift at ${overlap.location}; correct that one first`); continue; }
     const basis = a.inferred ? ' · rebuilt from two ADP punch-error lines' : '';
     if (row.shift) {
       const idx = SHIFTS.findIndex(s => s.id === row.shift.id);
@@ -11782,12 +11791,12 @@ async function adpApplySelected() {
       const old = SHIFTS[idx];
       APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(x => x.shiftId !== old.id);
       SHIFTS[idx] = { ...old, start: a.start, end: a.end, hours: a.hours, _corrected: true, adpCorrected: { from: `${old.start}-${old.end}`, hours: old.hours, at: todayLocalISO() } };
-      adpPushAudit('ADP_CORRECTION', `Shift corrected to ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · Old: ${old.start}–${old.end} (${numFmt(old.hours)} hrs) → New: ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${old.location}${basis} · ${stamp}`);
+      adpPushAudit('ADP_CORRECTION', `Shift corrected to ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · Old: ${fmtTime(old.start)} – ${fmtTime(old.end)} (${numFmt(old.hours)} hrs) → New: ${fmtTime(a.start)} – ${fmtTime(a.end)} (${numFmt(a.hours)} hrs) · ${old.location}${basis} · ${stamp}`);
     } else {
       const location = row.house && LOCATIONS.some(l => l.name === row.house) ? row.house : '';
       if (!location) { skipped.push(`${who(r)} — pick the house for this shift first`); continue; }
       SHIFTS.push({ id: genId(), date: row.date, staff: r.staff.id, location, start: a.start, end: a.end, hours: a.hours, source: 'adp', shiftStatus: 'active', _new: true });
-      adpPushAudit('ADP_CORRECTION', `Shift added from ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${location}${row.house === row.houseSuggested ? ' (suggested: ' + row.houseWhy + ')' : ' (picked by hand)'}${basis} · ${stamp}`);
+      adpPushAudit('ADP_CORRECTION', `Shift added from ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${fmtTime(a.start)} – ${fmtTime(a.end)} (${numFmt(a.hours)} hrs) · ${location}${row.house === row.houseSuggested ? ' (suggested: ' + row.houseWhy + ')' : ' (picked by hand)'}${basis} · ${stamp}`);
     }
     done.push(r);
   }

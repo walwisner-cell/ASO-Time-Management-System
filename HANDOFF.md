@@ -46,6 +46,9 @@ The owner uploads the ADP "Timecard Report" PDF; the page matches every punch to
 - `test-adp-match.js` — 72 checks, using hand-built pages in ADP's layout with made-up names (no real timecard is stored in the repo). Browser-verified end to end against a demo database with the real file: 72 corrections applied, confirmed in the saved database and audit log.
 - **Not done**: house for ADP-added shifts is always the home house; only the Timecard Report PDF layout is read; ADP's weekly-overtime figure is displayed but not used.
 
+### Time format
+Shift times are now shown as 12-hour AM/PM everywhere (Timesheet Log, employee portal, Report Builder reports, shift pop-ups, overlap warnings, new audit entries) through one helper, `fmtTime(t)`. Storage is unchanged: times are still saved as 24-hour `HH:MM`, and every calculation still reads that. Audit entries written before this change keep their original 24-hour wording.
+
 ### Logo
 `ASO_LOGO` is a base64 PNG constant in the main script (about 58 KB). Used in the report sheet headers (`.sr-logo`), in `srDownloadPDF` via `doc.addImage`, and — through the `--aso-logo` CSS variable and `.print-aso-header::before` — in place of the drawn seal on every other printed page.
 
