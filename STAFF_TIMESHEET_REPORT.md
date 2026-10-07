@@ -56,6 +56,15 @@ I get to it two ways:
 
 Overtime on these pages is the overtime payroll worked out on the person's total hours for the pay period. It is not recalculated per house.
 
+## Time by house and date
+In **Layout** I pick **By house — each house, each date, who worked**. I get one sheet per house:
+- the house name, with hours worked there, how many staff worked, how many came from another house, days covered, overtime and pay
+- every date, and under each date the staff who worked that day with time in, time out, hours, regular, overtime and pay
+- staff from another house shaded and marked "from [their home house]"
+- a total for the house and a Program Manager approval line
+
+It follows the other choices on the page: pay period, date range or single date; one house or all houses; pay amounts on or off; "List every day" to show dates when nobody was recorded; and "Add a summary page" for a one-page table of hours by house. The CSV always includes this listing as "Time by house and date".
+
 ## Where the times come from
 Shifts the office types in come from the time log sheets staff fill in to register their time, so the report now calls them **Time log** (it used to say "Manual"). Shifts from the clock in/out buttons say **Clock**, and ones a supervisor clocked for someone say **Override**.
 
@@ -77,7 +86,7 @@ The overtime cross-check only *shows* the difference between "over 40 in a week"
 
 ## How I check it still works
 ```
-node test-staff-report.js      (54 checks: pay period dates + report math + layouts + per house)
+node test-staff-report.js      (63 checks: pay period dates + report math + layouts + per house)
 node test.js                   (117 checks)
 node test-meal-breaks.js
 node test-tax-brackets.js

@@ -29,7 +29,7 @@ eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
   'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay',
-  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover'
+  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
 
 let passed = 0, failed = 0;
@@ -184,6 +184,22 @@ check('home house is listed first and the other house is marked as not home', cr
 check('splits the hours into home and other (88.5 and 8)', near(cross[0].homeHours, 88.5) && near(cross[0].awayHours, 8) && near(cross[0].total.hours, 96.5));
 check('someone who only worked at their home house, or did not work at all, is left off', !cross.some(c => c.staff.id === 'S001' || c.staff.id === 'S099'));
 check('someone who worked ONLY at a house that is not their home is still listed', srHouseCrossover([visitor]).length === 1 && near(srHouseCrossover([visitor])[0].awayHours, 8) && near(srHouseCrossover([visitor])[0].homeHours, 0));
+
+// ───────────────────────── By house: each house, each date, who worked ─────────────────────────
+console.log('\nBy house (each house, each date, who worked):\n');
+const hd = srBuildHouseDays([fullDJ, homeOnly, r5]);
+const gab = hd.find(h => h.house === 'Gabriella House'), wil = hd.find(h => h.house === 'William House');
+check('one entry per house that has shifts, in name order', hd.length === 2 && hd[0].house === 'Gabriella House' && hd[1].house === 'William House');
+check('every date worked at the house is listed once, in order', gab.days.length === 9 && gab.days[0].date === '2026-09-26' && gab.days.every((d, i) => i === 0 || d.date > gab.days[i - 1].date));
+check('house hours are right and leave the rejected shift out (88.5 at Gabriella)', near(gab.totals.hours, 88.5) && gab.totals.shifts === 8 && gab.totals.rejected === 1);
+check('the rejected shift is still listed on its date, but that date counts no staff or hours', gab.days.find(d => d.date === '2026-10-01').lines.length === 1 && gab.days.find(d => d.date === '2026-10-01').staff === 0 && gab.totals.days === 8);
+check('a date shows everyone who worked there, with visitors marked as not from this house',
+  wil.days.find(d => d.date === '2026-09-28').lines[0].staff.id === 'S001' && wil.days.find(d => d.date === '2026-09-28').lines[0].home === true &&
+  wil.days.find(d => d.date === '2026-09-29').lines[0].staff.id === 'S003' && wil.days.find(d => d.date === '2026-09-29').lines[0].home === false);
+check('staff and visitors are counted per house (William: 2 staff, 1 from another house)', wil.totals.staff === 2 && wil.totals.visitors === 1 && gab.totals.staff === 1 && gab.totals.visitors === 0);
+check('all houses together add up to all staff timesheets together', near(hd.reduce((a, h) => a + h.totals.hours, 0), fullDJ.totals.hours + homeOnly.totals.hours) && near(hd.reduce((a, h) => a + h.totals.ot, 0), fullDJ.totals.ot + homeOnly.totals.ot));
+check('choosing one house returns just that house', srBuildHouseDays([fullDJ, homeOnly], 'William House').length === 1 && near(srBuildHouseDays([fullDJ, homeOnly], 'William House')[0].totals.hours, 16));
+check('no shifts gives no houses, not an error', srBuildHouseDays([r5]).length === 0 && srBuildHouseDays([]).length === 0);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
