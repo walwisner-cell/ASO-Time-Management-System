@@ -1,7 +1,7 @@
 # Staff Timesheet Report — what I built and how to use it
 
 ## What it is
-I added a new page called **Staff Timesheet Report**. It produces one complete timesheet per staff member for a pay period (or any date range), laid out so it can be printed, signed by the employee and the Program Manager, and filed.
+I added a new page called **Staff Timesheet Report**. It produces one complete timesheet per staff member for a pay period (or any date range), laid out so it can be printed, approved by the Program Manager, and filed. The employee does not sign it: their signature is already on the time log sheet the times come from.
 
 I get to it two ways:
 - **Timesheet Log → "Staff Report" button** (next to Print Timesheet). It carries over whatever pay period, house and staff member I already had filtered.
@@ -15,7 +15,7 @@ I get to it two ways:
 5. **Hours by house** — so I can see when someone covered another house.
 6. **Time off** — approved and pending requests that touch the period, plus the PTO balance on file.
 7. **Items to review before signing** — a plain list, sorted into "Settle first", "Check" and "Note".
-8. **Signature lines** — employee and Program Manager / Supervisor, each with signature, printed name and date.
+8. **Approval line** — Program Manager / Supervisor signature, printed name and date, with a one-line note that the employee's signature is on the original time log sheet.
 
 ## What gets flagged
 - Clock in/out entries still waiting for approval (those hours are *not* on the sheet yet)
@@ -38,11 +38,12 @@ I get to it two ways:
 
 **Layout** — two versions of the sheet:
 - **Full report** — everything listed above, plus an "at a glance" line (average shift, longest shift, weekend days, overnight shifts, houses worked, days in a row, year to date) and the hire date.
-- **Signature copy** — only what the employee needs to sign: their name and the pay period dates in large type, each day's house, time in, time out and hours, the total, and the signature lines. The employee's name is already printed on the "Printed name" line and the dates are printed in the statement they sign.
+- **Times only** — the employee's name and the pay period dates in large type, each day's house, time in, time out and hours, and the total.
 
 **Tick boxes** — each one can be changed on either layout:
-- **Include pay amounts** — on for the full report, off for the signature copy.
-- **Signature lines**
+- **Include pay amounts** — on for the full report, off for the times-only copy.
+- **Supervisor approval line** — on by default.
+- **Employee signature line** — off by default, because the employee already signed the time log sheet. If I ever need one, ticking it adds a line with their name printed in.
 - **Items to review**
 - **List every day (show days off)** — shows every date in the range, with "Off" or "Time off" on days with no shift.
 - **Add a summary page for all staff** — one page that prints first, with a line per person and a total.

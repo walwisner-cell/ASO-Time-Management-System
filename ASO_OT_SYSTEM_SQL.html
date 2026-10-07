@@ -1437,6 +1437,7 @@
   .sr-sheet .sr-table-lg th { font-size:10px; padding:6px 8px; }
   .sr-sheet .sr-table-lg tr.sr-tot td { font-size:12px; }
   .sr-sheet .sr-table tr.sr-off td { color:#7a8797; }
+  .sr-onfile { margin-top:6px; font-size:9.5px; color:#4a5868; }
   .sr-fill { display:block; height:13px; line-height:13px; font-size:11.5px; font-weight:700; color:#16283c; white-space:nowrap; overflow:hidden; }
   .sr-key { font-size:8.5px; color:#647182; margin-top:5px; line-height:1.45; }
 
@@ -2139,7 +2140,7 @@
         <div class="page-header sr-noprint">
           <div class="page-header-left">
             <div class="page-title">Staff Timesheet Report</div>
-            <div class="page-sub">One complete, signable timesheet per staff member — hours by day and workweek, houses worked, time off, and what to check before signing</div>
+            <div class="page-sub">One complete timesheet per staff member, taken from their signed time log sheets — hours by day and workweek, houses worked, time off, and what to check before approval</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="rb-export-btn" onclick="srExportCSV()">⬇ CSV</button>
@@ -2181,13 +2182,14 @@
               <label class="sr-lbl" for="sr-layout">📄 Layout</label>
               <select id="sr-layout" onchange="srLayoutChanged()">
                 <option value="full">Full report — hours, pay, review items</option>
-                <option value="sign">Signature copy — name, dates and times only</option>
+                <option value="sign">Times only — name, dates and times</option>
               </select>
             </div>
           </div>
           <div class="sr-opts">
             <label id="sr-opt-pay-wrap"><input type="checkbox" id="sr-opt-pay" checked onchange="srGenerate()"> Include pay amounts</label>
-            <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Signature lines</label>
+            <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Supervisor approval line</label>
+            <label><input type="checkbox" id="sr-opt-empsign" onchange="srGenerate()"> Employee signature line</label>
             <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Items to review</label>
             <label><input type="checkbox" id="sr-opt-days" onchange="srGenerate()"> List every day (show days off)</label>
             <label id="sr-opt-cover-wrap"><input type="checkbox" id="sr-opt-cover" onchange="srGenerate()"> Add a summary page for all staff</label>
@@ -10312,6 +10314,7 @@ function srGenerate() {
     showPay: srCanSeePay() && document.getElementById('sr-opt-pay').checked,
     showNotes: document.getElementById('sr-opt-notes').checked,
     showSign: document.getElementById('sr-opt-sign').checked,
+    showEmpSign: document.getElementById('sr-opt-empsign').checked,
     everyDay: document.getElementById('sr-opt-days').checked && calendarDayDiff(range.from, range.to) <= 62,
     cover: document.getElementById('sr-opt-cover').checked
   };
@@ -10423,25 +10426,29 @@ function srWeekLines(r, w, everyDay) {
   return lines;
 }
 
-function srSignHtml(r, meta) {
+// The employee already signs the paper time log sheet these times come
+// from, so by default the report carries only the Program Manager's
+// approval and says where the employee's signature is. An employee
+// signature line can still be added with its own tick box.
+function srSignHtml(r, meta, opts) {
   const st = r.staff;
   const fill = t => `<b class="sr-fill">${t}</b>`;
-  return `<div class="sr-sign">
-      <div class="sr-sign-row">
+  const emp = opts.showEmpSign ? `<div class="sr-sign-row">
         <div><div class="sr-sign-t">Employee</div><div class="sr-sign-p">The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${esc(meta.rangeWord)}: <b>${esc(meta.rangeText)}</b>.</div></div>
         <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(esc(st.first) + ' ' + esc(st.last))}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
-      </div>
-      <div class="sr-sign-row">
-        <div><div class="sr-sign-t">Program Manager / Supervisor</div><div class="sr-sign-p">I have reviewed these hours against the schedule and the time log sheets, and I approve this timesheet for payroll.</div></div>
+      </div>` : '';
+  const mgr = opts.showSign ? `<div class="sr-sign-row">
+        <div><div class="sr-sign-t">Program Manager / Supervisor approval</div><div class="sr-sign-p">I have checked these hours against the schedule and the employee’s signed time log sheets, and I approve them for payroll.</div></div>
         <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill('')}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
-      </div>
-    </div>`;
+      </div>` : '';
+  const onFile = opts.showEmpSign ? '' : `<div class="sr-onfile">Employee signature: on file — ${esc(st.first)} ${esc(st.last)} signed the original time log sheet(s) these times were taken from.</div>`;
+  return (emp || mgr ? `<div class="sr-sign">${emp}${mgr}</div>` : '') + onFile;
 }
 
 function srNotesHtml(r) {
   const lvlLabel = { action: 'Settle first', check: 'Check', info: 'Note' };
   return `<div class="sr-notes">
-      <div class="sr-h">Items to review before signing</div>
+      <div class="sr-h">Items to review before approval</div>
       ${r.notes.length ? `<ul>${r.notes.map(nt => `<li class="sr-n-${nt.level}"><span class="sr-lvl">${lvlLabel[nt.level]}</span>${esc(nt.text)}</li>`).join('')}</ul>` : '<div class="sr-dim">Nothing flagged — no missed meal breaks, overrides, rejected shifts or pending entries in these dates.</div>'}
     </div>`;
 }
@@ -10457,7 +10464,7 @@ function srSheetHtml(r, opts, meta, n, total) {
   return opts.layout === 'sign' ? srSignSheetHtml(r, opts, meta, n, total) : srFullSheetHtml(r, opts, meta, n, total);
 }
 
-// ── Signature copy: just the name, the dates, the times, and where to sign ──
+// ── Times-only copy: just the name, the dates and the times ──
 function srSignSheetHtml(r, opts, meta, n, total) {
   const st = r.staff, T = r.totals;
   const showPay = opts.showPay && r.payType === 'hourly';
@@ -10505,7 +10512,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
     <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out records' : ''}. +1 = shift ended the next day.</div>
     ${opts.showNotes ? srNotesHtml(r) : ''}
     <div class="sr-end">
-    ${opts.showSign ? srSignHtml(r, meta) : ''}
+    ${srSignHtml(r, meta, opts)}
     ${srFootHtml(meta, n, total)}
     </div>
   </section>`;
@@ -10623,7 +10630,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
     ${opts.showNotes ? srNotesHtml(r) : ''}
 
     <div class="sr-end">
-    ${opts.showSign ? srSignHtml(r, meta) : ''}
+    ${srSignHtml(r, meta, opts)}
     ${srFootHtml(meta, n, total)}
     </div>
   </section>`;
@@ -10952,7 +10959,7 @@ function srDownloadPDF() {
 
     // ── Items to review ──
     if (opts.showNotes) {
-      heading('Items to review before signing');
+      heading('Items to review before approval');
       if (!r.notes.length) { font('normal', 8, gray); doc.text('Nothing flagged - no missed meal breaks, overrides, rejected shifts or pending entries in these dates.', M, y); y += 12; }
       r.notes.forEach(nt => {
         const lbl = nt.level === 'action' ? 'SETTLE FIRST' : nt.level === 'check' ? 'CHECK' : 'NOTE';
@@ -10966,24 +10973,29 @@ function srDownloadPDF() {
       y += 8;
     }
 
-    // ── Signatures (employee name and dates are printed in) ──
-    if (opts.showSign) {
+    // ── Approval (the employee's own signature is on the time log sheet) ──
+    {
       const SH = 50;
-      ensure(SH * 2 + 8);
+      const boxes = [];
+      if (opts.showEmpSign) boxes.push(['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name]);
+      if (opts.showSign) boxes.push(['PROGRAM MANAGER / SUPERVISOR APPROVAL', 'I have checked these hours against the schedule and the employee\'s signed time log sheets, and I approve them for payroll.', '']);
+      ensure(SH * boxes.length + (opts.showEmpSign ? 8 : 20));
       y += 4;
-      doc.setDrawColor(...rule); doc.setLineWidth(0.8); doc.roundedRect(M, y, UW, SH * 2, 3, 3, 'S');
-      doc.line(M, y + SH, R, y + SH);
-      [['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name],
-       ['PROGRAM MANAGER / SUPERVISOR', 'I have reviewed these hours against the schedule and the time log sheets, and I approve this timesheet for payroll.', '']].forEach((b, i) => {
-        const by = y + i * SH, lx = M + 232;
-        font('bold', 7.5, blue); doc.text(b[0], M + 10, by + 13);
-        font('normal', 6.5, gray); doc.splitTextToSize(b[1], 205).forEach((l, k) => doc.text(l, M + 10, by + 23 + k * 7.5));
-        doc.setDrawColor(...navy); doc.setLineWidth(0.6);
-        doc.line(lx, by + 35, lx + 118, by + 35); doc.line(lx + 130, by + 35, lx + 222, by + 35); doc.line(lx + 234, by + 35, R - 10, by + 35);
-        if (b[2]) { font('bold', 8.5, navy); doc.text(fit(b[2], 92), lx + 130, by + 31); }
-        font('normal', 6.5, gray); doc.text('Signature', lx, by + 44); doc.text('Printed name', lx + 130, by + 44); doc.text('Date', lx + 234, by + 44);
-      });
-      y += SH * 2 + 8;
+      if (boxes.length) {
+        doc.setDrawColor(...rule); doc.setLineWidth(0.8); doc.roundedRect(M, y, UW, SH * boxes.length, 3, 3, 'S');
+        if (boxes.length > 1) doc.line(M, y + SH, R, y + SH);
+        boxes.forEach((b, i) => {
+          const by = y + i * SH, lx = M + 232;
+          font('bold', 7.5, blue); doc.text(b[0], M + 10, by + 13);
+          font('normal', 6.5, gray); doc.splitTextToSize(b[1], 205).forEach((l, k) => doc.text(l, M + 10, by + 23 + k * 7.5));
+          doc.setDrawColor(...navy); doc.setLineWidth(0.6);
+          doc.line(lx, by + 35, lx + 118, by + 35); doc.line(lx + 130, by + 35, lx + 222, by + 35); doc.line(lx + 234, by + 35, R - 10, by + 35);
+          if (b[2]) { font('bold', 8.5, navy); doc.text(fit(b[2], 92), lx + 130, by + 31); }
+          font('normal', 6.5, gray); doc.text('Signature', lx, by + 44); doc.text('Printed name', lx + 130, by + 44); doc.text('Date', lx + 234, by + 44);
+        });
+        y += SH * boxes.length + 8;
+      }
+      if (!opts.showEmpSign) { font('normal', 7.5, gray); doc.text(fit(`Employee signature: on file - ${name} signed the original time log sheet(s) these times were taken from.`, UW), M, y + 4); y += 14; }
     }
   });
 
