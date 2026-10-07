@@ -1152,7 +1152,8 @@
   /* PRINT LOGO WATERMARK */
   @media print {
     .print-aso-header { display:flex !important; align-items:center; gap:14px; margin-bottom:18px; padding-bottom:14px; border-bottom:2px solid #1d4ed8; }
-    .print-aso-seal { width:56px; height:56px; }
+    .print-aso-seal { display:none !important; }
+    .print-aso-header::before { content:''; flex:0 0 56px; width:56px; height:56px; background:var(--aso-logo) center / contain no-repeat; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .print-aso-title { flex:1; }
     .print-aso-org { font-family:Georgia,serif; font-size:16px; font-weight:700; color:#1d4ed8; letter-spacing:-0.2px; }
     .print-aso-sub { font-size:10px; color:#4b5563; letter-spacing:1px; text-transform:uppercase; margin-top:2px; font-family:monospace; }
@@ -1465,6 +1466,33 @@
 
   .sr-end { break-inside:avoid; page-break-inside:avoid; }
   .sr-foot { display:flex; justify-content:space-between; gap:12px; margin-top:10px; padding-top:5px; border-top:1px solid #cdd5e0; font-size:8.5px; color:#647182; }
+
+  .sr-brand { display:flex; align-items:center; gap:10px; }
+  .sr-logo { width:46px; height:46px; flex:0 0 46px; }
+
+  /* ADP TIMECARD MATCH */
+  .adp-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .adp-tile { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; }
+  .adp-tile-l { font-size:10px; letter-spacing:.7px; text-transform:uppercase; color:var(--text3); font-family:var(--mono); }
+  .adp-tile-v { font-size:24px; font-weight:700; font-family:var(--display); margin-top:4px; }
+  .adp-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .adp-bar .btn-ghost { font-size:11px; padding:5px 12px; }
+  .adp-dim { font-size:11px; color:var(--text3); font-weight:400; }
+  .adp-table tr.adp-person td { background:var(--surface2); color:var(--text); font-size:13px; border-top:2px solid var(--border2); }
+  .adp-table tr.adp-ok td { opacity:.6; }
+  .adp-table input[type=checkbox] { width:16px; height:16px; cursor:pointer; }
+  .adp-table input[type=checkbox]:disabled { cursor:not-allowed; opacity:.35; }
+  .adp-miss { display:grid; grid-template-columns:1fr 1fr; gap:10px 28px; }
+  @media(max-width:860px){ .adp-miss { grid-template-columns:1fr; } }
+  .adp-miss-h { font-size:13px; font-weight:600; color:var(--text); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .adp-miss-row { padding:7px 0; border-top:1px solid var(--border); font-size:13px; color:var(--text); }
+  .adp-miss-row span { display:block; font-size:11.5px; color:var(--text3); margin-top:1px; }
+  .adp-miss-row .adp-dim { display:inline; }
+  .adp-map-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px 18px; }
+  .adp-map-row { display:flex; align-items:center; gap:12px; justify-content:space-between; }
+  .adp-map-row b { display:block; font-size:13px; color:var(--text); }
+  .adp-map-row span { font-size:11px; color:var(--text3); font-family:var(--mono); }
+  .adp-map-row select { font-size:12px; padding:7px 10px; border:1px solid var(--border2); color:var(--text); background:var(--surface2); border-radius:8px; max-width:210px; }
 
   @page srpage { size:letter portrait; margin:0.5in; }
   @media print {
@@ -1788,6 +1816,7 @@
       <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
       <div class="nav-item" data-page="timesheet" onclick="nav('timesheet',this)"><span class="nav-icon">📋</span>Timesheet Log</div>
       <div class="nav-item" data-page="approvals" onclick="nav('approvals',this)"><span class="nav-icon">⚠️</span>Approvals <span class="nav-badge" id="approvals-badge" style="display:none">0</span></div>
+      <div class="nav-item" data-page="adpmatch" onclick="nav('adpmatch',this)"><span class="nav-icon">🔁</span>ADP Timecard Match</div>
       <div class="nav-item" data-page="payroll" onclick="nav('payroll',this)"><span class="nav-icon">🧾</span>Payroll &amp; Taxes <span class="nav-pulse-badge">●</span></div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-page="staffreport" onclick="nav('staffreport',this)"><span class="nav-icon">🧑‍💼</span>Staff Timesheet Report</div>
@@ -2134,6 +2163,41 @@
         </div>
       </div>
       <!-- END REPORT BUILDER -->
+
+      <!-- ADP TIMECARD MATCH -->
+      <div class="page" id="page-adpmatch">
+        <div class="print-header">American Safety Options — ADP Timecard vs Timesheet &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">ADP Timecard Match</div>
+            <div class="page-sub">Upload the ADP Timecard Report — every punch is matched to the Timesheet Log, the differences are listed, and the ones you tick are corrected to the ADP time</div>
+          </div>
+          <button class="rb-export-btn" onclick="adpExportCSV()">⬇ CSV of differences</button>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <label class="sr-lbl" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">📄 ADP Timecard Report (PDF)</label>
+              <label class="btn btn-primary" style="display:inline-block;cursor:pointer">Choose file…<input type="file" id="adp-file" accept="application/pdf,.pdf" onchange="adpFileChosen(this)" style="display:none"></label>
+            </div>
+            <div>
+              <label for="adp-tol" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">⏱️ Count as a match within</label>
+              <select id="adp-tol" onchange="if(_adp)adpRender()" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px">
+                <option value="0">Exact times only</option>
+                <option value="5">5 minutes</option>
+                <option value="7" selected>7 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+              </select>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Show differences only</label>
+          </div>
+          <div id="adp-file-status" style="margin-top:12px;font-size:12px;font-family:var(--mono);color:var(--text3)"></div>
+          <div style="margin-top:8px;font-size:11.5px;color:var(--text3)">The file is read on this computer only. Nothing changes on the timesheet until you tick rows and press Apply.</div>
+        </div>
+        <div id="adp-map"></div>
+        <div id="adp-output"></div>
+      </div>
 
       <!-- STAFF TIMESHEET REPORT -->
       <div class="page" id="page-staffreport">
@@ -2833,6 +2897,7 @@
               <option value="">All Activity Types</option>
               <option value="ADD_SHIFT">➕ Shift Added</option>
               <option value="EDIT_SHIFT">✏️ Shift Edited</option>
+              <option value="ADP_CORRECTION">🔁 ADP Correction</option>
               <option value="DELETE_SHIFT">🗑️ Shift Deleted</option>
               <option value="APPROVE_SHIFT">✅ Shift Approved</option>
               <option value="DENY_SHIFT">✕ Shift Denied</option>
@@ -4006,6 +4071,7 @@ function esc(str) {
 function sourceBadge(source) {
   if (source === 'clock_in') return '<span class="badge badge-success" style="font-size:10px" title="Employee clocked in/out themselves">📱 Clock In</span>';
   if (source === 'clock_in_override') return '<span class="badge badge-warn" style="font-size:10px" title="Admin or supervisor clocked in or closed out on the employees behalf">🔓 Override</span>';
+  if (source === 'adp') return '<span class="badge badge-info" style="font-size:10px" title="Added from an ADP timecard punch on the ADP Timecard Match page">🕒 ADP</span>';
   return '<span class="badge badge-muted" style="font-size:10px" title="Entered directly by an admin or supervisor">✏️ Manual</span>';
 }
 
@@ -4067,7 +4133,7 @@ async function loadMyPermissions() {
 // their existing access is completely unaffected by this system existing.
 const PAGE_REQUIRED_PERMISSION = {
   dashboard: 'dashboard_view', timesheet: 'shifts_view', approvals: 'approvals_view',
-  reportbuilder: 'reports_view', staffreport: 'reports_view', payperiod: 'reports_view', payroll: 'payroll_view',
+  reportbuilder: 'reports_view', staffreport: 'reports_view', adpmatch: 'shifts_edit', payperiod: 'reports_view', payroll: 'payroll_view',
   monthly: 'reports_view', leaderboard: 'reports_view', payconfig: 'payroll_run',
   taxbenefits: 'taxes_manage', staff: 'staff_view', locations: 'locations_view',
   passwords: 'users_view', datamanager: 'data_export', audittrail: 'audit_view',
@@ -4088,6 +4154,7 @@ const PAGE_ROLES = {
   approvals:     ['admin','supervisor'],
   reportbuilder: ['admin','supervisor','viewer'],
   staffreport:   ['admin','supervisor','viewer'],
+  adpmatch:      ['admin','supervisor'],
   payperiod:     ['admin','supervisor','viewer'],
   payroll:       ['admin'],
   monthly:       ['admin','supervisor','viewer'],
@@ -4571,6 +4638,7 @@ function nav(page, el) {
     audittrail: renderAuditTrail,
     reportbuilder: renderReportBuilder,
     staffreport: renderStaffReportPage,
+    adpmatch: renderAdpPage,
     roles: renderRolesPage,
     clocklocations: renderClockLocationsPage
   };
@@ -10006,6 +10074,11 @@ function rbExportCSV() {
 // Pay math is NOT redone here — hours, regular/OT split and pay all come
 // straight from computeShiftsWithOT(), the same engine payroll uses.
 // ──────────────────────────────────────────────────────────
+// The company logo, embedded so it prints and goes into PDFs with no
+// separate image file to deploy or lose.
+const ASO_LOGO = 'data:image/png;base64,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';
+document.documentElement.style.setProperty('--aso-logo', 'url(' + ASO_LOGO + ')');
+
 let _srLast = null;     // { reports, opts, meta } — what is on screen right now
 let _srPrefill = null;  // filters handed over from the Timesheet Log button
 
@@ -10080,7 +10153,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed) {
       hours: rejected ? 0 : s.hours, enteredHours: s.hours,
       reg: s.regHrs, ot: s.otHrs, rate: s.locRate, regPay: s.regPay, otPay: s.otPay, pay: s.shiftPay,
       source: s.source || 'manual', missingMeal,
-      approvedEx: !rejected && !!s.approvedEx, corrected: !rejected && !!s._corrected, flags
+      approvedEx: !rejected && !!s.approvedEx, corrected: !rejected && !!s._corrected, adpWas: s.adpCorrected ? s.adpCorrected.from : '', flags
     };
   });
   const counted = rows.filter(r => !r.rejected);
@@ -10152,7 +10225,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed) {
   counted.filter(r => r.missingMeal).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — ${srHrs(r.hours)} hr clocked shift with no meal break recorded.` }));
   counted.filter(r => r.source === 'clock_in_override').forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — clocked in or out by a supervisor on the employee’s behalf.` }));
   counted.filter(r => r.approvedEx).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — more than 24 hours entered for one day, approved as an exception.` }));
-  counted.filter(r => r.corrected).forEach(r => notes.push({ level: 'info', text: `${fd(r.date)} — shift was edited after it was first entered.` }));
+  counted.filter(r => r.corrected).forEach(r => notes.push({ level: 'info', text: r.adpWas ? `${fd(r.date)} — times corrected to the ADP punch (the time log sheet said ${r.adpWas.split('-').map(srTime).join(' – ')}).` : `${fd(r.date)} — shift was edited after it was first entered.` }));
   counted.filter(r => r.hours >= 16).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — single shift of ${srHrs(r.hours)} hours.` }));
   if (best.len >= 7) notes.push({ level: 'check', text: `Worked ${best.len} days in a row (${fd(best.start)} – ${fd(best.end)}).` });
   // Overtime cross-check. The system pays overtime after PAY_CONFIG.otThreshold
@@ -10398,7 +10471,7 @@ function srOverviewHtml(reports, opts, meta) {
 
 // Shifts typed in by the office come from the paper time log sheets staff
 // fill in to register their time, so that is what the report calls them.
-function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : 'Time log'; }
+function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : src === 'adp' ? 'ADP' : 'Time log'; }
 function srLeaveLabel(t) { return t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : 'Time off'; }
 function srRateText(r) {
   const st = r.staff;
@@ -10492,10 +10565,10 @@ function srSignSheetHtml(r, opts, meta, n, total) {
 
   return `<section class="sr-sheet sr-signcopy" id="sr-sheet-${esc(st.id)}">
     <div class="sr-head">
-      <div>
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div>
         <div class="sr-org">American Safety Options, Inc.</div>
         <div class="sr-doc">Employee Timesheet</div>
-      </div>
+      </div></div>
       <div class="sr-head-r"><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
     <div class="sr-who">
@@ -10509,7 +10582,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
       <thead><tr><th>Date</th><th>House worked</th><th>Time in</th><th>Time out</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}</tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out records' : ''}. +1 = shift ended the next day.</div>
+    <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out and ADP punch records' : ''}. +1 = shift ended the next day.</div>
     ${opts.showNotes ? srNotesHtml(r) : ''}
     <div class="sr-end">
     ${srSignHtml(r, meta, opts)}
@@ -10562,10 +10635,10 @@ function srFullSheetHtml(r, opts, meta, n, total) {
 
   return `<section class="sr-sheet" id="sr-sheet-${esc(st.id)}">
     <div class="sr-head">
-      <div>
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div>
         <div class="sr-org">American Safety Options, Inc.</div>
         <div class="sr-doc">Staff Timesheet Report</div>
-      </div>
+      </div></div>
       <div class="sr-head-r">
         <div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div>
         <div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div>
@@ -10644,7 +10717,7 @@ function srCoverHtml(reports, opts, meta) {
   const t = srCoverTotals(reports);
   return `<section class="sr-sheet sr-cover" id="sr-sheet-cover">
     <div class="sr-head">
-      <div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Timesheet Summary — ${reports.length} staff${meta.house ? ' · ' + esc(meta.house) : ''}</div></div>
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Timesheet Summary — ${reports.length} staff${meta.house ? ' · ' + esc(meta.house) : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
     <table class="sr-table">
@@ -10753,11 +10826,12 @@ function srDownloadPDF() {
   let y = 0;
   const letterhead = (title, right) => {
     y = 50;
-    font('bold', 15, blue); doc.text('American Safety Options, Inc.', M, y);
-    font('bold', 11, navy); doc.text(tx(title), M, y + 16);
+    try { doc.addImage(ASO_LOGO, 'PNG', M, y - 17, 40, 40); } catch (e) { /* a PDF without the logo is still a valid PDF */ }
+    font('bold', 15, blue); doc.text('American Safety Options, Inc.', M + 48, y);
+    font('bold', 11, navy); doc.text(tx(title), M + 48, y + 16);
     if (right) { font('bold', 10, navy); doc.text(tx(right), R, y, { align: 'right' }); }
     font('bold', 8, statusColor); doc.text(fit(meta.status.text, 300), R, y + (right ? 14 : 6), { align: 'right' });
-    y += 26; doc.setDrawColor(...blue); doc.setLineWidth(1.5); doc.line(M, y, R, y); y += 20;
+    y += 30; doc.setDrawColor(...blue); doc.setLineWidth(1.5); doc.line(M, y, R, y); y += 18;
   };
 
   // ── Summary page ──
@@ -11016,11 +11090,487 @@ function srDownloadPDF() {
 }
 
 // ──────────────────────────────────────────────────────────
+// ADP TIMECARD MATCH
+// Reads an ADP "Timecard Report" PDF in the browser, lines every punch up
+// against the Timesheet Log, shows the differences, and — only for the
+// rows the user ticks — corrects the timesheet to the ADP punch times.
+// The file itself is never uploaded or stored: it is read on this
+// computer, and the only thing saved is the corrections that get applied.
+// Three pure functions do the real work and are tested directly in
+// test-adp-match.js: adpParseTextPages, adpMatchName, adpCompareStaff.
+// ──────────────────────────────────────────────────────────
+let _adp = null; // { fileName, employees:[{name,from,to,total,entries}], from, to }
+let _adpRows = []; // flat list of comparison rows currently on screen
+const ADP_PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const ADP_PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// "8:08" or "12:26" (hours:minutes) to decimal hours.
+function adpHmToHours(s) {
+  const m = /^(\d{1,3}):(\d{2})$/.exec(String(s || '').trim());
+  return m ? Number(m[1]) + Number(m[2]) / 60 : 0;
+}
+// "2:08 PM" to 24-hour "14:08" (how shifts are stored).
+function adpTo24(s) {
+  const m = /^(\d{1,2}):(\d{2})\s*([AP])M$/i.exec(String(s || '').trim());
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[3].toUpperCase() === 'P') h += 12;
+  return String(h).padStart(2, '0') + ':' + m[2];
+}
+function adpMin(hhmm) { const [h, m] = String(hhmm).slice(0, 5).split(':').map(Number); return h * 60 + m; }
+// Decimal hours shown the way ADP shows them, e.g. 8.13 -> "8:08".
+function adpHm(hours) {
+  const neg = hours < 0, t = Math.round(Math.abs(hours) * 60);
+  return (neg ? '-' : '') + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+}
+
+// Turns the text of an ADP Timecard Report into employees and punches.
+// `pages` is one array per PDF page of { str, x, y } text pieces. ADP
+// prints every cell at the same left edge as its column heading, so a
+// value is recognised by which heading it sits under — not by guessing
+// from the order of the words. That is what keeps an overtime-only row
+// (nothing in the Regular column) from being misread.
+function adpParseTextPages(pages) {
+  const employees = [];
+  let cur = null, cols = null;
+  const near = (a, b, tol) => Math.abs(a - b) <= (tol || 8);
+  (pages || []).forEach(items => {
+    items = (items || []).filter(it => it && String(it.str).trim()).map(it => ({ str: String(it.str).trim(), x: it.x, y: it.y }));
+    const find = label => items.find(it => it.str === label);
+    const below = h => h ? items.filter(it => near(it.x, h.x) && it.y < h.y && h.y - it.y < 24).sort((a, b) => b.y - a.y)[0] : null;
+    const hName = find('Employee Name');
+    if (hName) {
+      const nameIt = below(hName), rangeIt = below(find('Date Range')), totalIt = below(find('Total Paid Hours'));
+      const rm = rangeIt ? /(\d{2})\/(\d{2})\/(\d{4})\s+to\s+(\d{2})\/(\d{2})\/(\d{4})/.exec(rangeIt.str) : null;
+      const name = nameIt ? nameIt.str.replace(/\s+/g, ' ') : '';
+      cur = employees.find(e => e.name === name && name);
+      if (!cur) {
+        cur = { name, from: rm ? `${rm[3]}-${rm[1]}-${rm[2]}` : '', to: rm ? `${rm[6]}-${rm[4]}-${rm[5]}` : '', total: totalIt ? adpHmToHours(totalIt.str) : 0, entries: [] };
+        employees.push(cur);
+      }
+    }
+    const hDate = find('Date'), hStart = find('Start Work'), hEnd = find('End Work'), hReg = find('Regular'), hOT = find('Overtime'), hDT = find('Doubletime'), hDept = find('Department');
+    if (hDate && hStart && hEnd && hReg) cols = { date: hDate.x, start: hStart.x, end: hEnd.x, reg: hReg.x, ot: hOT ? hOT.x : -999, dt: hDT ? hDT.x : -999, dept: hDept ? hDept.x : -999, top: hDate.y };
+    if (!cur || !cols) return;
+    const top = hDate ? hDate.y : Infinity;
+    items.filter(it => near(it.x, cols.date) && it.y < top && /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/.test(it.str)).forEach(dayIt => {
+      const row = items.filter(it => near(it.y, dayIt.y, 3));
+      const at = x => { const c = row.find(it => near(it.x, x)); return c ? c.str : ''; };
+      const dateIt = items.filter(it => near(it.x, cols.date) && it.y < dayIt.y && dayIt.y - it.y < 20 && /^\d{2}\/\d{2}\/\d{4}$/.test(it.str))[0];
+      const start = adpTo24(at(cols.start)), end = adpTo24(at(cols.end));
+      if (!dateIt || !start) return;
+      const reg = adpHmToHours(at(cols.reg)), ot = adpHmToHours(at(cols.ot)), dt = adpHmToHours(at(cols.dt));
+      const hasPaid = !!(at(cols.reg) || at(cols.ot) || at(cols.dt));
+      let elapsed = null;
+      if (end) { let e = adpMin(end) - adpMin(start); if (e < 0) e += 1440; elapsed = e / 60; }
+      const paid = reg + ot + dt;
+      const dm = dateIt.str.split('/');
+      cur.entries.push({
+        date: `${dm[2]}-${dm[0]}-${dm[1]}`, day: dayIt.str, start, end, reg, ot, dt,
+        // Paid hours are what ADP will pay. Only if ADP printed no hours at all do we fall back to elapsed time.
+        hours: hasPaid ? paid : (elapsed || 0), elapsed, missingOut: !end,
+        // In and out at the same minute with 0:00 paid is a punch error (usually a missed
+        // punch), never a real shift. It is shown, but nothing is ever corrected from it.
+        zero: !!end && (hasPaid ? paid : (elapsed || 0)) === 0,
+        dept: [at(cols.dept)].concat(items.filter(it => near(it.x, cols.dept) && it.y < dayIt.y && dayIt.y - it.y < 20).map(it => it.str)).join(' ').trim()
+      });
+    });
+  });
+  employees.forEach(e => e.entries.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)));
+  return employees.filter(e => e.name);
+}
+
+// Finds the staff record for an ADP name. ADP prints "Last First M".
+// Returns { staff, how } — how is 'saved' (a match the user picked before),
+// 'exact', 'close' (unique last name + same first initial) or null.
+function adpMatchName(adpName, staffList, savedMap) {
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+  const saved = savedMap && savedMap[adpName];
+  if (saved === '__skip__') return { staff: null, how: 'skip' };
+  if (saved) { const st = staffList.find(s => s.id === saved); if (st) return { staff: st, how: 'saved' }; }
+  const tok = String(adpName || '').trim().split(/\s+/).map(norm).filter(Boolean);
+  if (tok.length < 2) return { staff: null, how: null };
+  const whole = tok.join('');
+  let hit = staffList.filter(s => { const l = norm(s.last), f = norm(s.first); return l && f && (whole === l + f || whole.startsWith(l + f) || whole === f + l); });
+  if (hit.length === 1) return { staff: hit[0], how: 'exact' };
+  hit = staffList.filter(s => { const l = norm(s.last), f = norm(s.first); return l && f && tok[0] === l && tok[1] === f; });
+  if (hit.length === 1) return { staff: hit[0], how: 'exact' };
+  hit = staffList.filter(s => { const l = norm(s.last), f = norm(s.first); return l && f && tok[0] === l && tok[1][0] === f[0]; });
+  if (hit.length === 1) return { staff: hit[0], how: 'close' };
+  return { staff: null, how: null };
+}
+
+// Lines one person's ADP punches up against their timesheet shifts, day by
+// day. Within a day each punch is paired with the shift whose start time
+// is nearest (within 4 hours, or any two that overlap). `tol` is how many minutes in
+// and out may differ and still count as the same.
+//   match    — in and out agree within the tolerance
+//   differs  — same shift, but the times are further apart than that
+//   adp_only — punched in ADP, nothing on the timesheet
+//   ts_only  — on the timesheet, no ADP punch
+//   adp_zero — an ADP punch error (in and out at the same minute, 0:00 paid)
+// Any row on a day that has a punch error carries adpIssue = true, so a
+// timesheet shift is never rejected just because ADP's own punch was bad.
+function adpCompareStaff(adpEntries, shifts, tol) {
+  const rows = [];
+  const dates = [...new Set(adpEntries.map(a => a.date).concat(shifts.map(s => s.date)))].sort();
+  const endAbs = (start, end) => { const s = adpMin(start); let e = adpMin(end); if (e <= s) e += 1440; return e; };
+  dates.forEach(date => {
+    const zeros = adpEntries.filter(a => a.date === date && a.zero);
+    const A = adpEntries.filter(a => a.date === date && !a.zero), T = shifts.filter(s => s.date === date);
+    const usedA = new Set(), usedT = new Set();
+    const first = rows.length;
+    for (;;) {
+      let best = null;
+      A.forEach((a, ai) => { if (usedA.has(ai)) return; T.forEach((t, ti) => { if (usedT.has(ti)) return; const d = Math.abs(adpMin(a.start) - adpMin(t.start)); const overlaps = a.end && adpMin(a.start) < endAbs(t.start, t.end) && adpMin(t.start) < endAbs(a.start, a.end); if ((d <= 240 || overlaps) && (!best || d < best.d)) best = { ai, ti, d }; }); });
+      if (!best) break;
+      usedA.add(best.ai); usedT.add(best.ti);
+      const a = A[best.ai], t = T[best.ti];
+      const dIn = adpMin(a.start) - adpMin(t.start);
+      const dOut = a.end ? endAbs(a.start, a.end) - endAbs(t.start, t.end) : null;
+      const same = dOut !== null && Math.abs(dIn) <= tol && Math.abs(dOut) <= tol;
+      rows.push({ date, status: same ? 'match' : 'differs', exact: dIn === 0 && dOut === 0, adp: a, shift: t, dIn, dOut, diffHours: a.hours - t.hours });
+    }
+    A.forEach((a, ai) => { if (!usedA.has(ai)) rows.push({ date, status: 'adp_only', exact: false, adp: a, shift: null, dIn: null, dOut: null, diffHours: a.hours }); });
+    T.forEach((t, ti) => { if (!usedT.has(ti)) rows.push({ date, status: 'ts_only', exact: false, adp: null, shift: t, dIn: null, dOut: null, diffHours: -t.hours }); });
+    zeros.forEach(a => rows.push({ date, status: 'adp_zero', exact: false, adp: a, shift: null, dIn: null, dOut: null, diffHours: 0 }));
+    if (zeros.length) for (let i = first; i < rows.length; i++) rows[i].adpIssue = true;
+  });
+  rows.sort((x, y) => x.date.localeCompare(y.date) || String((x.adp || x.shift).start).localeCompare(String((y.adp || y.shift).start)));
+  return rows;
+}
+
+// Who is on one record but not the other, as whole people (not single
+// shifts). Pure: takes what adpBuild() worked out and sorts it into two lists.
+//   adpOnly — has punches on the ADP timecard, but nothing on the timesheet
+//             in those dates. `known:false` means the ADP name is not a
+//             staff member in this system at all (or has not been matched).
+//   tsOnly  — has hours on the timesheet, but no punches on the ADP timecard.
+function adpWhoIsMissing(people, unmatched, noCard) {
+  const sum = arr => arr.reduce((a, x) => a + x.hours, 0);
+  const adpOnly = [], tsOnly = [];
+  people.forEach(p => {
+    const punches = p.emp.entries.filter(x => !x.zero).length;
+    if (punches && !p.tsCount) adpOnly.push({ name: `${p.staff.first} ${p.staff.last}`, id: p.staff.id, adpName: p.emp.name, punches, hours: p.adpTotal, known: true });
+    if (!punches && p.tsCount) tsOnly.push({ name: `${p.staff.first} ${p.staff.last}`, id: p.staff.id, shifts: p.tsCount, hours: p.tsTotal, why: p.emp.entries.length ? 'ADP timecard has only punch errors' : 'ADP timecard is empty' });
+  });
+  unmatched.forEach(u => { if (u.emp.entries.length) adpOnly.push({ name: u.emp.name, id: '', adpName: u.emp.name, punches: u.emp.entries.length, hours: sum(u.emp.entries), known: false, skipped: !!u.skipped }); });
+  noCard.forEach(x => tsOnly.push({ name: `${x.staff.first} ${x.staff.last}`, id: x.staff.id, shifts: x.shifts || 0, hours: x.hours, why: 'No ADP timecard in this file' }));
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  return { adpOnly: adpOnly.sort(byName), tsOnly: tsOnly.sort(byName) };
+}
+
+function adpLoadMap() { try { return JSON.parse(localStorage.getItem('aso_adp_name_map') || '{}') || {}; } catch (e) { return {}; } }
+function adpSaveMap(map) { try { localStorage.setItem('aso_adp_name_map', JSON.stringify(map)); } catch (e) { /* matches just won't be remembered */ } }
+
+function adpLoadPdfJs() {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) return resolve(window.pdfjsLib);
+    const s = document.createElement('script');
+    s.src = ADP_PDFJS_URL;
+    s.onload = () => { if (!window.pdfjsLib) return reject(new Error('PDF reader did not start')); window.pdfjsLib.GlobalWorkerOptions.workerSrc = ADP_PDFJS_WORKER_URL; resolve(window.pdfjsLib); };
+    s.onerror = () => reject(new Error('Could not load the PDF reader — check the internet connection and try again'));
+    document.head.appendChild(s);
+  });
+}
+
+async function adpFileChosen(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('adp-file-status');
+  statusEl.textContent = 'Reading ' + file.name + '…';
+  try {
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') throw new Error('Please choose the Timecard Report PDF exported from ADP');
+    const lib = await adpLoadPdfJs();
+    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const pages = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      const tc = await (await doc.getPage(p)).getTextContent();
+      pages.push(tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] })));
+    }
+    const employees = adpParseTextPages(pages);
+    const punches = employees.reduce((a, e) => a + e.entries.length, 0);
+    if (!employees.length || !punches) throw new Error('No timecards were found in this file. It needs to be the ADP "Timecard Report" PDF.');
+    const froms = employees.map(e => e.from).filter(Boolean).sort(), tos = employees.map(e => e.to).filter(Boolean).sort();
+    const allDates = employees.flatMap(e => e.entries.map(x => x.date)).sort();
+    _adp = { fileName: file.name, employees, from: froms[0] || allDates[0], to: tos[tos.length - 1] || allDates[allDates.length - 1] };
+    adpRender();
+  } catch (e) {
+    _adp = null;
+    statusEl.textContent = '';
+    document.getElementById('adp-output').innerHTML = `<div class="sr-empty">${esc(e.message || 'Could not read this file')}</div>`;
+    document.getElementById('adp-map').innerHTML = '';
+    showToast(e.message || 'Could not read this file', 'danger');
+  }
+  input.value = '';
+}
+
+function renderAdpPage() {
+  if (_adp) adpRender();
+  else {
+    document.getElementById('adp-file-status').textContent = '';
+    document.getElementById('adp-map').innerHTML = '';
+    document.getElementById('adp-output').innerHTML = '<div class="sr-empty">Choose the ADP Timecard Report PDF to begin.<br><span style="font-size:12px">In ADP: Reports → Timecard Report → pick the dates → export as PDF.</span></div>';
+  }
+}
+
+function adpSetMap(sel) {
+  const map = adpLoadMap();
+  const name = sel.getAttribute('data-adp-name');
+  if (sel.value) map[name] = sel.value; else delete map[name];
+  adpSaveMap(map);
+  adpRender();
+}
+
+// Works out everything shown on the page from _adp + the live timesheet.
+function adpBuild() {
+  const tol = parseInt(document.getElementById('adp-tol').value, 10) || 0;
+  const map = adpLoadMap();
+  const from = _adp.from, to = _adp.to;
+  const people = [], unmatched = [], usedStaff = new Set();
+  _adp.employees.forEach(emp => {
+    const m = adpMatchName(emp.name, STAFF, map);
+    if (!m.staff || usedStaff.has(m.staff.id)) { unmatched.push({ emp, skipped: m.how === 'skip' }); return; }
+    usedStaff.add(m.staff.id);
+    const shifts = SHIFTS.filter(s => s.staff === m.staff.id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected');
+    const rows = adpCompareStaff(emp.entries, shifts, tol);
+    people.push({ emp, staff: m.staff, how: m.how, rows, tsCount: shifts.length, adpTotal: emp.entries.reduce((a, x) => a + x.hours, 0), tsTotal: shifts.reduce((a, s) => a + s.hours, 0) });
+  });
+  // People with timesheet hours in these dates who have no ADP timecard at all.
+  const noCard = STAFF.filter(s => !usedStaff.has(s.id)).map(s => { const sh = SHIFTS.filter(x => x.staff === s.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected'); return { staff: s, shifts: sh.length, hours: sh.reduce((a, x) => a + x.hours, 0) }; }).filter(x => x.shifts > 0);
+  return { tol, from, to, people, unmatched, noCard, missing: adpWhoIsMissing(people, unmatched, noCard) };
+}
+
+function adpRowAction(row, staff) {
+  if (row.status === 'differs' || (row.status === 'match' && !row.exact)) return `Change timesheet to ${srTime(row.adp.start)} – ${row.adp.end ? srTime(row.adp.end) : '?'} (${srHrs(row.adp.hours)} hrs)`;
+  if (row.status === 'adp_only') return `Add ${srHrs(row.adp.hours)} hr shift at ${staff.loc || 'home house'}`;
+  if (row.status === 'ts_only') return 'Reject this timesheet shift (no ADP punch)';
+  return '';
+}
+
+function adpRender() {
+  const b = adpBuild();
+  const canEdit = userCan('editShift');
+  const onlyDiff = document.getElementById('adp-only-diff').checked;
+  const prev = new Set(_adpRows.filter(r => r.checked).map(r => r.key));
+  _adpRows = [];
+  const punches = _adp.employees.reduce((a, e) => a + e.entries.length, 0);
+  document.getElementById('adp-file-status').innerHTML = `<b>${esc(_adp.fileName)}</b> · ${_adp.employees.length} timecards · ${punches} punches · ${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}`;
+
+  // ── Names that could not be matched ──
+  const opts = '<option value="">— choose the staff member —</option><option value="__skip__">Not in this system — leave out</option>' + STAFF.slice().sort((x, y) => (x.last + x.first).localeCompare(y.last + y.first)).map(s => `<option value="${esc(s.id)}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})</option>`).join('');
+  const need = b.unmatched.filter(u => !u.skipped), skipped = b.unmatched.filter(u => u.skipped);
+  let mapHtml = '';
+  if (need.length || skipped.length) {
+    mapHtml = `<div class="card" style="margin-bottom:20px">
+      ${need.length ? `<div class="card-title">${need.length} ADP name${need.length !== 1 ? 's' : ''} not matched to a staff member yet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Pick who each one is. The choice is remembered on this computer for next time. Until then their punches are left out of the comparison.</div>
+      <div class="adp-map-grid">${need.map(u => `<div class="adp-map-row"><div><b>${esc(u.emp.name)}</b><span>${u.emp.entries.length} punch${u.emp.entries.length !== 1 ? 'es' : ''} · ${adpHm(u.emp.entries.reduce((a, x) => a + x.hours, 0))} hrs</span></div><select data-adp-name="${esc(u.emp.name)}" onchange="adpSetMap(this)">${opts}</select></div>`).join('')}</div>` : ''}
+      ${skipped.length ? `<div style="font-size:12px;color:var(--text3);margin-top:${need.length ? 14 : 0}px">Left out on purpose: ${skipped.map(u => `${esc(u.emp.name)} <a href="#" data-adp-name="${esc(u.emp.name)}" onclick="var m=adpLoadMap();delete m[this.getAttribute('data-adp-name')];adpSaveMap(m);adpRender();return false;" style="color:var(--accent2)">undo</a>`).join(' · ')}</div>` : ''}
+    </div>`;
+  }
+  // ── Who is on one record but not the other ──
+  const M = b.missing;
+  const person = (x, right) => `<div class="adp-miss-row"><div><b>${esc(x.name)}</b>${x.id ? ` <span class="adp-dim">${esc(x.id)}</span>` : ''}<span>${esc(right)}</span></div></div>`;
+  const missHtml = `<div class="card" style="margin-bottom:20px">
+      <div class="card-title">Who is on one record but not the other</div>
+      <div class="adp-miss">
+        <div>
+          <div class="adp-miss-h"><span class="badge ${M.adpOnly.length ? 'badge-danger' : 'badge-success'}">${M.adpOnly.length}</span> On the ADP timecard, nothing on the timesheet</div>
+          ${M.adpOnly.length ? M.adpOnly.map(x => person(x, `${x.punches} punch${x.punches !== 1 ? 'es' : ''} \u00B7 ${srHrs(x.hours)} hrs in ADP` + (x.known ? '' : x.skipped ? ' \u00B7 left out on purpose' : ' \u00B7 not a staff member in this system yet \u2014 pick who it is above, or add them on Staff Register'))).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody \u2014 everyone who punched in ADP has timesheet shifts in these dates.</div>'}
+        </div>
+        <div>
+          <div class="adp-miss-h"><span class="badge ${M.tsOnly.length ? 'badge-danger' : 'badge-success'}">${M.tsOnly.length}</span> On the timesheet, not on the ADP timecard</div>
+          ${M.tsOnly.length ? M.tsOnly.map(x => person(x, `${x.shifts} shift${x.shifts !== 1 ? 's' : ''} \u00B7 ${srHrs(x.hours)} hrs on timesheet \u00B7 ${x.why}`)).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody \u2014 everyone with timesheet hours in these dates has ADP punches.</div>'}
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('adp-map').innerHTML = mapHtml + missHtml;
+
+  // ── Comparison ──
+  const count = { match: 0, differs: 0, adp_only: 0, ts_only: 0, adp_zero: 0 };
+  let adpHours = 0, tsHours = 0, body = '';
+  const label = { match: ['Match', 'badge-success'], differs: ['Time differs', 'badge-warn'], adp_only: ['Not on timesheet', 'badge-danger'], ts_only: ['Not in ADP', 'badge-danger'], adp_zero: ['ADP punch error', 'badge-danger'] };
+  b.people.forEach(p => {
+    adpHours += p.adpTotal; tsHours += p.tsTotal;
+    p.rows.forEach(r => { count[r.status]++; });
+    const shown = p.rows.filter(r => !onlyDiff || r.status !== 'match');
+    if (!shown.length) return;
+    const diff = p.adpTotal - p.tsTotal;
+    body += `<tr class="adp-person"><td colspan="8"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b> <span class="adp-dim">${esc(p.staff.id)} · ADP name “${esc(p.emp.name)}”${p.how === 'close' ? ' · matched on last name + first initial — please confirm' : ''}</span>
+      <span style="float:right" class="mono">Timesheet ${srHrs(p.tsTotal)} · ADP ${srHrs(p.adpTotal)} · <b style="color:${Math.abs(diff) < 0.005 ? 'var(--success)' : 'var(--warn)'}">${diff > 0 ? '+' : ''}${srHrs(diff)}</b></span></td></tr>`;
+    shown.forEach(r => {
+      const key = p.staff.id + '|' + r.date + '|' + (r.adp ? r.adp.start : '') + '|' + (r.shift ? r.shift.id : '');
+      const fixable = r.status !== 'adp_zero' && (r.status !== 'match' || !r.exact);
+      const locked = !!isPeriodLockedForDate(r.date);
+      const noOut = r.adp && r.adp.missingOut;
+      const blockedByIssue = r.status === 'ts_only' && r.adpIssue;
+      const can = canEdit && fixable && !locked && !noOut && !blockedByIssue && (r.status !== 'ts_only' || userCan('approveShifts')) && (r.status !== 'adp_only' || userCan('addShift'));
+      const row = { key, staff: p.staff, row: r, can, checked: can && prev.has(key) };
+      const idx = _adpRows.push(row) - 1;
+      const why = locked ? '🔒 Pay period is locked' : noOut ? 'ADP has no out punch — fix it in ADP first' : blockedByIssue ? 'ADP has a punch error this day — this shift was probably worked. Fix the punch in ADP, then upload again.' : !canEdit ? 'View only' : '';
+      body += `<tr class="${r.status === 'match' ? 'adp-ok' : ''}">
+        <td>${fixable ? `<input type="checkbox" data-adp-idx="${idx}" ${row.checked ? 'checked' : ''} ${can ? '' : 'disabled'} onchange="adpToggle(this)" aria-label="Apply this correction">` : ''}</td>
+        <td class="mono" style="white-space:nowrap"><b>${srDayName(r.date)}</b> ${esc(formatDateDisplay(r.date))}</td>
+        <td>${r.shift ? `<span class="mono">${esc(srTime(r.shift.start))} – ${esc(srTime(r.shift.end))}</span><div class="adp-dim">${esc(r.shift.location || '')}</div>` : '<span class="adp-dim">—</span>'}</td>
+        <td class="mono">${r.shift ? srHrs(r.shift.hours) : ''}</td>
+        <td>${r.adp ? `<span class="mono">${esc(srTime(r.adp.start))} – ${r.adp.end ? esc(srTime(r.adp.end)) : '<b style="color:var(--danger2)">no out punch</b>'}</span>${r.adp.ot > 0 ? `<div class="adp-dim">ADP overtime ${adpHm(r.adp.ot)}</div>` : ''}` : '<span class="adp-dim">—</span>'}</td>
+        <td class="mono">${r.adp ? srHrs(r.adp.hours) : ''}</td>
+        <td class="mono" style="color:${Math.abs(r.diffHours) < 0.005 ? 'var(--text3)' : 'var(--warn)'}">${Math.abs(r.diffHours) < 0.005 ? '0.00' : (r.diffHours > 0 ? '+' : '') + srHrs(r.diffHours)}</td>
+        <td><span class="badge ${label[r.status][1]}" style="font-size:10px">${label[r.status][0]}</span>${fixable ? `<div class="adp-dim" style="margin-top:3px">${why ? esc(why) : esc(adpRowAction(r, p.staff))}</div>` : ''}${r.status === 'adp_zero' ? '<div class="adp-dim" style="margin-top:3px">In and out at the same minute, 0:00 paid — usually a missed punch. Fix it in ADP; nothing is corrected from this line.</div>' : ''}</td>
+      </tr>`;
+    });
+  });
+
+  const net = adpHours - tsHours;
+  const tile = (l, v, c) => `<div class="adp-tile"><div class="adp-tile-l">${l}</div><div class="adp-tile-v" style="color:${c || 'var(--text)'}">${v}</div></div>`;
+  const selectable = st => _adpRows.filter(r => r.can && r.row.status === st).length;
+  document.getElementById('adp-output').innerHTML = `
+    <div class="adp-tiles">
+      ${tile('Staff compared', b.people.length)}
+      ${tile('People on ADP only', M.adpOnly.length, M.adpOnly.length ? 'var(--danger2)' : 'var(--success)')}
+      ${tile('People on timesheet only', M.tsOnly.length, M.tsOnly.length ? 'var(--danger2)' : 'var(--success)')}
+      ${tile('Punches that match', count.match, 'var(--success)')}
+      ${tile('Time differs', count.differs, count.differs ? 'var(--warn)' : '')}
+      ${tile('In ADP, not on timesheet', count.adp_only, count.adp_only ? 'var(--danger2)' : '')}
+      ${tile('On timesheet, not in ADP', count.ts_only, count.ts_only ? 'var(--danger2)' : '')}
+      ${count.adp_zero ? tile('ADP punch errors', count.adp_zero, 'var(--danger2)') : ''}
+      ${tile('ADP hours − timesheet hours', (net > 0 ? '+' : '') + srHrs(net), Math.abs(net) < 0.005 ? 'var(--success)' : 'var(--warn)')}
+    </div>
+    ${!b.people.length ? '<div class="sr-empty">None of the ADP names matched a staff member yet — pick them in the list above.</div>' : `
+    <div class="adp-bar">
+      <span style="font-size:12px;color:var(--text3)">Tick what to correct:</span>
+      <button class="btn btn-ghost" onclick="adpSelect('differs')">Time differs (${selectable('differs')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('adp_only')">Missing from timesheet (${selectable('adp_only')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('ts_only')">Not in ADP (${selectable('ts_only')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('')">Clear</button>
+      <button class="btn btn-primary" id="adp-apply-btn" style="margin-left:auto" onclick="adpApplySelected()">Apply corrections</button>
+    </div>
+    <div class="table-wrap"><table class="adp-table">
+      <thead><tr><th></th><th>Date</th><th>Timesheet</th><th>Hrs</th><th>ADP punches</th><th>Hrs</th><th>Diff</th><th>Result / what applying does</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:28px">Every punch matches the timesheet within ${b.tol} minute${b.tol !== 1 ? 's' : ''}. Nothing to correct.</td></tr>`}</tbody>
+    </table></div>`}`;
+  adpUpdateApplyBtn();
+}
+
+function adpToggle(cb) { const r = _adpRows[Number(cb.getAttribute('data-adp-idx'))]; if (r) r.checked = cb.checked; adpUpdateApplyBtn(); }
+function adpSelect(status) {
+  _adpRows.forEach((r, i) => {
+    if (!status) r.checked = false; else if (r.can && r.row.status === status) r.checked = true;
+    const cb = document.querySelector(`input[data-adp-idx="${i}"]`); if (cb) cb.checked = r.checked;
+  });
+  adpUpdateApplyBtn();
+}
+function adpUpdateApplyBtn() {
+  const btn = document.getElementById('adp-apply-btn'); if (!btn) return;
+  const n = _adpRows.filter(r => r.checked).length;
+  btn.textContent = n ? `Apply ${n} correction${n !== 1 ? 's' : ''}` : 'Apply corrections';
+  btn.disabled = !n; btn.style.opacity = n ? '' : '0.5';
+}
+
+// Applies ONLY the ticked rows. Every change goes through the same checks
+// as editing a shift by hand (locked pay period, overlapping shifts), is
+// written to the audit trail with the old and new times, and nothing is
+// ever deleted: a timesheet shift with no ADP punch is rejected (still
+// visible, with the reason), not removed.
+async function adpApplySelected() {
+  const picked = _adpRows.filter(r => r.checked && r.can);
+  if (!picked.length) return;
+  const n = st => picked.filter(r => st.includes(r.row.status)).length;
+  const delta = picked.reduce((a, r) => a + r.row.diffHours, 0);
+  if (!confirm(`Apply ${picked.length} correction${picked.length !== 1 ? 's' : ''} to the timesheet?\n\n` +
+    `• ${n(['differs', 'match'])} shift time${n(['differs', 'match']) !== 1 ? 's' : ''} changed to the ADP punch\n` +
+    `• ${n(['adp_only'])} shift${n(['adp_only']) !== 1 ? 's' : ''} added from ADP\n` +
+    `• ${n(['ts_only'])} timesheet shift${n(['ts_only']) !== 1 ? 's' : ''} rejected (no ADP punch)\n\n` +
+    `Net change to paid hours: ${delta > 0 ? '+' : ''}${srHrs(delta)}\n\nEvery change is recorded in the Audit Trail.`)) return;
+
+  const done = [], skipped = [];
+  const who = r => `${r.staff.last}, ${r.staff.first} ${formatDateDisplay(r.row.date)}`;
+  const log = (type, detail, meta) => { if (!AUDIT_LOG) AUDIT_LOG = []; AUDIT_LOG.unshift({ id: 'AT' + Date.now() + Math.random().toString(36).slice(2, 5), type, detail, meta, by: _currentUser ? _currentUser.name : 'System', byRole: _currentUser ? _currentUser.role : 'system', at: new Date().toLocaleString(), ts: Date.now() }); };
+  const stamp = `ADP timecard ${_adp.fileName}`;
+  const order = { ts_only: 0, differs: 1, match: 1, adp_only: 2 }; // free up time first, add last
+  picked.sort((a, b) => order[a.row.status] - order[b.row.status]);
+
+  for (const r of picked) {
+    const row = r.row;
+    if (isPeriodLockedForDate(row.date)) { skipped.push(`${who(r)} — pay period is locked`); continue; }
+    if (row.status === 'ts_only') {
+      try {
+        const res = await fetch(`/api/shifts/${encodeURIComponent(row.shift.id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'No matching punch on the ADP timecard' }) });
+        if (!res.ok) { let msg = 'could not reject'; try { msg = (await res.json()).error || msg; } catch (e) {} skipped.push(`${who(r)} — ${msg}`); continue; }
+        const sh = SHIFTS.find(s => s.id === row.shift.id);
+        if (sh) { sh.shiftStatus = 'rejected'; sh.rejectedReason = 'No matching punch on the ADP timecard'; sh.rejectedBy = _currentUser ? _currentUser.name : ''; }
+        log('ADP_CORRECTION', `Shift rejected from ADP match: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${row.shift.start}–${row.shift.end} · ${row.shift.location} · no ADP punch · ${stamp}`);
+        done.push(r);
+      } catch (e) { skipped.push(`${who(r)} — could not reach the server`); }
+      continue;
+    }
+    const a = row.adp;
+    if (!a.end) { skipped.push(`${who(r)} — ADP has no out punch`); continue; }
+    if (!(a.hours > 0) || a.hours > 24) { skipped.push(`${who(r)} — ADP hours are not valid`); continue; }
+    const excludeId = row.shift ? row.shift.id : null;
+    const overlap = findOverlappingShift(r.staff.id, row.date, a.start, a.end, excludeId);
+    if (overlap && overlap.shiftStatus !== 'rejected') { skipped.push(`${who(r)} — would overlap the ${overlap.start}–${overlap.end} shift at ${overlap.location}; correct that one first`); continue; }
+    if (row.shift) {
+      const idx = SHIFTS.findIndex(s => s.id === row.shift.id);
+      if (idx < 0) { skipped.push(`${who(r)} — shift no longer exists`); continue; }
+      const old = SHIFTS[idx];
+      APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(x => x.shiftId !== old.id);
+      SHIFTS[idx] = { ...old, start: a.start, end: a.end, hours: a.hours, _corrected: true, adpCorrected: { from: `${old.start}-${old.end}`, hours: old.hours, at: todayLocalISO() } };
+      log('ADP_CORRECTION', `Shift corrected to ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · Old: ${old.start}–${old.end} (${numFmt(old.hours)} hrs) → New: ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${stamp}`);
+    } else {
+      const location = r.staff.loc && LOCATIONS.some(l => l.name === r.staff.loc) ? r.staff.loc : '';
+      if (!location) { skipped.push(`${who(r)} — this staff member has no home house to put the shift under; add it on the Timesheet Log instead`); continue; }
+      SHIFTS.push({ id: genId(), date: row.date, staff: r.staff.id, location, start: a.start, end: a.end, hours: a.hours, source: 'adp', shiftStatus: 'active', _new: true });
+      log('ADP_CORRECTION', `Shift added from ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${location} · ${stamp}`);
+    }
+    done.push(r);
+  }
+  if (done.length) { if (AUDIT_LOG.length > 2000) AUDIT_LOG = AUDIT_LOG.slice(0, 2000); dbSave(); }
+  _adpRows = [];
+  adpRender();
+  showToast(`${done.length} correction${done.length !== 1 ? 's' : ''} applied${skipped.length ? ` · ${skipped.length} skipped` : ''}`, skipped.length ? 'warn' : undefined);
+  if (skipped.length) {
+    document.getElementById('adp-output').insertAdjacentHTML('afterbegin', `<div class="card" style="margin-bottom:16px;border-color:rgba(198,138,30,0.5)"><div class="card-title">${skipped.length} correction${skipped.length !== 1 ? 's were' : ' was'} not applied</div><ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text2);line-height:1.7">${skipped.map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>`);
+  }
+}
+
+function adpExportCSV() {
+  if (!_adp) { showToast('Choose an ADP Timecard Report first', 'warn'); return; }
+  const b = adpBuild();
+  const q = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
+  const line = arr => arr.map(q).join(',') + '\n';
+  const name = { match: 'Match', differs: 'Time differs', adp_only: 'In ADP, not on timesheet', ts_only: 'On timesheet, not in ADP', adp_zero: 'ADP punch error (0:00)' };
+  let csv = line(['American Safety Options, Inc. — ADP Timecard vs Timesheet']);
+  csv += line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Counts as a match within (minutes)', b.tol]) + line(['Generated', new Date().toLocaleString()]) + '\n';
+  csv += line(['PEOPLE ON THE ADP TIMECARD WITH NOTHING ON THE TIMESHEET']) + line(['Name', 'Staff ID', 'ADP punches', 'ADP hrs', 'Note']);
+  b.missing.adpOnly.forEach(x => { csv += line([x.name, x.id, x.punches, srHrs(x.hours), x.known ? '' : x.skipped ? 'Left out on purpose' : 'Not a staff member in this system / not matched yet']); });
+  if (!b.missing.adpOnly.length) csv += line(['Nobody']);
+  csv += '\n' + line(['PEOPLE ON THE TIMESHEET WITH NO ADP TIMECARD PUNCHES']) + line(['Name', 'Staff ID', 'Timesheet shifts', 'Timesheet hrs', 'Note']);
+  b.missing.tsOnly.forEach(x => { csv += line([x.name, x.id, x.shifts, srHrs(x.hours), x.why]); });
+  if (!b.missing.tsOnly.length) csv += line(['Nobody']);
+  csv += '\n' + line(['PUNCH BY PUNCH']);
+  csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Result']);
+  b.people.forEach(p => p.rows.forEach(r => {
+    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : '', r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), name[r.status]]);
+  }));
+  b.unmatched.forEach(u => u.emp.entries.forEach(x => { csv += line(['', '', '', u.emp.name, formatDateDisplay(x.date), x.day, '', '', '', '', srTime(x.start), x.end ? srTime(x.end) : '', srHrs(x.hours), srHrs(x.ot), '', u.skipped ? 'Left out on purpose' : 'ADP name not matched to a staff member']); }));
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ASO_ADP_vs_Timesheet_${b.from}_to_${b.to}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported ✅');
+}
+
+// ──────────────────────────────────────────────────────────
 // AUDIT TRAIL ENGINE
 // ──────────────────────────────────────────────────────────
 const AT_ICONS = {
   ADD_SHIFT:        '➕',
   EDIT_SHIFT:       '✏️',
+  ADP_CORRECTION:   '🔁',
   DELETE_SHIFT:     '🗑️',
   APPROVE_SHIFT:    '✅',
   DENY_SHIFT:       '✕',
