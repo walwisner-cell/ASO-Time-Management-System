@@ -1429,6 +1429,8 @@
   .sr-sheet .sr-src { font-size:9.5px; color:#4a5868; }
   .sr-sheet .sr-flag { color:#aa2d28; font-weight:600; }
   .sr-sheet tr.sr-rej .sr-flag { color:#aa2d28; }
+  .sr-sheet .sr-table tr.sr-away td { background:#fff7e6; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-sheet .sr-away .sr-flag { font-size:8.5px; letter-spacing:.4px; text-transform:uppercase; color:#965f0a; }
   .sr-facts { display:flex; flex-wrap:nowrap; justify-content:space-between; gap:12px; margin-top:7px; padding:0 2px; font-size:10px; font-weight:600; color:#16283c; white-space:nowrap; }
   .sr-facts span { display:block; font-size:7.5px; font-weight:400; letter-spacing:.6px; text-transform:uppercase; color:#647182; }
   .sr-who { display:flex; flex-wrap:wrap; gap:6px 34px; align-items:flex-end; margin-top:12px; padding:10px 14px; background:#eef3f9; border-radius:5px; font-size:11.5px; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -2292,6 +2294,8 @@
             <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Items to review</label>
             <label><input type="checkbox" id="sr-opt-days" onchange="srGenerate()"> List every day (show days off)</label>
             <label id="sr-opt-cover-wrap"><input type="checkbox" id="sr-opt-cover" onchange="srGenerate()"> Add a summary page for all staff</label>
+            <label><input type="checkbox" id="sr-opt-cross" checked onchange="srGenerate()"> List staff who worked at other houses (for Payroll)</label>
+            <label id="sr-opt-houseonly-wrap" style="display:none"><input type="checkbox" id="sr-opt-houseonly" onchange="srGenerate()"> <span id="sr-opt-houseonly-label">Only this house’s hours</span></label>
             <label id="sr-opt-empty-wrap"><input type="checkbox" id="sr-opt-empty" onchange="srGenerate()"> Include staff with no hours</label>
           </div>
         </div>
@@ -10162,10 +10166,11 @@ function srCanSeePay() {
 // Builds everything the report says about ONE staff member for a date
 // range. Pure data in, pure data out — no page elements touched — so it can
 // be tested directly (see test-staff-report.js).
-function srBuildStaffReport(st, fromISO, toISO, allComputed) {
+// `onlyHouse` (optional) keeps just the shifts worked at that one house.
+function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const payType = st.payType || 'hourly';
   const mine = allComputed
-    .filter(s => s.staff === st.id && s.date >= fromISO && s.date <= toISO)
+    .filter(s => s.staff === st.id && (!onlyHouse || s.location === onlyHouse) && s.date >= fromISO && s.date <= toISO)
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.start || '').localeCompare(String(b.start || '')));
 
   const rows = mine.map(s => {
@@ -10235,11 +10240,11 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed) {
   const houseMap = {};
   counted.forEach(r => {
     const k = r.location || '—';
-    if (!houseMap[k]) houseMap[k] = { name: k, shifts: 0, hours: 0, pay: 0, rates: new Set(), home: k === st.loc };
-    houseMap[k].shifts++; houseMap[k].hours += r.hours; houseMap[k].pay += r.pay; houseMap[k].rates.add(r.rate);
+    if (!houseMap[k]) houseMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, rates: new Set(), home: k === st.loc };
+    houseMap[k].shifts++; houseMap[k].hours += r.hours; houseMap[k].reg += r.reg; houseMap[k].ot += r.ot; houseMap[k].pay += r.pay; houseMap[k].rates.add(r.rate);
   });
   const houses = Object.values(houseMap).sort((a, b) => b.hours - a.hours)
-    .map(h => ({ name: h.name, shifts: h.shifts, hours: h.hours, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
+    .map(h => ({ name: h.name, shifts: h.shifts, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
   const rates = [...new Set(counted.map(r => r.rate))].sort((a, b) => a - b);
 
   // ── Time off that touches this date range (denied requests left out) ──
@@ -10305,7 +10310,44 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed) {
   const ytdRows = allComputed.filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.date >= yStart && s.date <= toISO);
   const ytd = { hours: ytdRows.reduce((a, s) => a + s.hours, 0), ot: ytdRows.reduce((a, s) => a + s.otHrs, 0), gross: ytdRows.reduce((a, s) => a + s.shiftPay, 0) };
 
-  return { staff: st, from: fromISO, to: toISO, payType, rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
+  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
+}
+
+// For Payroll: everyone who worked somewhere other than their home house,
+// or at more than one house, with the hours at each. Takes full reports
+// (every house), never "this house only" ones. Pure.
+function srHouseCrossover(fullReports) {
+  return fullReports.map(r => {
+    const away = r.houses.filter(h => !h.home);
+    if (!away.length) return null;
+    return { staff: r.staff, payType: r.payType, houses: r.houses.slice().sort((a, b) => (b.home ? 1 : 0) - (a.home ? 1 : 0) || b.hours - a.hours),
+      homeHours: r.houses.filter(h => h.home).reduce((a, h) => a + h.hours, 0), awayHours: away.reduce((a, h) => a + h.hours, 0),
+      total: { shifts: r.totals.shifts, hours: r.totals.hours, reg: r.totals.reg, ot: r.totals.ot, pay: r.totals.gross } };
+  }).filter(Boolean).sort((a, b) => (a.staff.last + a.staff.first).localeCompare(b.staff.last + b.staff.first));
+}
+
+function srCrossoverHtml(cross, opts, meta) {
+  const rowsHtml = cross.map(c => {
+    const pay = opts.showPay && c.payType === 'hourly';
+    return c.houses.map((h, i) => `<tr class="${h.home ? '' : 'sr-away'}">
+        ${i === 0 ? `<td class="sr-nw" rowspan="${c.houses.length + 1}" style="vertical-align:top"><b>${esc(c.staff.last)}, ${esc(c.staff.first)}</b><div class="sr-dim">${esc(c.staff.id)} · home: ${esc(c.staff.loc || 'none on file')}</div></td>` : ''}
+        <td class="sr-nw">${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ' <b class="sr-flag">other house</b>'}${meta.house && h.name === meta.house ? ' <span class="sr-dim">← selected</span>' : ''}</td>
+        <td class="sr-num">${h.shifts}</td><td class="sr-num"><b>${srHrs(h.hours)}</b></td><td class="sr-num">${srHrs(h.reg)}</td><td class="sr-num">${h.ot > 0 ? '<b>' + srHrs(h.ot) + '</b>' : srHrs(0)}</td>
+        ${opts.showPay ? `<td class="sr-num">${pay ? (h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies') : '—'}</td><td class="sr-num">${pay ? $fmt(h.pay) : '—'}</td>` : ''}
+      </tr>`).join('') + `<tr class="sr-sub"><td>All houses</td><td class="sr-num">${c.total.shifts}</td><td class="sr-num">${srHrs(c.total.hours)}</td><td class="sr-num">${srHrs(c.total.reg)}</td><td class="sr-num">${srHrs(c.total.ot)}</td>${opts.showPay ? `<td></td><td class="sr-num">${pay ? $fmt(c.total.pay) : '—'}</td>` : ''}</tr>`;
+  }).join('');
+  const away = cross.reduce((a, c) => a + c.awayHours, 0);
+  return `<section class="sr-sheet sr-cover" id="sr-sheet-crossover">
+    <div class="sr-head">
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Staff Who Worked at More Than One House${meta.house ? ' — ' + esc(meta.house) : ''}</div></div></div>
+      <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
+    </div>
+    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.</div>
+    ${cross.length ? `<table class="sr-table">
+      <thead><tr><th>Staff</th><th>House worked</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${opts.showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
+      <tbody>${rowsHtml}</tbody></table>` : '<div class="sr-dim" style="margin-top:14px;font-size:11px">Nobody worked away from their home house in these dates.</div>'}
+    <div class="sr-foot"><span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span><span>Confidential personnel and payroll record · house crossover</span></div>
+  </section>`;
 }
 
 // Is this date range already locked by a confirmed payroll run? A printed
@@ -10429,6 +10471,8 @@ function srGenerate() {
   }
   const house = document.getElementById('sr-house').value;
   const includeEmpty = document.getElementById('sr-opt-empty').checked;
+  document.getElementById('sr-opt-houseonly-wrap').style.display = house ? '' : 'none';
+  document.getElementById('sr-opt-houseonly-label').textContent = house ? `Only hours worked at ${house}` : 'Only this house\u2019s hours';
   const opts = {
     layout: document.getElementById('sr-layout').value === 'sign' ? 'sign' : 'full',
     showPay: srCanSeePay() && document.getElementById('sr-opt-pay').checked,
@@ -10436,7 +10480,9 @@ function srGenerate() {
     showSign: document.getElementById('sr-opt-sign').checked,
     showEmpSign: document.getElementById('sr-opt-empsign').checked,
     everyDay: document.getElementById('sr-opt-days').checked && calendarDayDiff(range.from, range.to) <= 62,
-    cover: document.getElementById('sr-opt-cover').checked
+    cover: document.getElementById('sr-opt-cover').checked,
+    cross: document.getElementById('sr-opt-cross').checked,
+    houseOnly: !!house && document.getElementById('sr-opt-houseonly').checked
   };
   const all = computeShiftsWithOT();
   const inRange = all.filter(s => s.date >= range.from && s.date <= range.to);
@@ -10463,8 +10509,13 @@ function srGenerate() {
   if (one) chosen = pool.filter(s => s.id === one);
   else chosen = pool.filter(s => hasRows.has(s.id) || (includeEmpty && s.status === 'Active'));
 
-  const reports = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all));
+  // Full reports (every house) are always built: the crossover list needs them
+  // even when the sheets themselves are limited to one house.
+  const full = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all));
+  let reports = full;
+  if (opts.houseOnly) reports = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all, house)).filter(r => r.rows.length || one);
   if (reports.length < 2) opts.cover = false;
+  const cross = opts.cross ? srHouseCrossover(full) : [];
   const meta = {
     range, house, status: srRangeStatus(range.from, range.to),
     generatedBy: _currentUser ? (_currentUser.name || _currentUser.username || '') : '',
@@ -10473,7 +10524,8 @@ function srGenerate() {
   // How the dates are worded everywhere on the sheet.
   meta.rangeText = range.mode === 'day' ? `${srDayName(range.from)} ${formatDateDisplay(range.from)}` : `${formatDateDisplay(range.from)} – ${formatDateDisplay(range.to)}`;
   meta.rangeWord = range.mode === 'period' ? 'Pay period' : range.mode === 'day' ? 'Date' : 'Dates';
-  _srLast = { reports, opts, meta };
+  meta.onlyHouse = opts.houseOnly ? house : '';
+  _srLast = { reports, opts, meta, cross };
 
   if (!reports.length) {
     overview.innerHTML = '';
@@ -10481,7 +10533,7 @@ function srGenerate() {
     return;
   }
   overview.innerHTML = reports.length > 1 ? srOverviewHtml(reports, opts, meta) : '';
-  out.innerHTML = (opts.cover ? srCoverHtml(reports, opts, meta) : '') + reports.map((r, i) => srSheetHtml(r, opts, meta, i + 1, reports.length)).join('');
+  out.innerHTML = (opts.cover ? srCoverHtml(reports, opts, meta) : '') + (opts.cross && (cross.length || reports.length > 1) ? srCrossoverHtml(cross, opts, meta) : '') + reports.map((r, i) => srSheetHtml(r, opts, meta, i + 1, reports.length)).join('');
 }
 
 // On-screen only: a one-line-per-person roll-up of the whole batch, so the
@@ -10623,6 +10675,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
       <div><span>${esc(meta.rangeWord)}</span><b>${esc(meta.rangeText)}</b></div>
       <div class="sr-who-s"><span>Staff ID</span>${esc(st.id)}</div>
       <div class="sr-who-s"><span>Home house</span>${esc(st.loc || '—')}</div>
+      ${r.onlyHouse ? `<div class="sr-who-s"><span>Showing</span>${esc(r.onlyHouse)} only</div>` : ''}
       ${showPay ? `<div class="sr-who-s"><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
     </div>
     <table class="sr-table sr-table-lg">
@@ -10688,6 +10741,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       </div></div>
       <div class="sr-head-r">
         <div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div>
+        ${r.onlyHouse ? `<div class="sr-status" style="color:#0b5fa8">Hours worked at ${esc(r.onlyHouse)} only</div>` : ''}
         <div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div>
       </div>
     </div>
@@ -10764,7 +10818,7 @@ function srCoverHtml(reports, opts, meta) {
   const t = srCoverTotals(reports);
   return `<section class="sr-sheet sr-cover" id="sr-sheet-cover">
     <div class="sr-head">
-      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Timesheet Summary — ${reports.length} staff${meta.house ? ' · ' + esc(meta.house) : ''}</div></div></div>
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Timesheet Summary — ${reports.length} staff${meta.house ? ' · ' + esc(meta.house) + (meta.onlyHouse ? ' hours only' : '') : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
     <table class="sr-table">
@@ -10824,6 +10878,13 @@ function srExportCSV() {
       .concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]));
   });
 
+  const crossCsv = (_srLast.cross || []);
+  if (opts.cross) {
+    csv += '\n' + line(['STAFF WHO WORKED AT MORE THAN ONE HOUSE (FOR PAYROLL)']);
+    csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'House worked', 'Home or other', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []));
+    crossCsv.forEach(c => c.houses.forEach(h => { const pay = opts.showPay && c.payType === 'hourly'; csv += line([c.staff.id, c.staff.last, c.staff.first, c.staff.loc || '', h.name, h.home ? 'Home' : 'Other house', h.shifts, srHrs(h.hours), srHrs(h.reg), srHrs(h.ot)].concat(opts.showPay ? (pay ? [h.rates.length === 1 ? Number(h.rates[0]).toFixed(2) : 'varies', h.pay.toFixed(2)] : ['', '']) : [])); }));
+    if (!crossCsv.length) csv += line(['Nobody']);
+  }
   csv += '\n' + line(['SHIFT DETAIL']);
   csv += line(['Staff ID', 'Last name', 'First name', 'Date', 'Day', 'Workweek starting', 'House worked', 'In', 'Out', 'Meal break min', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
   reports.forEach(r => {
@@ -10908,11 +10969,51 @@ function srDownloadPDF() {
     doc.splitTextToSize('Settle = items that should be resolved before a timesheet is signed (unapproved clock entries, pending time off, inactive staff with hours). Check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person\'s sheet.', UW).forEach(l => { doc.text(l, M, y); y += 8; });
   }
 
+  // ── Staff who worked at more than one house (for Payroll) ──
+  const cross = _srLast.cross || [];
+  let started = !!opts.cover;
+  if (opts.cross && (cross.length || reports.length > 1)) {
+    if (started) doc.addPage();
+    started = true;
+    pageOwner.push(-2);
+    letterhead(`Staff Who Worked at More Than One House${meta.house ? ' - ' + meta.house : ''}`, `${rangeWord} ${rangeTxt}`);
+    font('normal', 7.5, gray);
+    doc.splitTextToSize(tx(`For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(cross.reduce((a, c) => a + c.awayHours, 0))} hours in total. Hours are split by the house where the shift was worked. Overtime is worked out on the person's total hours for the pay period, then shown against the shift it fell on.`), UW).forEach(l => { doc.text(l, M, y); y += 9; });
+    y += 6;
+    const xc = [{ h: 'Staff', w: 0 }, { h: 'House worked', w: 130 }, { h: 'Shifts', w: 38, num: true }, { h: 'Hours', w: 46, num: true }, { h: 'Regular', w: 46, num: true }, { h: 'OT', w: 40, num: true }].concat(opts.showPay ? [{ h: 'Rate', w: 46, num: true }, { h: 'Pay', w: 58, num: true }] : []);
+    xc[0].w = UW - xc.reduce((a, c) => a + c.w, 0);
+    let xx = M; xc.forEach(c => { c.x = xx; xx += c.w; });
+    const put = (c, t, yy) => { if (c.num) doc.text(tx(t), c.x + c.w - 4, yy, { align: 'right' }); else doc.text(fit(t, c.w - 6), c.x + 3, yy); };
+    const head = () => { doc.setFillColor(...navy); doc.rect(M, y, UW, 15, 'F'); font('bold', 7.5, [255, 255, 255]); xc.forEach(c => put(c, c.h, y + 10.5)); y += 15; };
+    head();
+    if (!cross.length) { font('normal', 8.5, gray); doc.text('Nobody worked away from their home house in these dates.', M + 3, y + 14); y += 20; }
+    cross.forEach(c => {
+      const pay = opts.showPay && c.payType === 'hourly';
+      if (y + 13 * (c.houses.length + 1) + 4 > BOTTOM) { doc.addPage(); pageOwner.push(-2); y = 44; head(); }
+      c.houses.forEach((h, i) => {
+        if (!h.home) { doc.setFillColor(255, 247, 230); doc.rect(xc[1].x, y, R - xc[1].x, 13, 'F'); }
+        if (i === 0) { font('bold', 8, navy); put(xc[0], `${c.staff.last}, ${c.staff.first}`, y + 9.5); }
+        if (i === 1) { font('normal', 6.5, gray); put(xc[0], `${c.staff.id} | home: ${c.staff.loc || 'none on file'}`, y + 8); }
+        font(h.home ? 'normal' : 'bold', 8, navy);
+        const v = ['', h.name + (h.home ? ' (home)' : ' - OTHER HOUSE'), h.shifts, srHrs(h.hours), srHrs(h.reg), srHrs(h.ot)].concat(opts.showPay ? [pay ? (h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies') : '-', pay ? $fmt(h.pay) : '-'] : []);
+        xc.forEach((col, k) => { if (k > 0) put(col, String(v[k]), y + 9.5); });
+        y += 13;
+      });
+      if (c.houses.length === 1) { font('normal', 6.5, gray); put(xc[0], `${c.staff.id} | home: ${c.staff.loc || 'none on file'}`, y + 8); }
+      font('bold', 8, navy);
+      const tv = ['', 'All houses', c.total.shifts, srHrs(c.total.hours), srHrs(c.total.reg), srHrs(c.total.ot)].concat(opts.showPay ? ['', pay ? $fmt(c.total.pay) : '-'] : []);
+      xc.forEach((col, k) => { if (k > 0) put(col, String(tv[k]), y + 9.5); });
+      doc.setDrawColor(...navy); doc.setLineWidth(0.6); doc.line(M, y + 13, R, y + 13);
+      y += 16;
+    });
+  }
+
   reports.forEach((r, idx) => {
     const st = r.staff, T = r.totals, S = r.stats;
     const showPay = opts.showPay && r.payType === 'hourly';
     const name = `${st.first} ${st.last}`;
-    if (idx > 0 || opts.cover) doc.addPage();
+    if (started) doc.addPage();
+    started = true;
     pageOwner.push(idx);
 
     const cols = sign
@@ -10947,14 +11048,14 @@ function srDownloadPDF() {
 
     if (sign) {
       // ── Signature copy: name and dates, big and plain ──
-      letterhead('Employee Timesheet', '');
+      letterhead(r.onlyHouse ? `Employee Timesheet - ${r.onlyHouse} hours only` : 'Employee Timesheet', '');
       doc.setFillColor(...shade); doc.roundedRect(M, y - 6, UW, 50, 3, 3, 'F');
       font('normal', 7, gray); doc.text('EMPLOYEE', M + 12, y + 8); doc.text(rangeWord.toUpperCase(), M + UW / 2, y + 8);
       font('bold', 15, navy); doc.text(fit(name, UW / 2 - 24), M + 12, y + 26); doc.text(rangeTxt, M + UW / 2, y + 26);
       font('normal', 7.5, gray); doc.text(tx(`Staff ID ${st.id}  |  Home house: ${st.loc || '-'}${showPay ? '  |  Pay rate: ' + srRateText(r) : ''}`), M + 12, y + 38);
       y += 58;
     } else {
-      letterhead('Staff Timesheet Report', `${rangeWord} ${rangeTxt}`);
+      letterhead(r.onlyHouse ? `Staff Timesheet Report - ${r.onlyHouse} hours only` : 'Staff Timesheet Report', `${rangeWord} ${rangeTxt}`);
       // ── Employee ──
       font('bold', 14, navy); doc.text(tx(name), M, y); y += 8;
       const fields = [['STAFF ID', st.id], ['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
@@ -11129,7 +11230,7 @@ function srDownloadPDF() {
     doc.setDrawColor(...rule); doc.setLineWidth(0.5); doc.line(M, H - 34, R, H - 34);
     font('normal', 6.5, gray);
     doc.text(tx(`Generated ${meta.generatedAt}${meta.generatedBy ? ' by ' + meta.generatedBy : ''} | ASO Time System | Confidential personnel and payroll record`), M, H - 23);
-    doc.text(tx(o < 0 ? `Summary - page ${seen[o]} of ${perOwner[o]}` : `${reports[o].staff.last}, ${reports[o].staff.first} - page ${seen[o]} of ${perOwner[o]}`), R, H - 23, { align: 'right' });
+    doc.text(tx(o === -2 ? `Other houses - page ${seen[o]} of ${perOwner[o]}` : o < 0 ? `Summary - page ${seen[o]} of ${perOwner[o]}` : `${reports[o].staff.last}, ${reports[o].staff.first} - page ${seen[o]} of ${perOwner[o]}`), R, H - 23, { align: 'right' });
   });
 
   doc.save(srFileStem() + '.pdf');

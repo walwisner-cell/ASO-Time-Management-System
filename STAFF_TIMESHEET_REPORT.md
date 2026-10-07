@@ -49,6 +49,13 @@ I get to it two ways:
 - **Add a summary page for all staff** — one page that prints first, with a line per person and a total.
 - **Include staff with no hours**
 
+## Doing it per house, and who worked at other houses
+- **House** dropdown — picks the house. I get everyone assigned to that house, plus anyone from another house who worked there.
+- **Only hours worked at [house]** — appears once a house is picked. With it ticked, each sheet shows only the shifts worked at that house, and says so at the top. With it off, each sheet is the person's full timesheet across all houses.
+- **List staff who worked at other houses (for Payroll)** — on by default. It adds a page called "Staff Who Worked at More Than One House". For each person who worked somewhere other than their home house, it lists every house they worked at with shifts, hours, regular, overtime and pay, the other houses highlighted, and a total. It prints with the report, is in the PDF, and is in the CSV.
+
+Overtime on these pages is the overtime payroll worked out on the person's total hours for the pay period. It is not recalculated per house.
+
 ## Where the times come from
 Shifts the office types in come from the time log sheets staff fill in to register their time, so the report now calls them **Time log** (it used to say "Manual"). Shifts from the clock in/out buttons say **Clock**, and ones a supervisor clocked for someone say **Override**.
 
@@ -70,7 +77,7 @@ The overtime cross-check only *shows* the difference between "over 40 in a week"
 
 ## How I check it still works
 ```
-node test-staff-report.js      (45 checks: pay period dates + report math + layouts)
+node test-staff-report.js      (54 checks: pay period dates + report math + layouts + per house)
 node test.js                   (117 checks)
 node test-meal-breaks.js
 node test-tax-brackets.js

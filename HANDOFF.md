@@ -10,7 +10,7 @@ A prior session's handoff described a large amount of finished work (tax bracket
 
 ## How to verify anything in this project
 1. `npm install`
-2. `node test.js` — 117 automated HTTP-level checks at last count (the text below still says 41; the number has grown). Also run `node test-adp-match.js` (72 checks: ADP timecard reading, name matching, punch comparison) and `node test-staff-report.js` (45 checks: pay-period dates across clock changes + the Staff Timesheet Report math). Original description: automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
+2. `node test.js` — 117 automated HTTP-level checks at last count (the text below still says 41; the number has grown). Also run `node test-adp-match.js` (72 checks: ADP timecard reading, name matching, punch comparison) and `node test-staff-report.js` (54 checks: pay-period dates across clock changes + the Staff Timesheet Report math). Original description: automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
 3. `node test-tax-brackets.js` — 7 checks of the federal withholding bracket math against hand-computed values, cross-checked against the actual 2026 IRS Publication 15-T numbers (fetched directly from irs.gov, not a third-party summary — see below for why that mattered). Extracts the real function straight from the live HTML file, so it can never silently drift from what ships.
 4. Whenever you edit `ASO_OT_SYSTEM_SQL.html`'s "DATABASE LAYER" script block, mirror the same edit in `patch_html.py`, then confirm with:
    ```
@@ -45,6 +45,11 @@ The owner uploads the ADP "Timecard Report" PDF; the page matches every punch to
 - **Whole people missing from one side**: `adpWhoIsMissing(people, unmatched, noCard)` (pure) gives `adpOnly` (ADP punches, no timesheet shifts — including ADP names that are not staff here) and `tsOnly` (timesheet hours, no ADP punches). Shown as its own card with counts, as two tiles, and at the top of the CSV. Added after the owner asked that both directions be made obvious.
 - `test-adp-match.js` — 72 checks, using hand-built pages in ADP's layout with made-up names (no real timecard is stored in the repo). Browser-verified end to end against a demo database with the real file: 72 corrections applied, confirmed in the saved database and audit log.
 - **Not done**: house for ADP-added shifts is always the home house; only the Timecard Report PDF layout is read; ADP's weekly-overtime figure is displayed but not used.
+
+### Staff Timesheet Report — per house and crossover list (owner: "so Payroll can know")
+- `srBuildStaffReport(st, from, to, all, onlyHouse)` — optional 5th argument keeps only shifts worked at that house (`#sr-opt-houseonly`, shown once a house is picked). Overtime is NOT recalculated per house; it is still the engine's per-shift figure, so the houses add back up to the full timesheet (tested).
+- `srHouseCrossover(fullReports)` (pure) + `srCrossoverHtml()` + a page in `srDownloadPDF` (`pageOwner` = -2) + a CSV section: everyone who worked at a house other than their home house, split by house. Always computed from FULL reports, even when the sheets are house-only. `#sr-opt-cross`, on by default. `r.houses[]` now carries `reg` and `ot`.
+- `test-staff-report.js` is now 54 checks.
 
 ### Time format
 Shift times are now shown as 12-hour AM/PM everywhere (Timesheet Log, employee portal, Report Builder reports, shift pop-ups, overlap warnings, new audit entries) through one helper, `fmtTime(t)`. Storage is unchanged: times are still saved as 24-hour `HH:MM`, and every calculation still reads that. Audit entries written before this change keep their original 24-hour wording.

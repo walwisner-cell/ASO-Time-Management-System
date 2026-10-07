@@ -29,7 +29,7 @@ eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
   'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay',
-  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel'
+  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover'
 ]));
 
 let passed = 0, failed = 0;
@@ -165,6 +165,25 @@ check('a single-date report holds just that day\u2019s shift (8 hrs at William H
 check('a single-date report with every day listed shows exactly one line', srWeekLines(d1, d1.weeks[0], true).length === 1);
 const d0 = srBuildStaffReport(dj, '2026-10-07', '2026-10-07', computeShiftsWithOT());
 check('a single date with nothing worked gives zero hours and one time-off line', d0.totals.hours === 0 && srWeekLines(d0, d0.weeks[0], true).length === 1 && /Time off/.test(srWeekLines(d0, d0.weeks[0], true)[0].text));
+
+// ───────────────────────── Per house, and who worked at other houses ─────────────────────────
+console.log('\nPer house, and staff who worked at other houses:\n');
+const allNow = computeShiftsWithOT();
+const fullDJ = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', allNow);
+const gabOnly = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', allNow, 'Gabriella House');
+const wilOnly = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', allNow, 'William House');
+check('"only this house" keeps just the shifts worked there (1 shift, 8 hrs at William House)', wilOnly.rows.length === 1 && near(wilOnly.totals.hours, 8) && wilOnly.houses.length === 1 && wilOnly.onlyHouse === 'William House');
+check('the two houses add back up to the full timesheet (hours and pay)', near(gabOnly.totals.hours + wilOnly.totals.hours, fullDJ.totals.hours) && near(gabOnly.totals.gross + wilOnly.totals.gross, fullDJ.totals.gross));
+check('overtime in a one-house view is still the overtime payroll worked out on the whole period, not recalculated', near(gabOnly.totals.ot + wilOnly.totals.ot, fullDJ.totals.ot) && near(gabOnly.totals.ot, 16.5));
+check('hours by house now carry regular and overtime separately', near(fullDJ.houses.find(h => h.name === 'Gabriella House').reg + fullDJ.houses.find(h => h.name === 'William House').reg, 80) && near(fullDJ.houses.find(h => h.name === 'Gabriella House').ot, 16.5));
+const homeOnly = srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', allNow);        // Alfred: home William House, worked only there
+const visitor = srBuildStaffReport({ id: 'S001', first: 'Alfred', last: 'Erzondah', loc: 'Gabriella House', status: 'Active' }, '2026-09-26', '2026-10-09', allNow); // same shifts, different home
+const cross = srHouseCrossover([fullDJ, homeOnly, r5]);
+check('lists the person who worked at their home house and one other', cross.length === 1 && cross[0].staff.id === 'S003' && cross[0].houses.length === 2);
+check('home house is listed first and the other house is marked as not home', cross[0].houses[0].home === true && cross[0].houses[1].name === 'William House' && cross[0].houses[1].home === false);
+check('splits the hours into home and other (88.5 and 8)', near(cross[0].homeHours, 88.5) && near(cross[0].awayHours, 8) && near(cross[0].total.hours, 96.5));
+check('someone who only worked at their home house, or did not work at all, is left off', !cross.some(c => c.staff.id === 'S001' || c.staff.id === 'S099'));
+check('someone who worked ONLY at a house that is not their home is still listed', srHouseCrossover([visitor]).length === 1 && near(srHouseCrossover([visitor])[0].awayHours, 8) && near(srHouseCrossover([visitor])[0].homeHours, 0));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
