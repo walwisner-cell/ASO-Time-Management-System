@@ -1488,6 +1488,17 @@
   .adp-miss-row { padding:7px 0; border-top:1px solid var(--border); font-size:13px; color:var(--text); }
   .adp-miss-row span { display:block; font-size:11.5px; color:var(--text3); margin-top:1px; }
   .adp-miss-row .adp-dim { display:inline; }
+  .adp-banner { padding:12px 16px; border-radius:var(--radius); border:1px solid rgba(198,138,30,0.45); background:rgba(198,138,30,0.10); color:var(--text); font-size:13px; margin-bottom:20px; }
+  .adp-banner-ok { border-color:rgba(31,146,104,0.45); background:rgba(31,146,104,0.10); }
+  .adp-banner a { color:var(--accent2); margin-left:8px; }
+  .adp-views { display:inline-flex; border:1px solid var(--border2); border-radius:8px; overflow:hidden; margin-bottom:2px; }
+  .adp-views button { background:transparent; border:none; color:var(--text3); font-size:12px; padding:9px 14px; cursor:pointer; font-family:var(--sans); }
+  .adp-views button + button { border-left:1px solid var(--border2); }
+  .adp-views button.active { background:var(--accent); color:#fff; font-weight:600; }
+  select.adp-house { font-size:11.5px; padding:3px 6px; border:1px solid var(--border2); color:var(--text); background:var(--surface2); border-radius:6px; max-width:170px; }
+  #adp-report { overflow-x:auto; padding-bottom:8px; }
+  .adp-rep .sr-tiles + .sr-tiles { margin-top:8px; }
+  .adp-rep .sr-two b { font-size:10.5px; }
   .adp-map-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px 18px; }
   .adp-map-row { display:flex; align-items:center; gap:12px; justify-content:space-between; }
   .adp-map-row b { display:block; font-size:13px; color:var(--text); }
@@ -1496,6 +1507,19 @@
 
   @page srpage { size:letter portrait; margin:0.5in; }
   @media print {
+    body.adp-printing .page { display:none !important; }
+    body.adp-printing #page-adpmatch { display:block !important; animation:none !important; }
+    body.adp-printing #page-adpmatch > *:not(#adp-output) { display:none !important; }
+    body.adp-printing #adp-report { overflow:visible !important; padding:0 !important; }
+    body.adp-printing .sr-sheet { width:auto !important; margin:0 !important; padding:0 !important; box-shadow:none !important; border-radius:0 !important; }
+    body.adp-printing .sr-sheet .sr-table { font-size:10px !important; }
+    body.adp-printing .sr-sheet .sr-table th { padding:4px 5px !important; color:#fff !important; }
+    body.adp-printing .sr-sheet .sr-table td { padding:2.5px 5px !important; }
+    body.adp-printing .sr-sheet .sr-mini th { color:#000 !important; }
+    body.adp-printing .sr-sheet .sr-table tr.sr-tot td { color:#fff !important; }
+    body.adp-printing .sr-sheet .sr-table thead { display:table-header-group; }
+    body.adp-printing .sr-sheet .sr-table tr { break-inside:avoid; page-break-inside:avoid; }
+    body.adp-printing .sr-h { break-after:avoid; page-break-after:avoid; }
     body.sr-printing .page { display:none !important; }
     body.sr-printing #page-staffreport { display:block !important; animation:none !important; }
     body.sr-printing .sr-noprint { display:none !important; }
@@ -2166,31 +2190,38 @@
 
       <!-- ADP TIMECARD MATCH -->
       <div class="page" id="page-adpmatch">
-        <div class="print-header">American Safety Options — ADP Timecard vs Timesheet &nbsp;|&nbsp; Printed: <span class="print-date"></span></div>
         <div class="page-header">
           <div class="page-header-left">
             <div class="page-title">ADP Timecard Match</div>
-            <div class="page-sub">Upload the ADP Timecard Report — every punch is matched to the Timesheet Log, the differences are listed, and the ones you tick are corrected to the ADP time</div>
+            <div class="page-sub">Upload the ADP Timecard Report. Every punch is matched to the Timesheet Log and sorted by what it needs: ready to apply, suggested, needs review, or needs a punch correction. Nothing changes pay until a person confirms it.</div>
           </div>
-          <button class="rb-export-btn" onclick="adpExportCSV()">⬇ CSV of differences</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="rb-export-btn" onclick="adpPrint('procedure')">🖨️ Procedure</button>
+            <button class="rb-export-btn" onclick="adpExportCSV()">⬇ CSV</button>
+            <button class="rb-print-btn" onclick="adpPrint('report')">🖨️ Print report</button>
+          </div>
         </div>
         <div class="card" style="margin-bottom:20px">
           <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">
             <div>
-              <label class="sr-lbl" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">📄 ADP Timecard Report (PDF)</label>
+              <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">📄 ADP Timecard Report (PDF)</label>
               <label class="btn btn-primary" style="display:inline-block;cursor:pointer">Choose file…<input type="file" id="adp-file" accept="application/pdf,.pdf" onchange="adpFileChosen(this)" style="display:none"></label>
             </div>
             <div>
-              <label for="adp-tol" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">⏱️ Count as a match within</label>
-              <select id="adp-tol" onchange="if(_adp)adpRender()" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px">
-                <option value="0">Exact times only</option>
-                <option value="5">5 minutes</option>
-                <option value="7" selected>7 minutes</option>
+              <label for="adp-review-min" style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">⏱️ Needs review when times differ by more than</label>
+              <select id="adp-review-min" onchange="if(_adp){_adpRows=[];adpRender()}" style="font-size:13px;padding:9px 12px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);border-radius:8px">
+                <option value="7">7 minutes</option>
                 <option value="10">10 minutes</option>
-                <option value="15">15 minutes</option>
+                <option value="15" selected>15 minutes</option>
+                <option value="30">30 minutes</option>
               </select>
             </div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Show differences only</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;padding-bottom:9px"><input type="checkbox" id="adp-only-diff" checked onchange="if(_adp)adpRender()" style="width:15px;height:15px"> Hide exact matches</label>
+            <div id="adp-view-btns" class="adp-views" style="display:none;margin-left:auto">
+              <button data-view="work" class="active" onclick="adpSetView('work')">Worklist</button>
+              <button data-view="report" onclick="adpSetView('report')">Reconciliation report</button>
+              <button data-view="procedure" onclick="adpSetView('procedure')">Procedure</button>
+            </div>
           </div>
           <div id="adp-file-status" style="margin-top:12px;font-size:12px;font-family:var(--mono);color:var(--text3)"></div>
           <div style="margin-top:8px;font-size:11.5px;color:var(--text3)">The file is read on this computer only. Nothing changes on the timesheet until you tick rows and press Apply.</div>
@@ -2898,6 +2929,9 @@
               <option value="ADD_SHIFT">➕ Shift Added</option>
               <option value="EDIT_SHIFT">✏️ Shift Edited</option>
               <option value="ADP_CORRECTION">🔁 ADP Correction</option>
+              <option value="ADP_REVIEWED">👁️ ADP Difference Reviewed</option>
+              <option value="ADP_SIGNOFF">✅ ADP Week Signed Off</option>
+              <option value="ADP_REOPEN">🔓 ADP Week Reopened</option>
               <option value="DELETE_SHIFT">🗑️ Shift Deleted</option>
               <option value="APPROVE_SHIFT">✅ Shift Approved</option>
               <option value="DENY_SHIFT">✕ Shift Denied</option>
@@ -11293,10 +11327,12 @@ async function adpFileChosen(input) {
     if (!employees.length || !punches) throw new Error('No timecards were found in this file. It needs to be the ADP "Timecard Report" PDF.');
     const froms = employees.map(e => e.from).filter(Boolean).sort(), tos = employees.map(e => e.to).filter(Boolean).sort();
     const allDates = employees.flatMap(e => e.entries.map(x => x.date)).sort();
+    _adpRows = []; _adpHouse = {}; _adpView = 'work';
     _adp = { fileName: file.name, employees, from: froms[0] || allDates[0], to: tos[tos.length - 1] || allDates[allDates.length - 1] };
     adpRender();
   } catch (e) {
     _adp = null;
+    document.getElementById('adp-view-btns').style.display = 'none';
     statusEl.textContent = '';
     document.getElementById('adp-output').innerHTML = `<div class="sr-empty">${esc(e.message || 'Could not read this file')}</div>`;
     document.getElementById('adp-map').innerHTML = '';
@@ -11308,6 +11344,7 @@ async function adpFileChosen(input) {
 function renderAdpPage() {
   if (_adp) adpRender();
   else {
+    document.getElementById('adp-view-btns').style.display = 'none';
     document.getElementById('adp-file-status').textContent = '';
     document.getElementById('adp-map').innerHTML = '';
     document.getElementById('adp-output').innerHTML = '<div class="sr-empty">Choose the ADP Timecard Report PDF to begin.<br><span style="font-size:12px">In ADP: Reports → Timecard Report → pick the dates → export as PDF.</span></div>';
@@ -11322,40 +11359,191 @@ function adpSetMap(sel) {
   adpRender();
 }
 
-// Works out everything shown on the page from _adp + the live timesheet.
+// ── Best-practice handling ─────────────────────────────────
+// Every difference is sorted by how risky it is to act on, and nothing
+// that changes pay happens without a person confirming it:
+//   ok      — exact match, nothing to do
+//   auto    — small time difference: set to the ADP punch (pre-ticked, one Apply click)
+//   suggest — punched in ADP, nothing on the timesheet: a shift is proposed, a person confirms the house
+//   review  — large time difference, or a shift rebuilt from ADP punch errors: a person decides
+//   hold    — on the timesheet with no ADP punch: kept and paid as entered until the punch is fixed in ADP
+//   blocked — an ADP punch error line: information only, fixed in ADP
+
+// Two 0:00 punch-error lines on the same day are almost always ONE shift
+// whose in and out were each keyed as a separate line. This rebuilds that
+// shift as a proposal (never as a fact): it is always sent to "review".
+function adpInferFromErrors(entries) {
+  const out = entries.map(e => ({ ...e }));
+  const byDate = {};
+  out.forEach(e => { if (e.zero) (byDate[e.date] = byDate[e.date] || []).push(e); });
+  Object.keys(byDate).forEach(date => {
+    const z = byDate[date].sort((a, b) => a.start.localeCompare(b.start));
+    if (z.length !== 2) return;
+    const mins = adpMin(z[1].start) - adpMin(z[0].start);
+    if (mins < 60 || mins > 16 * 60) return; // too short to be a shift, or implausibly long
+    z[0].usedInInference = z[1].usedInInference = true;
+    out.push({ date, day: z[0].day, start: z[0].start, end: z[1].start, reg: 0, ot: 0, dt: 0, hours: mins / 60, elapsed: mins / 60, missingOut: false, zero: false, inferred: true, dept: z[0].dept });
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+}
+
+function adpClassify(row, reviewMin) {
+  if (row.status === 'adp_zero') return { tier: 'blocked', label: 'ADP punch error' };
+  if (row.status === 'ts_only') return { tier: 'hold', label: 'Needs punch correction' };
+  const inferred = !!(row.adp && row.adp.inferred);
+  if (row.adp && row.adp.missingOut) return { tier: 'review', label: 'Needs review', why: 'ADP has no out punch' };
+  if (row.status === 'adp_only') return inferred ? { tier: 'review', label: 'Needs review', why: 'Rebuilt from two ADP punch-error lines' } : { tier: 'suggest', label: 'Suggested — confirm' };
+  if (row.exact) return { tier: 'ok', label: 'Match' };
+  const off = Math.max(Math.abs(row.dIn || 0), Math.abs(row.dOut || 0));
+  if (inferred) return { tier: 'review', label: 'Needs review', why: 'Rebuilt from two ADP punch-error lines', off };
+  return off <= reviewMin ? { tier: 'auto', label: 'Ready to apply', off } : { tier: 'review', label: 'Needs review', why: `Times are ${off} minutes apart`, off };
+}
+
+// Which house a shift added from ADP most likely belongs to. ADP only knows
+// the department, so this looks at where the person actually worked: the
+// same weekday over the previous 8 weeks first, then any day, then home house.
+function adpSuggestHouse(staff, date, allShifts) {
+  const [y, m, d] = date.split('-').map(Number);
+  const wd = new Date(y, m - 1, d).getDay();
+  const since = (() => { const dt = new Date(y, m - 1, d - 56); return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'); })();
+  const mine = allShifts.filter(s => s.staff === staff.id && s.shiftStatus !== 'rejected' && s.source !== 'adp' && s.location && s.date >= since && s.date < date);
+  const top = arr => { const c = {}; arr.forEach(s => { c[s.location] = (c[s.location] || 0) + 1; }); const best = Object.keys(c).sort((a, b) => c[b] - c[a] || a.localeCompare(b))[0]; return best ? { house: best, n: c[best], of: arr.length } : null; };
+  const sameDay = top(mine.filter(s => { const [yy, mm, dd] = s.date.split('-').map(Number); return new Date(yy, mm - 1, dd).getDay() === wd; }));
+  if (sameDay && sameDay.n >= 2) return { house: sameDay.house, why: `worked there ${sameDay.n} of the last ${sameDay.of} ${['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][wd]}` };
+  const any = top(mine);
+  if (any && any.n >= 2) return { house: any.house, why: `worked there ${any.n} of the last ${any.of} shifts` };
+  return { house: staff.loc || '', why: staff.loc ? 'home house' : 'no home house on file — pick one' };
+}
+
+// Habits worth a conversation, from this one file. Pure.
+function adpPatterns(people) {
+  const who = [], houses = {};
+  people.forEach(p => {
+    const paired = p.rows.filter(r => r.adp && r.shift && !r.adp.inferred);
+    const x = {
+      name: `${p.staff.first} ${p.staff.last}`, id: p.staff.id,
+      missed: p.rows.filter(r => r.status === 'ts_only').length + p.rows.filter(r => r.status === 'adp_zero').length,
+      early: paired.filter(r => r.dIn <= -8).length, lateIn: paired.filter(r => r.dIn >= 8).length, lateOut: paired.filter(r => r.dOut >= 8).length,
+      unscheduled: p.rows.filter(r => r.status === 'adp_only' && !r.adp.inferred).length
+    };
+    if (x.missed || x.early || x.lateIn || x.lateOut || x.unscheduled) who.push(x);
+    p.rows.forEach(r => {
+      const h = (r.shift && r.shift.location) || r.house || p.staff.loc || 'No house';
+      const o = houses[h] = houses[h] || { house: h, lines: 0, differences: 0, hours: 0 };
+      o.lines++; if (r.cls && r.cls.tier !== 'ok') { o.differences++; o.hours += r.diffHours; }
+    });
+  });
+  const score = x => x.missed * 3 + x.unscheduled * 2 + x.early + x.lateIn + x.lateOut;
+  return { who: who.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name)), houses: Object.values(houses).sort((a, b) => b.differences - a.differences || a.house.localeCompare(b.house)) };
+}
+
+// Decisions and sign-offs live in the Audit Trail, so they are shared by
+// everyone, survive a reload, and cannot be quietly edited afterwards.
+function adpAuditState(auditLog, from, to) {
+  const reviewed = {}; let signoff = null;
+  (auditLog || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(e => {
+    const meta = String(e.meta || '');
+    if (e.type === 'ADP_REVIEWED') { const m = /^key=(\S+)/.exec(meta); if (m) reviewed[m[1]] = { by: e.by, at: e.at, note: (/note=(.*)$/.exec(meta) || [])[1] || '' }; }
+    else if (e.type === 'ADP_REVIEW_UNDONE') { const m = /^key=(\S+)/.exec(meta); if (m) delete reviewed[m[1]]; }
+    else if (e.type === 'ADP_SIGNOFF' && meta.startsWith(`range=${from}..${to}`)) signoff = { by: e.by, at: e.at };
+    else if (e.type === 'ADP_REOPEN' && meta.startsWith(`range=${from}..${to}`)) signoff = null;
+  });
+  const corrections = (auditLog || []).filter(e => e.type === 'ADP_CORRECTION' && (m => m && m[1] >= from && m[1] <= to)(/^(\d{4}-\d{2}-\d{2})/.exec(String(e.meta || '')))).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  return { reviewed, signoff, corrections };
+}
+
+function adpRowKey(staffId, r) { return [staffId, r.date, r.adp ? r.adp.start + '-' + (r.adp.end || '') : 'x', r.shift ? r.shift.id : 'x'].join('|').replace(/\s+/g, '_'); }
+function adpRate(staff, house, date) { return staff.rate > 0 ? staff.rate : getLocRate(house || staff.loc, date); }
+
+// Works out everything shown on the page and in the report from _adp + the live timesheet.
 function adpBuild() {
-  const tol = parseInt(document.getElementById('adp-tol').value, 10) || 0;
+  const reviewMin = parseInt(document.getElementById('adp-review-min').value, 10) || 15;
   const map = adpLoadMap();
   const from = _adp.from, to = _adp.to;
+  const state = adpAuditState(AUDIT_LOG, from, to);
   const people = [], unmatched = [], usedStaff = new Set();
   _adp.employees.forEach(emp => {
     const m = adpMatchName(emp.name, STAFF, map);
     if (!m.staff || usedStaff.has(m.staff.id)) { unmatched.push({ emp, skipped: m.how === 'skip' }); return; }
     usedStaff.add(m.staff.id);
     const shifts = SHIFTS.filter(s => s.staff === m.staff.id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected');
-    const rows = adpCompareStaff(emp.entries, shifts, tol);
+    const rows = adpCompareStaff(adpInferFromErrors(emp.entries), shifts, 0);
+    rows.forEach(r => {
+      r.cls = adpClassify(r, reviewMin);
+      r.key = adpRowKey(m.staff.id, r);
+      r.reviewed = state.reviewed[r.key] || null;
+      if (r.status === 'adp_only') { const sg = adpSuggestHouse(m.staff, r.date, SHIFTS); r.house = _adpHouse[r.key] || sg.house; r.houseWhy = sg.why; r.houseSuggested = sg.house; }
+      r.pay = r.diffHours * adpRate(m.staff, r.shift ? r.shift.location : r.house, r.date);
+      r.open = r.cls.tier !== 'ok' && !r.reviewed && !(r.status === 'adp_zero' && r.adp.usedInInference);
+    });
     people.push({ emp, staff: m.staff, how: m.how, rows, tsCount: shifts.length, adpTotal: emp.entries.reduce((a, x) => a + x.hours, 0), tsTotal: shifts.reduce((a, s) => a + s.hours, 0) });
   });
-  // People with timesheet hours in these dates who have no ADP timecard at all.
   const noCard = STAFF.filter(s => !usedStaff.has(s.id)).map(s => { const sh = SHIFTS.filter(x => x.staff === s.id && x.date >= from && x.date <= to && x.shiftStatus !== 'rejected'); return { staff: s, shifts: sh.length, hours: sh.reduce((a, x) => a + x.hours, 0) }; }).filter(x => x.shifts > 0);
-  return { tol, from, to, people, unmatched, noCard, missing: adpWhoIsMissing(people, unmatched, noCard) };
+  const missing = adpWhoIsMissing(people, unmatched, noCard);
+
+  // What payroll would look like if every proposed correction were applied
+  // (holds stay as they are). One run of the real overtime engine on a copy.
+  const before = computeShiftsWithOT();
+  const live = SHIFTS;
+  let sim = SHIFTS.map(s => ({ ...s }));
+  people.forEach(p => p.rows.forEach(r => {
+    if (!['auto', 'suggest', 'review'].includes(r.cls.tier) || !r.adp || !r.adp.end || r.reviewed) return;
+    if (r.shift) { const t = sim.find(s => s.id === r.shift.id); if (t) { t.start = r.adp.start; t.end = r.adp.end; t.hours = r.adp.hours; } }
+    else if (r.house) sim.push({ id: 'SIM' + sim.length, staff: p.staff.id, date: r.date, location: r.house, start: r.adp.start, end: r.adp.end, hours: r.adp.hours, source: 'adp', shiftStatus: 'active' });
+  }));
+  let after;
+  try { SHIFTS = sim; after = computeShiftsWithOT(); } finally { SHIFTS = live; }
+  const agg = (list, id) => list.filter(s => s.staff === id && s.date >= from && s.date <= to && s.shiftStatus !== 'rejected').reduce((a, s) => ({ hours: a.hours + s.hours, ot: a.ot + s.otHrs, pay: a.pay + s.shiftPay }), { hours: 0, ot: 0, pay: 0 });
+  people.forEach(p => { p.before = agg(before, p.staff.id); p.after = agg(after, p.staff.id); });
+
+  const all = people.flatMap(p => p.rows.map(r => ({ p, r })));
+  const count = t => all.filter(x => x.r.cls.tier === t).length;
+  const stats = {
+    timecards: _adp.employees.length, punches: _adp.employees.reduce((a, e) => a + e.entries.length, 0), staff: people.length,
+    ok: count('ok'), auto: count('auto'), suggest: count('suggest'), review: count('review'), hold: count('hold'), blocked: count('blocked'),
+    reviewed: all.filter(x => x.r.reviewed).length,
+    open: all.filter(x => x.r.open).length + unmatched.filter(u => !u.skipped && u.emp.entries.length).length,
+    adpHours: people.reduce((a, p) => a + p.adpTotal, 0), tsHours: people.reduce((a, p) => a + p.tsTotal, 0),
+    payBefore: people.reduce((a, p) => a + p.before.pay, 0), payAfter: people.reduce((a, p) => a + p.after.pay, 0),
+    otBefore: people.reduce((a, p) => a + p.before.ot, 0), otAfter: people.reduce((a, p) => a + p.after.ot, 0)
+  };
+  return { reviewMin, from, to, people, unmatched, noCard, missing, state, stats, patterns: adpPatterns(people) };
 }
 
-function adpRowAction(row, staff) {
-  if (row.status === 'differs' || (row.status === 'match' && !row.exact)) return `Change timesheet to ${srTime(row.adp.start)} – ${row.adp.end ? srTime(row.adp.end) : '?'} (${srHrs(row.adp.hours)} hrs)`;
-  if (row.status === 'adp_only') return `Add ${srHrs(row.adp.hours)} hr shift at ${staff.loc || 'home house'}`;
-  if (row.status === 'ts_only') return 'Reject this timesheet shift (no ADP punch)';
-  return '';
+let _adpHouse = {};      // house picked by hand for a shift to be added, by row key
+let _adpView = 'work';   // 'work' = the worklist, 'report' = the reconciliation report, 'procedure' = the one-page procedure
+
+function adpActionText(r, staff) {
+  const t = r.cls.tier;
+  if (t === 'blocked') return r.adp.usedInInference ? 'In and out at the same minute. Used to rebuild the shift shown on this day — also fix it in ADP.' : 'In and out at the same minute, 0:00 paid — usually a missed punch. Fix it in ADP and upload again.';
+  if (t === 'hold') return r.adpIssue ? 'ADP has a punch error this day, so this shift was probably worked. It stays on the timesheet. Fix the punch in ADP.' : 'Stays on the timesheet and is paid as entered. Get the missed punch corrected in ADP. Tick only if this shift was NOT worked — it will be rejected.';
+  if (r.shift) return `Set timesheet to ${srTime(r.adp.start)} – ${srTime(r.adp.end)} (${srHrs(r.adp.hours)} hrs)${r.cls.why ? ' · ' + r.cls.why : ''}`;
+  return `Add ${srHrs(r.adp.hours)} hr shift${r.cls.why ? ' · ' + r.cls.why : ''}`;
 }
 
 function adpRender() {
   const b = adpBuild();
-  const canEdit = userCan('editShift');
+  const signed = b.state.signoff;
+  const canEdit = userCan('editShift') && !signed;
   const onlyDiff = document.getElementById('adp-only-diff').checked;
-  const prev = new Set(_adpRows.filter(r => r.checked).map(r => r.key));
+  const prev = {}; _adpRows.forEach(r => { prev[r.key] = r.checked; });
   _adpRows = [];
-  const punches = _adp.employees.reduce((a, e) => a + e.entries.length, 0);
-  document.getElementById('adp-file-status').innerHTML = `<b>${esc(_adp.fileName)}</b> · ${_adp.employees.length} timecards · ${punches} punches · ${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}`;
+  document.getElementById('adp-file-status').innerHTML = `<b>${esc(_adp.fileName)}</b> · ${b.stats.timecards} timecards · ${b.stats.punches} punches · ${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}`;
+  document.getElementById('adp-view-btns').style.display = '';
+  document.querySelectorAll('#adp-view-btns [data-view]').forEach(el => el.classList.toggle('active', el.getAttribute('data-view') === _adpView));
+
+  if (_adpView !== 'work') {
+    document.getElementById('adp-map').innerHTML = '';
+    document.getElementById('adp-output').innerHTML = `<div id="adp-report">${_adpView === 'report' ? adpReportHtml(b) : adpProcedureHtml()}</div>`;
+    return;
+  }
+
+  // ── Sign-off banner ──
+  const S = b.stats;
+  let banner = '';
+  if (signed) banner = `<div class="adp-banner adp-banner-ok">✅ <b>Signed off</b> by ${esc(signed.by)} on ${esc(signed.at)}. This week is closed on this page.${_currentUser && _currentUser.role === 'admin' ? ' <a href="#" onclick="adpReopen();return false;">Reopen</a>' : ''}</div>`;
+  else if (S.open === 0) banner = `<div class="adp-banner adp-banner-ok">Nothing is left unresolved. ${userCan('approveShifts') ? '<button class="btn btn-primary" style="margin-left:10px" onclick="adpSignOff()">Sign off this week</button>' : 'A Program Manager or admin can now sign off this week.'}</div>`;
+  else banner = `<div class="adp-banner"><b>${S.open} item${S.open !== 1 ? 's' : ''} still open.</b> Apply, or mark each one reviewed, before this week can be signed off.</div>`;
 
   // ── Names that could not be matched ──
   const opts = '<option value="">— choose the staff member —</option><option value="__skip__">Not in this system — leave out</option>' + STAFF.slice().sort((x, y) => (x.last + x.first).localeCompare(y.last + y.first)).map(s => `<option value="${esc(s.id)}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})</option>`).join('');
@@ -11364,12 +11552,11 @@ function adpRender() {
   if (need.length || skipped.length) {
     mapHtml = `<div class="card" style="margin-bottom:20px">
       ${need.length ? `<div class="card-title">${need.length} ADP name${need.length !== 1 ? 's' : ''} not matched to a staff member yet</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Pick who each one is. The choice is remembered on this computer for next time. Until then their punches are left out of the comparison.</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Pick who each one is. The choice is remembered on this computer for next time. Until then their punches are left out of the comparison. The system never guesses.</div>
       <div class="adp-map-grid">${need.map(u => `<div class="adp-map-row"><div><b>${esc(u.emp.name)}</b><span>${u.emp.entries.length} punch${u.emp.entries.length !== 1 ? 'es' : ''} · ${adpHm(u.emp.entries.reduce((a, x) => a + x.hours, 0))} hrs</span></div><select data-adp-name="${esc(u.emp.name)}" onchange="adpSetMap(this)">${opts}</select></div>`).join('')}</div>` : ''}
       ${skipped.length ? `<div style="font-size:12px;color:var(--text3);margin-top:${need.length ? 14 : 0}px">Left out on purpose: ${skipped.map(u => `${esc(u.emp.name)} <a href="#" data-adp-name="${esc(u.emp.name)}" onclick="var m=adpLoadMap();delete m[this.getAttribute('data-adp-name')];adpSaveMap(m);adpRender();return false;" style="color:var(--accent2)">undo</a>`).join(' · ')}</div>` : ''}
     </div>`;
   }
-  // ── Who is on one record but not the other ──
   const M = b.missing;
   const person = (x, right) => `<div class="adp-miss-row"><div><b>${esc(x.name)}</b>${x.id ? ` <span class="adp-dim">${esc(x.id)}</span>` : ''}<span>${esc(right)}</span></div></div>`;
   const missHtml = `<div class="card" style="margin-bottom:20px">
@@ -11377,86 +11564,88 @@ function adpRender() {
       <div class="adp-miss">
         <div>
           <div class="adp-miss-h"><span class="badge ${M.adpOnly.length ? 'badge-danger' : 'badge-success'}">${M.adpOnly.length}</span> On the ADP timecard, nothing on the timesheet</div>
-          ${M.adpOnly.length ? M.adpOnly.map(x => person(x, `${x.punches} punch${x.punches !== 1 ? 'es' : ''} \u00B7 ${srHrs(x.hours)} hrs in ADP` + (x.known ? '' : x.skipped ? ' \u00B7 left out on purpose' : ' \u00B7 not a staff member in this system yet \u2014 pick who it is above, or add them on Staff Register'))).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody \u2014 everyone who punched in ADP has timesheet shifts in these dates.</div>'}
+          ${M.adpOnly.length ? M.adpOnly.map(x => person(x, `${x.punches} punch${x.punches !== 1 ? 'es' : ''} · ${srHrs(x.hours)} hrs in ADP` + (x.known ? '' : x.skipped ? ' · left out on purpose' : ' · not a staff member in this system yet — pick who it is above, or add them on Staff Register'))).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody — everyone who punched in ADP has timesheet shifts in these dates.</div>'}
         </div>
         <div>
           <div class="adp-miss-h"><span class="badge ${M.tsOnly.length ? 'badge-danger' : 'badge-success'}">${M.tsOnly.length}</span> On the timesheet, not on the ADP timecard</div>
-          ${M.tsOnly.length ? M.tsOnly.map(x => person(x, `${x.shifts} shift${x.shifts !== 1 ? 's' : ''} \u00B7 ${srHrs(x.hours)} hrs on timesheet \u00B7 ${x.why}`)).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody \u2014 everyone with timesheet hours in these dates has ADP punches.</div>'}
+          ${M.tsOnly.length ? M.tsOnly.map(x => person(x, `${x.shifts} shift${x.shifts !== 1 ? 's' : ''} · ${srHrs(x.hours)} hrs on timesheet · ${x.why}`)).join('') : '<div class="adp-dim" style="padding:6px 0">Nobody — everyone with timesheet hours in these dates has ADP punches.</div>'}
         </div>
       </div>
     </div>`;
-  document.getElementById('adp-map').innerHTML = mapHtml + missHtml;
+  document.getElementById('adp-map').innerHTML = banner + mapHtml + missHtml;
 
-  // ── Comparison ──
-  const count = { match: 0, differs: 0, adp_only: 0, ts_only: 0, adp_zero: 0 };
-  let adpHours = 0, tsHours = 0, body = '';
-  const label = { match: ['Match', 'badge-success'], differs: ['Time differs', 'badge-warn'], adp_only: ['Not on timesheet', 'badge-danger'], ts_only: ['Not in ADP', 'badge-danger'], adp_zero: ['ADP punch error', 'badge-danger'] };
+  // ── Worklist ──
+  const badge = { ok: 'badge-success', auto: 'badge-info', suggest: 'badge-warn', review: 'badge-danger', hold: 'badge-warn', blocked: 'badge-danger' };
+  const houseOpts = sel => LOCATIONS.map(l => `<option value="${esc(l.name)}"${l.name === sel ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
+  let body = '';
   b.people.forEach(p => {
-    adpHours += p.adpTotal; tsHours += p.tsTotal;
-    p.rows.forEach(r => { count[r.status]++; });
-    const shown = p.rows.filter(r => !onlyDiff || r.status !== 'match');
+    const shown = p.rows.filter(r => !onlyDiff || r.cls.tier !== 'ok');
     if (!shown.length) return;
-    const diff = p.adpTotal - p.tsTotal;
+    const diff = p.adpTotal - p.tsTotal, dPay = p.after.pay - p.before.pay, dOT = p.after.ot - p.before.ot;
     body += `<tr class="adp-person"><td colspan="8"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b> <span class="adp-dim">${esc(p.staff.id)} · ADP name “${esc(p.emp.name)}”${p.how === 'close' ? ' · matched on last name + first initial — please confirm' : ''}</span>
-      <span style="float:right" class="mono">Timesheet ${srHrs(p.tsTotal)} · ADP ${srHrs(p.adpTotal)} · <b style="color:${Math.abs(diff) < 0.005 ? 'var(--success)' : 'var(--warn)'}">${diff > 0 ? '+' : ''}${srHrs(diff)}</b></span></td></tr>`;
+      <span style="float:right" class="mono">Timesheet ${srHrs(p.tsTotal)} · ADP ${srHrs(p.adpTotal)} · <b style="color:${Math.abs(diff) < 0.005 ? 'var(--success)' : 'var(--warn)'}">${diff > 0 ? '+' : ''}${srHrs(diff)}</b></span>
+      ${Math.abs(dPay) >= 0.005 || Math.abs(dOT) >= 0.005 ? `<div class="adp-dim" style="margin-top:3px">If everything proposed is applied: pay ${dPay >= 0 ? '+' : '−'}${$fmt(Math.abs(dPay))}${Math.abs(dOT) >= 0.005 ? ` · <b style="color:var(--warn)">overtime ${dOT > 0 ? '+' : ''}${srHrs(dOT)} hrs</b> (${srHrs(p.before.ot)} → ${srHrs(p.after.ot)})` : ''}</div>` : ''}</td></tr>`;
     shown.forEach(r => {
-      const key = p.staff.id + '|' + r.date + '|' + (r.adp ? r.adp.start : '') + '|' + (r.shift ? r.shift.id : '');
-      const fixable = r.status !== 'adp_zero' && (r.status !== 'match' || !r.exact);
+      const tier = r.cls.tier;
       const locked = !!isPeriodLockedForDate(r.date);
-      const noOut = r.adp && r.adp.missingOut;
-      const blockedByIssue = r.status === 'ts_only' && r.adpIssue;
-      const can = canEdit && fixable && !locked && !noOut && !blockedByIssue && (r.status !== 'ts_only' || userCan('approveShifts')) && (r.status !== 'adp_only' || userCan('addShift'));
-      const row = { key, staff: p.staff, row: r, can, checked: can && prev.has(key) };
+      const actionable = ['auto', 'suggest', 'review', 'hold'].includes(tier) && !r.reviewed;
+      const can = canEdit && actionable && !locked && !(r.adp && r.adp.missingOut) && !(tier === 'hold' && (r.adpIssue || !userCan('approveShifts'))) && (r.status !== 'adp_only' || userCan('addShift'));
+      const was = prev[r.key];
+      const row = { key: r.key, staff: p.staff, row: r, can, checked: can && (was === undefined ? tier === 'auto' : was) };
       const idx = _adpRows.push(row) - 1;
-      const why = locked ? '🔒 Pay period is locked' : noOut ? 'ADP has no out punch — fix it in ADP first' : blockedByIssue ? 'ADP has a punch error this day — this shift was probably worked. Fix the punch in ADP, then upload again.' : !canEdit ? 'View only' : '';
-      body += `<tr class="${r.status === 'match' ? 'adp-ok' : ''}">
-        <td>${fixable ? `<input type="checkbox" data-adp-idx="${idx}" ${row.checked ? 'checked' : ''} ${can ? '' : 'disabled'} onchange="adpToggle(this)" aria-label="Apply this correction">` : ''}</td>
+      const note = locked ? '🔒 Pay period is locked' : signed ? 'Signed off' : '';
+      body += `<tr class="${tier === 'ok' || r.reviewed ? 'adp-ok' : ''}">
+        <td>${actionable ? `<input type="checkbox" data-adp-idx="${idx}" ${row.checked ? 'checked' : ''} ${can ? '' : 'disabled'} onchange="adpToggle(this)" aria-label="${tier === 'hold' ? 'Reject this shift' : 'Apply this correction'}">` : ''}</td>
         <td class="mono" style="white-space:nowrap"><b>${srDayName(r.date)}</b> ${esc(formatDateDisplay(r.date))}</td>
         <td>${r.shift ? `<span class="mono">${esc(srTime(r.shift.start))} – ${esc(srTime(r.shift.end))}</span><div class="adp-dim">${esc(r.shift.location || '')}</div>` : '<span class="adp-dim">—</span>'}</td>
         <td class="mono">${r.shift ? srHrs(r.shift.hours) : ''}</td>
-        <td>${r.adp ? `<span class="mono">${esc(srTime(r.adp.start))} – ${r.adp.end ? esc(srTime(r.adp.end)) : '<b style="color:var(--danger2)">no out punch</b>'}</span>${r.adp.ot > 0 ? `<div class="adp-dim">ADP overtime ${adpHm(r.adp.ot)}</div>` : ''}` : '<span class="adp-dim">—</span>'}</td>
+        <td>${r.adp ? `<span class="mono">${esc(srTime(r.adp.start))} – ${r.adp.end ? esc(srTime(r.adp.end)) : '<b style="color:var(--danger2)">no out punch</b>'}</span>${r.adp.inferred ? '<div class="adp-dim">rebuilt from 2 punch-error lines</div>' : ''}${r.adp.ot > 0 ? `<div class="adp-dim">ADP overtime ${adpHm(r.adp.ot)}</div>` : ''}` : '<span class="adp-dim">—</span>'}</td>
         <td class="mono">${r.adp ? srHrs(r.adp.hours) : ''}</td>
-        <td class="mono" style="color:${Math.abs(r.diffHours) < 0.005 ? 'var(--text3)' : 'var(--warn)'}">${Math.abs(r.diffHours) < 0.005 ? '0.00' : (r.diffHours > 0 ? '+' : '') + srHrs(r.diffHours)}</td>
-        <td><span class="badge ${label[r.status][1]}" style="font-size:10px">${label[r.status][0]}</span>${fixable ? `<div class="adp-dim" style="margin-top:3px">${why ? esc(why) : esc(adpRowAction(r, p.staff))}</div>` : ''}${r.status === 'adp_zero' ? '<div class="adp-dim" style="margin-top:3px">In and out at the same minute, 0:00 paid — usually a missed punch. Fix it in ADP; nothing is corrected from this line.</div>' : ''}</td>
+        <td class="mono" style="color:${Math.abs(r.diffHours) < 0.005 ? 'var(--text3)' : 'var(--warn)'}">${Math.abs(r.diffHours) < 0.005 ? '0.00' : (r.diffHours > 0 ? '+' : '') + srHrs(r.diffHours)}${tier !== 'hold' && Math.abs(r.pay) >= 0.005 ? `<div class="adp-dim">${r.pay > 0 ? '+' : '−'}${$fmt(Math.abs(r.pay))}</div>` : ''}</td>
+        <td><span class="badge ${badge[tier]}" style="font-size:10px">${esc(r.cls.label)}</span>
+          ${r.reviewed ? `<div class="adp-dim" style="margin-top:3px">Reviewed — no change. ${esc(r.reviewed.by)}, ${esc(r.reviewed.at)}${r.reviewed.note ? ' · “' + esc(r.reviewed.note) + '”' : ''}${canEdit ? ` <a href="#" data-adp-idx="${idx}" onclick="adpUndoReviewed(this);return false;" style="color:var(--accent2)">undo</a>` : ''}</div>` : tier === 'ok' ? '' : `<div class="adp-dim" style="margin-top:3px">${note ? esc(note) : esc(adpActionText(r, p.staff))}</div>`}
+          ${!r.reviewed && r.status === 'adp_only' ? `<div class="adp-dim" style="margin-top:4px">House: <select data-adp-idx="${idx}" onchange="adpSetHouse(this)" ${can ? '' : 'disabled'} class="adp-house"><option value="">— pick —</option>${houseOpts(r.house)}</select> <span>${r.house === r.houseSuggested ? 'suggested: ' + esc(r.houseWhy) : 'changed by hand'}</span></div>` : ''}
+          ${!r.reviewed && tier !== 'ok' && canEdit && !locked ? `<a href="#" class="adp-dim" data-adp-idx="${idx}" onclick="adpMarkReviewed(this);return false;" style="color:var(--accent2);display:inline-block;margin-top:4px">Mark reviewed — no change</a>` : ''}</td>
       </tr>`;
     });
   });
 
-  const net = adpHours - tsHours;
-  const tile = (l, v, c) => `<div class="adp-tile"><div class="adp-tile-l">${l}</div><div class="adp-tile-v" style="color:${c || 'var(--text)'}">${v}</div></div>`;
-  const selectable = st => _adpRows.filter(r => r.can && r.row.status === st).length;
+  const dPayAll = S.payAfter - S.payBefore, dOTAll = S.otAfter - S.otBefore;
+  const tile = (l, v, c, sub) => `<div class="adp-tile"><div class="adp-tile-l">${l}</div><div class="adp-tile-v" style="color:${c || 'var(--text)'}">${v}</div>${sub ? `<div class="adp-dim">${sub}</div>` : ''}</div>`;
+  const n = t => _adpRows.filter(r => r.can && r.row.cls.tier === t).length;
   document.getElementById('adp-output').innerHTML = `
     <div class="adp-tiles">
-      ${tile('Staff compared', b.people.length)}
-      ${tile('People on ADP only', M.adpOnly.length, M.adpOnly.length ? 'var(--danger2)' : 'var(--success)')}
-      ${tile('People on timesheet only', M.tsOnly.length, M.tsOnly.length ? 'var(--danger2)' : 'var(--success)')}
-      ${tile('Punches that match', count.match, 'var(--success)')}
-      ${tile('Time differs', count.differs, count.differs ? 'var(--warn)' : '')}
-      ${tile('In ADP, not on timesheet', count.adp_only, count.adp_only ? 'var(--danger2)' : '')}
-      ${tile('On timesheet, not in ADP', count.ts_only, count.ts_only ? 'var(--danger2)' : '')}
-      ${count.adp_zero ? tile('ADP punch errors', count.adp_zero, 'var(--danger2)') : ''}
-      ${tile('ADP hours − timesheet hours', (net > 0 ? '+' : '') + srHrs(net), Math.abs(net) < 0.005 ? 'var(--success)' : 'var(--warn)')}
+      ${tile('Exact matches', S.ok, 'var(--success)', 'nothing to do')}
+      ${tile('Ready to apply', S.auto, S.auto ? 'var(--accent2)' : '', `within ${b.reviewMin} min — set to ADP`)}
+      ${tile('Suggested', S.suggest, S.suggest ? 'var(--warn)' : '', 'in ADP, not on timesheet')}
+      ${tile('Needs review', S.review, S.review ? 'var(--danger2)' : '', `more than ${b.reviewMin} min apart`)}
+      ${tile('Needs punch correction', S.hold, S.hold ? 'var(--warn)' : '', 'on timesheet, not in ADP')}
+      ${tile('ADP punch errors', S.blocked, S.blocked ? 'var(--danger2)' : '', 'fix in ADP')}
+      ${tile('Pay effect if applied', (dPayAll >= 0 ? '+' : '−') + $fmt(Math.abs(dPayAll)), Math.abs(dPayAll) < 0.005 ? '' : 'var(--warn)', `overtime ${dOTAll > 0 ? '+' : ''}${srHrs(dOTAll)} hrs`)}
+      ${tile('Still open', S.open, S.open ? 'var(--danger2)' : 'var(--success)', S.reviewed ? `${S.reviewed} marked reviewed` : 'before sign-off')}
     </div>
     ${!b.people.length ? '<div class="sr-empty">None of the ADP names matched a staff member yet — pick them in the list above.</div>' : `
     <div class="adp-bar">
-      <span style="font-size:12px;color:var(--text3)">Tick what to correct:</span>
-      <button class="btn btn-ghost" onclick="adpSelect('differs')">Time differs (${selectable('differs')})</button>
-      <button class="btn btn-ghost" onclick="adpSelect('adp_only')">Missing from timesheet (${selectable('adp_only')})</button>
-      <button class="btn btn-ghost" onclick="adpSelect('ts_only')">Not in ADP (${selectable('ts_only')})</button>
+      <span style="font-size:12px;color:var(--text3)">Tick:</span>
+      <button class="btn btn-ghost" onclick="adpSelect('auto')">All ready (${n('auto')})</button>
+      <button class="btn btn-ghost" onclick="adpSelect('suggest')">All suggested (${n('suggest')})</button>
       <button class="btn btn-ghost" onclick="adpSelect('')">Clear</button>
+      <span style="font-size:11.5px;color:var(--text3)">“Needs review” and “Needs punch correction” are ticked one at a time, on purpose.</span>
       <button class="btn btn-primary" id="adp-apply-btn" style="margin-left:auto" onclick="adpApplySelected()">Apply corrections</button>
     </div>
     <div class="table-wrap"><table class="adp-table">
-      <thead><tr><th></th><th>Date</th><th>Timesheet</th><th>Hrs</th><th>ADP punches</th><th>Hrs</th><th>Diff</th><th>Result / what applying does</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:28px">Every punch matches the timesheet within ${b.tol} minute${b.tol !== 1 ? 's' : ''}. Nothing to correct.</td></tr>`}</tbody>
+      <thead><tr><th></th><th>Date</th><th>Timesheet</th><th>Hrs</th><th>ADP punches</th><th>Hrs</th><th>Diff</th><th>What the system recommends</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:28px">Every punch matches the timesheet exactly. Nothing to correct.</td></tr>'}</tbody>
     </table></div>`}`;
   adpUpdateApplyBtn();
 }
 
+function adpSetView(v) { _adpView = v; if (_adp) adpRender(); }
 function adpToggle(cb) { const r = _adpRows[Number(cb.getAttribute('data-adp-idx'))]; if (r) r.checked = cb.checked; adpUpdateApplyBtn(); }
-function adpSelect(status) {
+function adpSetHouse(sel) { const r = _adpRows[Number(sel.getAttribute('data-adp-idx'))]; if (!r) return; _adpHouse[r.key] = sel.value; adpRender(); }
+function adpSelect(tier) {
   _adpRows.forEach((r, i) => {
-    if (!status) r.checked = false; else if (r.can && r.row.status === status) r.checked = true;
+    if (!tier) r.checked = false; else if (r.can && r.row.cls.tier === tier) r.checked = true;
     const cb = document.querySelector(`input[data-adp-idx="${i}"]`); if (cb) cb.checked = r.checked;
   });
   adpUpdateApplyBtn();
@@ -11467,40 +11656,72 @@ function adpUpdateApplyBtn() {
   btn.textContent = n ? `Apply ${n} correction${n !== 1 ? 's' : ''}` : 'Apply corrections';
   btn.disabled = !n; btn.style.opacity = n ? '' : '0.5';
 }
+function adpPushAudit(type, detail, meta) {
+  if (!AUDIT_LOG) AUDIT_LOG = [];
+  AUDIT_LOG.unshift({ id: 'AT' + Date.now() + Math.random().toString(36).slice(2, 5), type, detail, meta, by: _currentUser ? _currentUser.name : 'System', byRole: _currentUser ? _currentUser.role : 'system', at: new Date().toLocaleString(), ts: Date.now() + (adpPushAudit._n = (adpPushAudit._n || 0) + 1) / 1000 });
+  if (AUDIT_LOG.length > 2000) AUDIT_LOG = AUDIT_LOG.slice(0, 2000);
+}
+function adpMarkReviewed(el) {
+  const r = _adpRows[Number(el.getAttribute('data-adp-idx'))]; if (!r) return;
+  const note = prompt('Why is no change needed? (required — this is kept in the Audit Trail)\n\nExample: "Confirmed with Program Manager, worked as written on the time log sheet."');
+  if (note === null) return;
+  if (note.trim().length < 3) { showToast('A reason is required (at least 3 characters)', 'danger'); return; }
+  adpPushAudit('ADP_REVIEWED', `ADP difference reviewed, no change: ${r.staff.last}, ${r.staff.first}`, `key=${r.key} · ${r.row.date} · ${r.row.cls.label} · note=${note.trim().replace(/\s+/g, ' ')}`);
+  dbSave(); adpRender();
+}
+function adpUndoReviewed(el) {
+  const r = _adpRows[Number(el.getAttribute('data-adp-idx'))]; if (!r) return;
+  adpPushAudit('ADP_REVIEW_UNDONE', `ADP review undone: ${r.staff.last}, ${r.staff.first}`, `key=${r.key} · ${r.row.date}`);
+  dbSave(); adpRender();
+}
+function adpSignOff() {
+  const b = adpBuild();
+  if (b.stats.open) { showToast(`${b.stats.open} item${b.stats.open !== 1 ? 's are' : ' is'} still open`, 'danger'); return; }
+  if (!confirm(`Sign off the ADP reconciliation for ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}?\n\nYou are confirming that every difference between ADP and the timesheet has been corrected or reviewed. Your name and the time are recorded in the Audit Trail, and this week is closed on this page.`)) return;
+  adpPushAudit('ADP_SIGNOFF', `ADP reconciliation signed off: ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to} · ${_adp.fileName} · ${b.stats.staff} staff · ADP ${srHrs(b.stats.adpHours)} hrs · timesheet ${srHrs(b.stats.tsHours)} hrs · ${b.state.corrections.length} corrections · ${b.stats.reviewed} reviewed with no change`);
+  dbSave(); adpRender(); showToast('Week signed off ✅');
+}
+function adpReopen() {
+  const b = adpBuild();
+  const why = prompt('Why is this week being reopened? (required)');
+  if (why === null) return;
+  if (why.trim().length < 3) { showToast('A reason is required', 'danger'); return; }
+  adpPushAudit('ADP_REOPEN', `ADP reconciliation reopened: ${formatDateDisplay(b.from)} – ${formatDateDisplay(b.to)}`, `range=${b.from}..${b.to} · ${why.trim()}`);
+  dbSave(); adpRender();
+}
 
 // Applies ONLY the ticked rows. Every change goes through the same checks
 // as editing a shift by hand (locked pay period, overlapping shifts), is
 // written to the audit trail with the old and new times, and nothing is
-// ever deleted: a timesheet shift with no ADP punch is rejected (still
+// ever deleted: a timesheet shift that was not worked is rejected (still
 // visible, with the reason), not removed.
 async function adpApplySelected() {
   const picked = _adpRows.filter(r => r.checked && r.can);
   if (!picked.length) return;
-  const n = st => picked.filter(r => st.includes(r.row.status)).length;
-  const delta = picked.reduce((a, r) => a + r.row.diffHours, 0);
+  const upd = picked.filter(r => r.row.shift && r.row.cls.tier !== 'hold').length, add = picked.filter(r => !r.row.shift).length, rej = picked.filter(r => r.row.cls.tier === 'hold').length;
+  const delta = picked.reduce((a, r) => a + r.row.diffHours, 0), pay = picked.reduce((a, r) => a + r.row.pay, 0);
   if (!confirm(`Apply ${picked.length} correction${picked.length !== 1 ? 's' : ''} to the timesheet?\n\n` +
-    `• ${n(['differs', 'match'])} shift time${n(['differs', 'match']) !== 1 ? 's' : ''} changed to the ADP punch\n` +
-    `• ${n(['adp_only'])} shift${n(['adp_only']) !== 1 ? 's' : ''} added from ADP\n` +
-    `• ${n(['ts_only'])} timesheet shift${n(['ts_only']) !== 1 ? 's' : ''} rejected (no ADP punch)\n\n` +
-    `Net change to paid hours: ${delta > 0 ? '+' : ''}${srHrs(delta)}\n\nEvery change is recorded in the Audit Trail.`)) return;
+    `• ${upd} shift time${upd !== 1 ? 's' : ''} set to the ADP punch\n` +
+    `• ${add} shift${add !== 1 ? 's' : ''} added from ADP\n` +
+    `• ${rej} timesheet shift${rej !== 1 ? 's' : ''} rejected as not worked\n\n` +
+    `Change to paid hours: ${delta > 0 ? '+' : ''}${srHrs(delta)}  (about ${pay >= 0 ? '+' : '-'}${$fmt(Math.abs(pay))} before overtime)\n\nEvery change is recorded in the Audit Trail under your name.`)) return;
 
   const done = [], skipped = [];
   const who = r => `${r.staff.last}, ${r.staff.first} ${formatDateDisplay(r.row.date)}`;
-  const log = (type, detail, meta) => { if (!AUDIT_LOG) AUDIT_LOG = []; AUDIT_LOG.unshift({ id: 'AT' + Date.now() + Math.random().toString(36).slice(2, 5), type, detail, meta, by: _currentUser ? _currentUser.name : 'System', byRole: _currentUser ? _currentUser.role : 'system', at: new Date().toLocaleString(), ts: Date.now() }); };
   const stamp = `ADP timecard ${_adp.fileName}`;
-  const order = { ts_only: 0, differs: 1, match: 1, adp_only: 2 }; // free up time first, add last
-  picked.sort((a, b) => order[a.row.status] - order[b.row.status]);
+  const order = r => r.row.cls.tier === 'hold' ? 0 : r.row.shift ? 1 : 2; // free up time first, add last
+  picked.sort((a, b) => order(a) - order(b));
 
   for (const r of picked) {
     const row = r.row;
     if (isPeriodLockedForDate(row.date)) { skipped.push(`${who(r)} — pay period is locked`); continue; }
-    if (row.status === 'ts_only') {
+    if (row.cls.tier === 'hold') {
       try {
-        const res = await fetch(`/api/shifts/${encodeURIComponent(row.shift.id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'No matching punch on the ADP timecard' }) });
+        const res = await fetch(`/api/shifts/${encodeURIComponent(row.shift.id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Not worked — no punch on the ADP timecard' }) });
         if (!res.ok) { let msg = 'could not reject'; try { msg = (await res.json()).error || msg; } catch (e) {} skipped.push(`${who(r)} — ${msg}`); continue; }
         const sh = SHIFTS.find(s => s.id === row.shift.id);
-        if (sh) { sh.shiftStatus = 'rejected'; sh.rejectedReason = 'No matching punch on the ADP timecard'; sh.rejectedBy = _currentUser ? _currentUser.name : ''; }
-        log('ADP_CORRECTION', `Shift rejected from ADP match: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${row.shift.start}–${row.shift.end} · ${row.shift.location} · no ADP punch · ${stamp}`);
+        if (sh) { sh.shiftStatus = 'rejected'; sh.rejectedReason = 'Not worked — no punch on the ADP timecard'; sh.rejectedBy = _currentUser ? _currentUser.name : ''; }
+        adpPushAudit('ADP_CORRECTION', `Shift rejected from ADP match: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${row.shift.start}–${row.shift.end} · ${row.shift.location} · not worked, no ADP punch · ${stamp}`);
         done.push(r);
       } catch (e) { skipped.push(`${who(r)} — could not reach the server`); }
       continue;
@@ -11508,25 +11729,25 @@ async function adpApplySelected() {
     const a = row.adp;
     if (!a.end) { skipped.push(`${who(r)} — ADP has no out punch`); continue; }
     if (!(a.hours > 0) || a.hours > 24) { skipped.push(`${who(r)} — ADP hours are not valid`); continue; }
-    const excludeId = row.shift ? row.shift.id : null;
-    const overlap = findOverlappingShift(r.staff.id, row.date, a.start, a.end, excludeId);
+    const overlap = findOverlappingShift(r.staff.id, row.date, a.start, a.end, row.shift ? row.shift.id : null);
     if (overlap && overlap.shiftStatus !== 'rejected') { skipped.push(`${who(r)} — would overlap the ${overlap.start}–${overlap.end} shift at ${overlap.location}; correct that one first`); continue; }
+    const basis = a.inferred ? ' · rebuilt from two ADP punch-error lines' : '';
     if (row.shift) {
       const idx = SHIFTS.findIndex(s => s.id === row.shift.id);
       if (idx < 0) { skipped.push(`${who(r)} — shift no longer exists`); continue; }
       const old = SHIFTS[idx];
       APPROVED_EXCEPTIONS = APPROVED_EXCEPTIONS.filter(x => x.shiftId !== old.id);
       SHIFTS[idx] = { ...old, start: a.start, end: a.end, hours: a.hours, _corrected: true, adpCorrected: { from: `${old.start}-${old.end}`, hours: old.hours, at: todayLocalISO() } };
-      log('ADP_CORRECTION', `Shift corrected to ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · Old: ${old.start}–${old.end} (${numFmt(old.hours)} hrs) → New: ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${stamp}`);
+      adpPushAudit('ADP_CORRECTION', `Shift corrected to ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · Old: ${old.start}–${old.end} (${numFmt(old.hours)} hrs) → New: ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${old.location}${basis} · ${stamp}`);
     } else {
-      const location = r.staff.loc && LOCATIONS.some(l => l.name === r.staff.loc) ? r.staff.loc : '';
-      if (!location) { skipped.push(`${who(r)} — this staff member has no home house to put the shift under; add it on the Timesheet Log instead`); continue; }
+      const location = row.house && LOCATIONS.some(l => l.name === row.house) ? row.house : '';
+      if (!location) { skipped.push(`${who(r)} — pick the house for this shift first`); continue; }
       SHIFTS.push({ id: genId(), date: row.date, staff: r.staff.id, location, start: a.start, end: a.end, hours: a.hours, source: 'adp', shiftStatus: 'active', _new: true });
-      log('ADP_CORRECTION', `Shift added from ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${location} · ${stamp}`);
+      adpPushAudit('ADP_CORRECTION', `Shift added from ADP punch: ${r.staff.last}, ${r.staff.first}`, `${row.date} · ${a.start}–${a.end} (${numFmt(a.hours)} hrs) · ${location}${row.house === row.houseSuggested ? ' (suggested: ' + row.houseWhy + ')' : ' (picked by hand)'}${basis} · ${stamp}`);
     }
     done.push(r);
   }
-  if (done.length) { if (AUDIT_LOG.length > 2000) AUDIT_LOG = AUDIT_LOG.slice(0, 2000); dbSave(); }
+  if (done.length) dbSave();
   _adpRows = [];
   adpRender();
   showToast(`${done.length} correction${done.length !== 1 ? 's' : ''} applied${skipped.length ? ` · ${skipped.length} skipped` : ''}`, skipped.length ? 'warn' : undefined);
@@ -11535,14 +11756,134 @@ async function adpApplySelected() {
   }
 }
 
+// ── Reconciliation Report ──
+// The complete record of one upload: what was compared, who was missing,
+// every difference and what the system recommends, what was actually
+// changed and by whom, habits worth a conversation, and the sign-off.
+function adpReportHtml(b) {
+  const S = b.stats, M = b.missing, signed = b.state.signoff;
+  const dPay = S.payAfter - S.payBefore, dOT = S.otAfter - S.otBefore;
+  const tile = (l, v, sub) => `<div class="sr-tile"><div class="sr-tile-l">${l}</div><div class="sr-tile-v">${v}</div>${sub ? `<div class="sr-tile-s">${sub}</div>` : ''}</div>`;
+  const signNum = (v, money) => Math.abs(v) < 0.005 ? (money ? '$0.00' : '0.00') : (v > 0 ? '+' : '−') + (money ? $fmt(Math.abs(v)) : srHrs(Math.abs(v)));
+  const status = r => r.reviewed ? `Reviewed, no change — ${esc(r.reviewed.by)}${r.reviewed.note ? ': “' + esc(r.reviewed.note) + '”' : ''}` : r.status === 'adp_zero' && r.adp.usedInInference ? 'Used to rebuild the shift' : 'Open';
+  const diffs = b.people.flatMap(p => p.rows.filter(r => r.cls.tier !== 'ok').map(r => ({ p, r })));
+  const P = b.patterns;
+  return `<section class="sr-sheet adp-rep">
+    <div class="sr-head">
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">ADP Timecard Reconciliation Report</div></div></div>
+      <div class="sr-head-r"><div class="sr-period">${esc(formatDateDisplay(b.from))} – ${esc(formatDateDisplay(b.to))}</div>
+        <div class="sr-status ${signed ? 'sr-final' : 'sr-draft'}">${signed ? `Signed off by ${esc(signed.by)}, ${esc(signed.at)}` : S.open ? `Open — ${S.open} item${S.open !== 1 ? 's' : ''} unresolved` : 'Ready for sign-off — nothing unresolved'}</div></div>
+    </div>
+    <div class="sr-key" style="margin-top:8px">ADP file: ${esc(_adp.fileName)} · ${S.timecards} timecards, ${S.punches} punches · A time difference of up to ${b.reviewMin} minutes is “ready to apply”; more than that needs review · Generated ${esc(new Date().toLocaleString())}${_currentUser ? ' by ' + esc(_currentUser.name) : ''}</div>
+
+    <div class="sr-h" style="margin-top:14px">1. Summary</div>
+    <div class="sr-tiles">${tile('Staff compared', S.staff, `${S.timecards} ADP timecards`)}${tile('ADP hours', srHrs(S.adpHours), '')}${tile('Timesheet hours', srHrs(S.tsHours), '')}${tile('Difference', signNum(S.adpHours - S.tsHours), 'ADP minus timesheet')}${tile('Pay effect', signNum(dPay, true), `overtime ${signNum(dOT)} hrs, if all applied`)}</div>
+    <div class="sr-tiles">${tile('Exact matches', S.ok, '')}${tile('Ready to apply', S.auto, 'small difference')}${tile('Suggested', S.suggest, 'in ADP only')}${tile('Needs review', S.review, 'large difference')}${tile('Punch correction', S.hold, 'timesheet only')}${tile('ADP punch errors', S.blocked, '')}${tile('Still open', S.open, `${b.state.corrections.length} corrected, ${S.reviewed} reviewed`)}</div>
+
+    <div class="sr-h" style="margin-top:14px">2. Who is on one record but not the other</div>
+    <div class="sr-two" style="margin-top:4px">
+      <div><b>On the ADP timecard, nothing on the timesheet (${M.adpOnly.length})</b>
+        ${M.adpOnly.length ? `<table class="sr-table sr-mini"><thead><tr><th>Name</th><th class="sr-num">Punches</th><th class="sr-num">ADP hrs</th><th>Note</th></tr></thead><tbody>${M.adpOnly.map(x => `<tr><td>${esc(x.name)}</td><td class="sr-num">${x.punches}</td><td class="sr-num">${srHrs(x.hours)}</td><td>${x.known ? '' : x.skipped ? 'Left out on purpose' : 'Not a staff member in this system'}</td></tr>`).join('')}</tbody></table>` : '<div class="sr-dim">Nobody.</div>'}</div>
+      <div><b>On the timesheet, not on the ADP timecard (${M.tsOnly.length})</b>
+        ${M.tsOnly.length ? `<table class="sr-table sr-mini"><thead><tr><th>Name</th><th class="sr-num">Shifts</th><th class="sr-num">Hrs</th><th>Note</th></tr></thead><tbody>${M.tsOnly.map(x => `<tr><td>${esc(x.name)}</td><td class="sr-num">${x.shifts}</td><td class="sr-num">${srHrs(x.hours)}</td><td>${esc(x.why)}</td></tr>`).join('')}</tbody></table>` : '<div class="sr-dim">Nobody.</div>'}</div>
+    </div>
+
+    <div class="sr-h" style="margin-top:14px">3. By person</div>
+    <table class="sr-table"><thead><tr><th>Staff</th><th class="sr-num">Timesheet</th><th class="sr-num">ADP</th><th class="sr-num">Diff</th><th class="sr-num">Match</th><th class="sr-num">Ready</th><th class="sr-num">Suggest</th><th class="sr-num">Review</th><th class="sr-num">Punch fix</th><th class="sr-num">Open</th><th class="sr-num">OT change</th><th class="sr-num">Pay effect</th></tr></thead>
+      <tbody>${b.people.map(p => { const c = t => p.rows.filter(r => r.cls.tier === t).length; return `<tr><td class="sr-nw"><b>${esc(p.staff.last)}, ${esc(p.staff.first)}</b></td><td class="sr-num">${srHrs(p.tsTotal)}</td><td class="sr-num">${srHrs(p.adpTotal)}</td><td class="sr-num">${signNum(p.adpTotal - p.tsTotal)}</td><td class="sr-num">${c('ok')}</td><td class="sr-num">${c('auto')}</td><td class="sr-num">${c('suggest')}</td><td class="sr-num">${c('review')}</td><td class="sr-num">${c('hold') + c('blocked')}</td><td class="sr-num"><b>${p.rows.filter(r => r.open).length}</b></td><td class="sr-num">${signNum(p.after.ot - p.before.ot)}</td><td class="sr-num">${signNum(p.after.pay - p.before.pay, true)}</td></tr>`; }).join('')}
+      <tr class="sr-tot"><td>TOTAL</td><td class="sr-num">${srHrs(S.tsHours)}</td><td class="sr-num">${srHrs(S.adpHours)}</td><td class="sr-num">${signNum(S.adpHours - S.tsHours)}</td><td class="sr-num">${S.ok}</td><td class="sr-num">${S.auto}</td><td class="sr-num">${S.suggest}</td><td class="sr-num">${S.review}</td><td class="sr-num">${S.hold + S.blocked}</td><td class="sr-num">${S.open}</td><td class="sr-num">${signNum(dOT)}</td><td class="sr-num">${signNum(dPay, true)}</td></tr></tbody></table>
+
+    <div class="sr-h" style="margin-top:14px">4. By house</div>
+    <table class="sr-table sr-mini"><thead><tr><th>House</th><th class="sr-num">Lines compared</th><th class="sr-num">Differences</th><th class="sr-num">Hours difference</th></tr></thead>
+      <tbody>${P.houses.map(h => `<tr><td>${esc(h.house)}</td><td class="sr-num">${h.lines}</td><td class="sr-num">${h.differences}</td><td class="sr-num">${signNum(h.hours)}</td></tr>`).join('') || '<tr><td colspan="4" class="sr-dim">Nothing compared.</td></tr>'}</tbody></table>
+
+    <div class="sr-h" style="margin-top:14px">5. Every difference</div>
+    ${diffs.length ? `<table class="sr-table"><thead><tr><th>Staff</th><th>Date</th><th>Timesheet</th><th>ADP</th><th class="sr-num">Diff</th><th>Class</th><th>Recommended / status</th></tr></thead>
+      <tbody>${diffs.map(({ p, r }) => `<tr><td class="sr-nw">${esc(p.staff.last)}, ${esc(p.staff.first)}</td><td class="sr-nw">${srDayName(r.date)} ${esc(formatDateDisplay(r.date))}</td><td class="sr-nw">${r.shift ? esc(srTime(r.shift.start)) + ' – ' + esc(srTime(r.shift.end)) : '—'}</td><td class="sr-nw">${r.adp ? esc(srTime(r.adp.start)) + ' – ' + (r.adp.end ? esc(srTime(r.adp.end)) : '?') + (r.adp.inferred ? ' *' : '') : '—'}</td><td class="sr-num">${signNum(r.diffHours)}</td><td class="sr-nw">${esc(r.cls.label)}</td><td>${r.reviewed || (r.status === 'adp_zero' && r.adp.usedInInference) ? status(r) : esc(adpActionText(r, p.staff)) + (r.status === 'adp_only' && r.house ? ' at ' + esc(r.house) : '')}</td></tr>`).join('')}</tbody></table>
+      <div class="sr-key">* = shift rebuilt from two ADP punch-error lines on the same day. It is a proposal and always needs review.</div>` : '<div class="sr-dim">No differences — every ADP punch matches the timesheet exactly.</div>'}
+
+    <div class="sr-h" style="margin-top:14px">6. Corrections made (from the Audit Trail)</div>
+    ${b.state.corrections.length ? `<table class="sr-table sr-mini"><thead><tr><th>When</th><th>By</th><th>What</th><th>Detail</th></tr></thead><tbody>${b.state.corrections.map(e => `<tr><td class="sr-nw">${esc(e.at)}</td><td class="sr-nw">${esc(e.by)}</td><td>${esc(e.detail)}</td><td>${esc(String(e.meta || '').replace(/ · ADP timecard .*$/, ''))}</td></tr>`).join('')}</tbody></table>` : '<div class="sr-dim">None yet for these dates.</div>'}
+
+    <div class="sr-h" style="margin-top:14px">7. Habits worth a conversation</div>
+    ${P.who.length ? `<table class="sr-table sr-mini"><thead><tr><th>Staff</th><th class="sr-num">Missed / bad punches</th><th class="sr-num">Punched, not on timesheet</th><th class="sr-num">In 8+ min early</th><th class="sr-num">In 8+ min late</th><th class="sr-num">Out 8+ min late</th></tr></thead><tbody>${P.who.slice(0, 25).map(x => `<tr><td>${esc(x.name)}</td><td class="sr-num">${x.missed || ''}</td><td class="sr-num">${x.unscheduled || ''}</td><td class="sr-num">${x.early || ''}</td><td class="sr-num">${x.lateIn || ''}</td><td class="sr-num">${x.lateOut || ''}</td></tr>`).join('')}</tbody></table>
+      <div class="sr-key">From this one file only. Early and late are measured against the time on the timesheet. Time actually worked is paid even when it was not approved; the habit is handled as a supervision matter.</div>` : '<div class="sr-dim">Nothing stands out in this file.</div>'}
+
+    <div class="sr-h" style="margin-top:14px">8. Decisions that belong to management</div>
+    <div class="sr-key" style="font-size:9.5px;line-height:1.6">• Which record is the record of time worked when ADP and the time log sheet disagree, written as policy and applied the same way every time. • Whether ADP punch errors and missed punches require a signed correction form. • The overtime rule: ADP calculates weekly overtime; this system pays overtime after ${PAY_CONFIG.otThreshold} hours in ${PAY_CONFIG.periodDays} days. • That hours billed match the corrected record. These are wage-and-hour and billing questions for the payroll provider or an employment attorney; this report does not settle them.</div>
+
+    <div class="sr-end">
+      <div class="sr-sign"><div class="sr-sign-row">
+        <div><div class="sr-sign-t">Reconciliation sign-off</div><div class="sr-sign-p">Every difference between the ADP timecard and the timesheet for these dates has been corrected or reviewed, and the timesheet is ready for payroll.</div></div>
+        <div class="sr-line"><div><b class="sr-fill">${signed ? esc(signed.by) + ' (recorded in system)' : ''}</b><i></i>Signature</div><div><b class="sr-fill">${signed ? esc(signed.by) : ''}</b><i></i>Printed name</div><div class="sr-line-d"><b class="sr-fill">${signed ? esc(String(signed.at).split(',')[0]) : ''}</b><i></i>Date</div></div>
+      </div></div>
+      <div class="sr-foot"><span>ASO Time System · ADP Timecard Reconciliation</span><span>Confidential personnel and payroll record</span></div>
+    </div>
+  </section>`;
+}
+
+// ── One-page procedure for managers ──
+function adpProcedureHtml() {
+  const step = (n, t, d) => `<tr><td class="sr-num" style="width:22px"><b>${n}</b></td><td style="width:170px"><b>${t}</b></td><td>${d}</td></tr>`;
+  return `<section class="sr-sheet adp-rep">
+    <div class="sr-head">
+      <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Weekly ADP Timecard Reconciliation — Procedure</div></div></div>
+      <div class="sr-head-r"><div class="sr-period">For Program Managers and payroll</div><div class="sr-status sr-draft">Draft for management approval</div></div>
+    </div>
+    <div class="sr-h" style="margin-top:14px">Purpose</div>
+    <div style="font-size:11px;line-height:1.55">Before payroll runs, every hour we pay is checked against two records: the ADP punches and the timesheet built from the signed time log sheets. Where they disagree, a named person decides, and the decision is kept.</div>
+    <div class="sr-h" style="margin-top:12px">Every week, before payroll</div>
+    <table class="sr-table" style="margin-top:4px"><tbody>
+      ${step(1, 'Enter the time log sheets', 'All signed time log sheets for the week are entered on the Timesheet Log.')}
+      ${step(2, 'Export from ADP', 'Run the Timecard Report in ADP for the same dates and save it as a PDF.')}
+      ${step(3, 'Upload', 'On ADP Timecard Match, choose the PDF. The system matches every punch.')}
+      ${step(4, 'Check the two lists', 'Anyone on ADP but not on the timesheet, and anyone on the timesheet but not on ADP, is explained before going further.')}
+      ${step(5, 'Apply “Ready”', 'Small time differences are set to the ADP punch. One click, already ticked.')}
+      ${step(6, 'Confirm “Suggested”', 'For a punch with no timesheet shift, confirm the person worked and confirm the house, then apply.')}
+      ${step(7, 'Decide “Needs review”', 'For each large difference, ask the Program Manager what happened. Apply the ADP time, or mark it reviewed with the reason.')}
+      ${step(8, 'Fix punches in ADP', '“Needs punch correction” and “ADP punch error” lines are corrected in ADP, then the file is uploaded again. A shift is never removed just because the punch is missing.')}
+      ${step(9, 'Sign off', 'When nothing is open, the Program Manager or admin signs off the week.')}
+      ${step(10, 'File the report', 'Print or save the Reconciliation Report and keep it with the payroll records.')}
+    </tbody></table>
+    <div class="sr-h" style="margin-top:12px">Rules</div>
+    <ul style="margin:4px 0 0;padding-left:16px;font-size:11px;line-height:1.6">
+      <li>Time actually worked is paid, even if it was not approved in advance. Unapproved early or late punching is handled with the employee, not by cutting the hours.</li>
+      <li>Nothing is deleted. A shift that was not worked is rejected with a reason and stays visible.</li>
+      <li>The person who enters the time is not the only person who approves it.</li>
+      <li>Every correction carries a name, a time and the old and new values in the Audit Trail.</li>
+      <li>A missed or wrong punch is corrected in ADP as well as here, so the two records agree.</li>
+      <li>A signed-off week is only reopened by an admin, with a written reason.</li>
+    </ul>
+    <div class="sr-h" style="margin-top:12px">To be decided by management and confirmed with the payroll provider or an employment attorney</div>
+    <ul style="margin:4px 0 0;padding-left:16px;font-size:11px;line-height:1.6">
+      <li>Which record is the record of time worked when the two disagree.</li>
+      <li>Whether a signed correction form is required for a missed punch.</li>
+      <li>The overtime rule to be used, since ADP and the Time System currently calculate it differently.</li>
+      <li>How long these reports are kept.</li>
+    </ul>
+    <div class="sr-end"><div class="sr-foot"><span>ASO Time System · printed from ADP Timecard Match</span><span>Internal procedure</span></div></div>
+  </section>`;
+}
+
+function adpPrint(view) {
+  if (!_adp && view !== 'procedure') { showToast('Choose an ADP Timecard Report first', 'warn'); return; }
+  if (view === 'procedure' && !_adp) { document.getElementById('adp-output').innerHTML = `<div id="adp-report">${adpProcedureHtml()}</div>`; }
+  else { _adpView = view; adpRender(); }
+  setTimeout(() => window.print(), 50);
+}
+window.addEventListener('beforeprint', () => {
+  const pg = document.getElementById('page-adpmatch');
+  if (pg && pg.classList.contains('active') && document.getElementById('adp-report')) document.body.classList.add('adp-printing');
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('adp-printing'));
+
 function adpExportCSV() {
   if (!_adp) { showToast('Choose an ADP Timecard Report first', 'warn'); return; }
   const b = adpBuild();
   const q = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
   const line = arr => arr.map(q).join(',') + '\n';
-  const name = { match: 'Match', differs: 'Time differs', adp_only: 'In ADP, not on timesheet', ts_only: 'On timesheet, not in ADP', adp_zero: 'ADP punch error (0:00)' };
-  let csv = line(['American Safety Options, Inc. — ADP Timecard vs Timesheet']);
-  csv += line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Counts as a match within (minutes)', b.tol]) + line(['Generated', new Date().toLocaleString()]) + '\n';
+  let csv = line(['American Safety Options, Inc. — ADP Timecard Reconciliation']);
+  csv += line(['ADP file', _adp.fileName]) + line(['Dates', `${formatDateDisplay(b.from)} - ${formatDateDisplay(b.to)}`]) + line(['Review needed above (minutes)', b.reviewMin]) + line(['Status', b.state.signoff ? `Signed off by ${b.state.signoff.by}, ${b.state.signoff.at}` : `${b.stats.open} open`]) + line(['Generated', new Date().toLocaleString()]) + '\n';
   csv += line(['PEOPLE ON THE ADP TIMECARD WITH NOTHING ON THE TIMESHEET']) + line(['Name', 'Staff ID', 'ADP punches', 'ADP hrs', 'Note']);
   b.missing.adpOnly.forEach(x => { csv += line([x.name, x.id, x.punches, srHrs(x.hours), x.known ? '' : x.skipped ? 'Left out on purpose' : 'Not a staff member in this system / not matched yet']); });
   if (!b.missing.adpOnly.length) csv += line(['Nobody']);
@@ -11550,15 +11891,17 @@ function adpExportCSV() {
   b.missing.tsOnly.forEach(x => { csv += line([x.name, x.id, x.shifts, srHrs(x.hours), x.why]); });
   if (!b.missing.tsOnly.length) csv += line(['Nobody']);
   csv += '\n' + line(['PUNCH BY PUNCH']);
-  csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Result']);
+  csv += line(['Staff ID', 'Last name', 'First name', 'ADP name', 'Date', 'Day', 'Timesheet house', 'Timesheet in', 'Timesheet out', 'Timesheet hrs', 'ADP in', 'ADP out', 'ADP hrs', 'ADP overtime hrs', 'Difference hrs (ADP - timesheet)', 'Approx pay effect', 'Class', 'Recommended', 'Suggested house', 'Status']);
   b.people.forEach(p => p.rows.forEach(r => {
-    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : '', r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), name[r.status]]);
+    csv += line([p.staff.id, p.staff.last, p.staff.first, p.emp.name, formatDateDisplay(r.date), srDayName(r.date), r.shift ? r.shift.location : '', r.shift ? srTime(r.shift.start) : '', r.shift ? srTime(r.shift.end) : '', r.shift ? srHrs(r.shift.hours) : '', r.adp ? srTime(r.adp.start) : '', r.adp && r.adp.end ? srTime(r.adp.end) : '', r.adp ? srHrs(r.adp.hours) : '', r.adp ? srHrs(r.adp.ot) : '', srHrs(r.diffHours), r.pay.toFixed(2), r.cls.label, r.cls.tier === 'ok' ? '' : adpActionText(r, p.staff), r.status === 'adp_only' ? `${r.house} (${r.houseWhy})` : '', r.cls.tier === 'ok' ? 'Match' : r.reviewed ? `Reviewed, no change - ${r.reviewed.by}: ${r.reviewed.note}` : r.open ? 'Open' : '']);
   }));
-  b.unmatched.forEach(u => u.emp.entries.forEach(x => { csv += line(['', '', '', u.emp.name, formatDateDisplay(x.date), x.day, '', '', '', '', srTime(x.start), x.end ? srTime(x.end) : '', srHrs(x.hours), srHrs(x.ot), '', u.skipped ? 'Left out on purpose' : 'ADP name not matched to a staff member']); }));
+  b.unmatched.forEach(u => u.emp.entries.forEach(x => { csv += line(['', '', '', u.emp.name, formatDateDisplay(x.date), x.day, '', '', '', '', srTime(x.start), x.end ? srTime(x.end) : '', srHrs(x.hours), srHrs(x.ot), '', '', '', '', '', u.skipped ? 'Left out on purpose' : 'ADP name not matched to a staff member']); }));
+  csv += '\n' + line(['CORRECTIONS MADE (AUDIT TRAIL)']) + line(['When', 'By', 'What', 'Detail']);
+  b.state.corrections.forEach(e => { csv += line([e.at, e.by, e.detail, e.meta]); });
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `ASO_ADP_vs_Timesheet_${b.from}_to_${b.to}.csv`;
+  a.href = url; a.download = `ASO_ADP_Reconciliation_${b.from}_to_${b.to}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   showToast('CSV exported ✅');
@@ -11571,6 +11914,10 @@ const AT_ICONS = {
   ADD_SHIFT:        '➕',
   EDIT_SHIFT:       '✏️',
   ADP_CORRECTION:   '🔁',
+  ADP_REVIEWED:     '👁️',
+  ADP_REVIEW_UNDONE:'↩️',
+  ADP_SIGNOFF:      '✅',
+  ADP_REOPEN:       '🔓',
   DELETE_SHIFT:     '🗑️',
   APPROVE_SHIFT:    '✅',
   DENY_SHIFT:       '✕',

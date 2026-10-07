@@ -18,7 +18,7 @@ function extractFunctions(names) {
     }
   }).join('\n\n');
 }
-eval(extractFunctions(['adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing']));
+eval(extractFunctions(['adpHmToHours', 'adpTo24', 'adpMin', 'adpHm', 'adpParseTextPages', 'adpMatchName', 'adpCompareStaff', 'adpWhoIsMissing', 'adpInferFromErrors', 'adpClassify', 'adpSuggestHouse', 'adpPatterns', 'adpAuditState']));
 
 let passed = 0, failed = 0;
 function check(name, condition) { if (condition) { passed++; console.log(`  ✓ ${name}`); } else { failed++; console.log(`  ✗ ${name}`); } }
@@ -125,6 +125,81 @@ check('a name left out on purpose is still listed, marked as such', miss.adpOnly
 check('an ADP card with no punches at all is not reported as ADP only', !names(miss.adpOnly).includes('Empty Card') && miss.adpOnly.length === 3);
 check('staff with timesheet hours and no ADP timecard are listed as timesheet only', miss.tsOnly.some(x => x.id === 'S9' && x.shifts === 2 && near(x.hours, 16)));
 check('staff whose ADP card is empty, or has only punch errors, are listed as timesheet only', miss.tsOnly.some(x => x.id === 'S3') && miss.tsOnly.some(x => x.id === 'S4' && /punch errors/.test(x.why)) && miss.tsOnly.length === 3);
+
+console.log('\nBest-practice sorting (ready / suggested / needs review / punch correction):\n');
+const cls = (adp, shift, min) => adpClassify(adpCompareStaff(adp ? [adp] : [], shift ? [shift] : [], 0)[0], min === undefined ? 15 : min);
+const A1 = (start, end, hours, extra) => Object.assign({ date: '2026-09-29', start, end, hours }, extra || {});
+const T1 = ts('Z', '2026-09-29', '08:00', '16:00', 8);
+check('identical times need nothing', cls(A1('08:00', '16:00', 8), T1).tier === 'ok');
+check('a few minutes off is ready to apply (pre-ticked)', cls(A1('07:56', '16:09', 8.22), T1).tier === 'auto' && cls(A1('07:56', '16:09', 8.22), T1).off === 9);
+check('exactly at the limit is still ready; one minute over needs review', cls(A1('08:15', '16:00', 7.75), T1).tier === 'auto' && cls(A1('08:16', '16:00', 7.73), T1).tier === 'review');
+check('the limit follows the setting (20 min apart is review at 15, ready at 30)', cls(A1('08:00', '16:20', 8.33), T1, 15).tier === 'review' && cls(A1('08:00', '16:20', 8.33), T1, 30).tier === 'auto');
+check('a punch with no timesheet shift is a suggestion, never applied on its own', cls(A1('08:00', '16:00', 8), null).tier === 'suggest');
+check('a timesheet shift with no punch is held for a punch correction, not rejected', cls(null, T1).tier === 'hold' && /punch correction/i.test(cls(null, T1).label));
+check('a punch with no out time always needs review', cls(A1('08:00', null, 0, { missingOut: true }), T1).tier === 'review');
+
+const inf = adpInferFromErrors([
+  { date: '2026-09-28', day: 'Mon', start: '14:03', end: '14:03', hours: 0, zero: true },
+  { date: '2026-09-28', day: 'Mon', start: '22:09', end: '22:09', hours: 0, zero: true },
+  { date: '2026-09-29', day: 'Tue', start: '14:00', end: '22:10', hours: 8.17, zero: false },
+  { date: '2026-10-03', day: 'Sat', start: '15:19', end: '15:19', hours: 0, zero: true },
+  { date: '2026-10-01', day: 'Thu', start: '09:00', end: '09:00', hours: 0, zero: true }, { date: '2026-10-01', day: 'Thu', start: '09:20', end: '09:20', hours: 0, zero: true }
+]);
+const built = inf.filter(x => x.inferred);
+check('two 0:00 punch-error lines on one day are rebuilt into one proposed shift (2:03 PM \u2013 10:09 PM, 8.10 hrs)', built.length === 1 && built[0].date === '2026-09-28' && built[0].start === '14:03' && built[0].end === '22:09' && near(built[0].hours, 8.1));
+check('the two error lines are kept and marked as used', inf.filter(x => x.zero && x.usedInInference).length === 2);
+check('a single error line, or two only 20 minutes apart, is NOT turned into a shift', !inf.some(x => x.inferred && (x.date === '2026-10-03' || x.date === '2026-10-01')));
+check('real punches pass through untouched', inf.some(x => x.date === '2026-09-29' && !x.inferred && near(x.hours, 8.17)));
+const infRows = adpCompareStaff(inf.filter(x => x.date === '2026-09-28'), [ts('W', '2026-09-28', '14:00', '22:00', 8)], 0);
+const infPair = infRows.find(r => r.adp && r.adp.inferred);
+check('a rebuilt shift is paired with the timesheet shift but ALWAYS sent to review, even when the times are close', infPair.shift.id === 'W' && adpClassify(infPair, 15).tier === 'review' && /punch-error/.test(adpClassify(infPair, 15).why));
+check('the error lines themselves are information only', infRows.filter(r => r.status === 'adp_zero').every(r => adpClassify(r, 15).tier === 'blocked'));
+
+console.log('\nSuggesting the house for a shift added from ADP:\n');
+const who = { id: 'S1', loc: 'Home House' };
+const hist = (date, location, extra) => Object.assign({ staff: 'S1', date, location, shiftStatus: 'active', source: 'manual' }, extra || {});
+// Thursday 2026-10-01. Earlier Thursdays: Sep 24, 17, 10, 3.
+check('uses the house worked on the same weekday in recent weeks', adpSuggestHouse(who, '2026-10-01', [hist('2026-09-24', 'East House'), hist('2026-09-17', 'East House'), hist('2026-09-10', 'Home House'), hist('2026-09-22', 'Home House'), hist('2026-09-23', 'Home House')]).house === 'East House');
+check('says why, in plain words', /2 of the last 3 Thursdays/.test(adpSuggestHouse(who, '2026-10-01', [hist('2026-09-24', 'East House'), hist('2026-09-17', 'East House'), hist('2026-09-10', 'Home House')]).why));
+check('falls back to where they usually work when that weekday has no history', adpSuggestHouse(who, '2026-10-01', [hist('2026-09-21', 'West House'), hist('2026-09-22', 'West House'), hist('2026-09-23', 'Home House')]).house === 'West House');
+check('falls back to the home house with no history at all', adpSuggestHouse(who, '2026-10-01', []).house === 'Home House' && adpSuggestHouse(who, '2026-10-01', []).why === 'home house');
+check('ignores rejected shifts, other people, older than 8 weeks, and shifts that were themselves added from ADP',
+  adpSuggestHouse(who, '2026-10-01', [hist('2026-09-24', 'X', { shiftStatus: 'rejected' }), hist('2026-09-17', 'X', { shiftStatus: 'rejected' }), hist('2026-09-24', 'Y', { staff: 'S2' }), hist('2026-09-17', 'Y', { staff: 'S2' }), hist('2026-07-02', 'Z'), hist('2026-07-09', 'Z'), hist('2026-09-24', 'Q', { source: 'adp' }), hist('2026-09-17', 'Q', { source: 'adp' })]).house === 'Home House');
+check('someone with no home house and no history gets a blank to fill in, not a guess', adpSuggestHouse({ id: 'S1', loc: '' }, '2026-10-01', []).house === '');
+
+console.log('\nDecisions and sign-off kept in the Audit Trail:\n');
+const log = [
+  { type: 'ADP_REVIEWED', ts: 1, by: 'Pat', at: 't1', meta: 'key=S1|2026-09-29|x|A \u00B7 2026-09-29 \u00B7 Needs review \u00B7 note=worked as written' },
+  { type: 'ADP_REVIEWED', ts: 2, by: 'Pat', at: 't2', meta: 'key=S2|2026-09-30|x|B \u00B7 2026-09-30 \u00B7 note=ok' },
+  { type: 'ADP_REVIEW_UNDONE', ts: 3, by: 'Pat', at: 't3', meta: 'key=S2|2026-09-30|x|B \u00B7 2026-09-30' },
+  { type: 'ADP_CORRECTION', ts: 4, by: 'Pat', at: 't4', detail: 'Shift corrected', meta: '2026-09-28 \u00B7 Old: 08:00\u201316:00' },
+  { type: 'ADP_CORRECTION', ts: 5, by: 'Pat', at: 't5', detail: 'Shift corrected', meta: '2026-10-09 \u00B7 another week' },
+  { type: 'ADP_SIGNOFF', ts: 6, by: 'Lee', at: 't6', meta: 'range=2026-09-27..2026-10-03 \u00B7 file' },
+  { type: 'EDIT_SHIFT', ts: 7, by: 'Pat', at: 't7', meta: 'unrelated' }
+];
+const st1 = adpAuditState(log, '2026-09-27', '2026-10-03');
+check('a reviewed decision is remembered with who, when and why', st1.reviewed['S1|2026-09-29|x|A'].by === 'Pat' && st1.reviewed['S1|2026-09-29|x|A'].note === 'worked as written');
+check('an undone review is forgotten', !st1.reviewed['S2|2026-09-30|x|B']);
+check('only corrections inside the report dates are listed', st1.corrections.length === 1 && st1.corrections[0].ts === 4);
+check('the sign-off for these exact dates is found', st1.signoff && st1.signoff.by === 'Lee');
+check('a sign-off for one week does not close a different week', adpAuditState(log, '2026-10-04', '2026-10-10').signoff === null);
+check('reopening after sign-off opens the week again', adpAuditState(log.concat([{ type: 'ADP_REOPEN', ts: 8, by: 'Admin', at: 't8', meta: 'range=2026-09-27..2026-10-03 \u00B7 late punch fix' }]), '2026-09-27', '2026-10-03').signoff === null);
+check('the order entries arrive in does not matter, only their time', adpAuditState(log.slice().reverse(), '2026-09-27', '2026-10-03').signoff.by === 'Lee' && !adpAuditState(log.slice().reverse(), '2026-09-27', '2026-10-03').reviewed['S2|2026-09-30|x|B']);
+check('an empty or missing audit log is handled', adpAuditState(null, 'a', 'b').signoff === null && adpAuditState([], 'a', 'b').corrections.length === 0);
+
+console.log('\nHabits worth a conversation:\n');
+const mk = (id, first, rows) => ({ staff: { id, first, last: 'X', loc: 'Home House' }, rows });
+const pr = (status, dIn, dOut, tier, loc) => ({ status, dIn, dOut, diffHours: 0.5, adp: status === 'ts_only' ? null : { inferred: false }, shift: status === 'adp_only' || status === 'adp_zero' ? null : { location: loc || 'Home House' }, cls: { tier } });
+const pat = adpPatterns([
+  mk('S1', 'Early', [pr('differs', -12, 0, 'auto'), pr('differs', -9, 14, 'auto'), pr('match', 0, 0, 'ok')]),
+  mk('S2', 'Misser', [pr('ts_only', null, null, 'hold'), pr('adp_zero', null, null, 'blocked'), pr('adp_only', null, null, 'suggest')]),
+  mk('S3', 'Fine', [pr('match', 0, 0, 'ok'), pr('differs', 3, -2, 'auto', 'East House')])
+]);
+check('counts early punch-ins and late punch-outs per person (8 minutes or more)', pat.who.find(x => x.id === 'S1').early === 2 && pat.who.find(x => x.id === 'S1').lateOut === 1);
+check('counts missed or bad punches and punches with no timesheet shift', pat.who.find(x => x.id === 'S2').missed === 2 && pat.who.find(x => x.id === 'S2').unscheduled === 1);
+check('someone with only small differences is not listed', !pat.who.some(x => x.id === 'S3'));
+check('missed punches rank above early punch-ins', pat.who[0].id === 'S2');
+check('differences are totalled by house', pat.houses.find(h => h.house === 'Home House').differences === 5 && pat.houses.find(h => h.house === 'East House').differences === 1 && pat.houses.find(h => h.house === 'Home House').lines === 7);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
