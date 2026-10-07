@@ -30,11 +30,26 @@ I get to it two ways:
 - Inactive staff with hours
 - **Overtime cross-check** — when hours beyond 40 in a workweek are more than the overtime the system is paying under the 80-hours-per-14-days rule
 
-## Options
-- **Show pay amounts** — I turn this off for an hours-only copy.
-- **Show items to review** / **Signature lines** — on by default.
-- **Include staff with no hours** — adds an empty sheet for active staff with nothing recorded.
-- **Custom date range** — at the bottom of the Pay Period list.
+## Choosing how I want the report
+**Report by** — three ways to pick the dates:
+- **Pay period** — one whole pay period.
+- **Date range** — any From and To dates (up to a year).
+- **Single date** — one day only.
+
+**Layout** — two versions of the sheet:
+- **Full report** — everything listed above, plus an "at a glance" line (average shift, longest shift, weekend days, overnight shifts, houses worked, days in a row, year to date) and the hire date.
+- **Signature copy** — only what the employee needs to sign: their name and the pay period dates in large type, each day's house, time in, time out and hours, the total, and the signature lines. The employee's name is already printed on the "Printed name" line and the dates are printed in the statement they sign.
+
+**Tick boxes** — each one can be changed on either layout:
+- **Include pay amounts** — on for the full report, off for the signature copy.
+- **Signature lines**
+- **Items to review**
+- **List every day (show days off)** — shows every date in the range, with "Off" or "Time off" on days with no shift.
+- **Add a summary page for all staff** — one page that prints first, with a line per person and a total.
+- **Include staff with no hours**
+
+## Where the times come from
+Shifts the office types in come from the time log sheets staff fill in to register their time, so the report now calls them **Time log** (it used to say "Manual"). Shifts from the clock in/out buttons say **Clock**, and ones a supervisor clocked for someone say **Override**.
 
 ## Getting it out
 - **Print** — one staff member per page, letter size. What I see on screen is what prints.
@@ -54,7 +69,7 @@ The overtime cross-check only *shows* the difference between "over 40 in a week"
 
 ## How I check it still works
 ```
-node test-staff-report.js      (36 checks: pay period dates + report math)
+node test-staff-report.js      (45 checks: pay period dates + report math + layouts)
 node test.js                   (117 checks)
 node test-meal-breaks.js
 node test-tax-brackets.js

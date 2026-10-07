@@ -1374,10 +1374,11 @@
      The sheet is styled as white paper on purpose, even inside the dark
      app, so what is on screen is exactly what comes out of the printer.
   ═══════════════════════════════════════════════════════ */
-  .sr-controls-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:end; }
+  .sr-controls-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:16px; align-items:end; }
+  .sr-range { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   @media(max-width:860px){ .sr-controls-grid { grid-template-columns:1fr; } }
   .sr-controls-grid label.sr-lbl, .sr-custom label.sr-lbl { display:block; font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.8px; font-family:var(--mono); margin-bottom:8px; }
-  .sr-controls-grid select, .sr-custom input { width:100%; font-size:13px; padding:10px 12px; border:1px solid var(--border2); color:var(--text); font-family:var(--sans); background:var(--surface2); border-radius:8px; }
+  .sr-controls-grid select, .sr-controls-grid input[type=date], .sr-custom input { width:100%; font-size:13px; padding:10px 12px; border:1px solid var(--border2); color:var(--text); font-family:var(--sans); background:var(--surface2); border-radius:8px; }
   .sr-custom { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; max-width:520px; }
   .sr-opts { display:flex; gap:20px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
   .sr-opts label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text2); cursor:pointer; }
@@ -1427,21 +1428,31 @@
   .sr-sheet .sr-src { font-size:9.5px; color:#4a5868; }
   .sr-sheet .sr-flag { color:#aa2d28; font-weight:600; }
   .sr-sheet tr.sr-rej .sr-flag { color:#aa2d28; }
+  .sr-facts { display:flex; flex-wrap:nowrap; justify-content:space-between; gap:12px; margin-top:7px; padding:0 2px; font-size:10px; font-weight:600; color:#16283c; white-space:nowrap; }
+  .sr-facts span { display:block; font-size:7.5px; font-weight:400; letter-spacing:.6px; text-transform:uppercase; color:#647182; }
+  .sr-who { display:flex; flex-wrap:wrap; gap:6px 34px; align-items:flex-end; margin-top:12px; padding:10px 14px; background:#eef3f9; border-radius:5px; font-size:11.5px; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sr-who span { display:block; font-size:8.5px; font-weight:400; letter-spacing:.7px; text-transform:uppercase; color:#647182; }
+  .sr-who b { font-size:19px; letter-spacing:-0.3px; color:#16283c; }
+  .sr-sheet .sr-table-lg td { font-size:12px; padding:5px 8px; }
+  .sr-sheet .sr-table-lg th { font-size:10px; padding:6px 8px; }
+  .sr-sheet .sr-table-lg tr.sr-tot td { font-size:12px; }
+  .sr-sheet .sr-table tr.sr-off td { color:#7a8797; }
+  .sr-fill { display:block; height:13px; line-height:13px; font-size:11.5px; font-weight:700; color:#16283c; white-space:nowrap; overflow:hidden; }
   .sr-key { font-size:8.5px; color:#647182; margin-top:5px; line-height:1.45; }
 
-  .sr-two { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:10px; }
+  .sr-two { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:8px; }
   .sr-h { font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#0b5fa8; border-bottom:1px solid #cdd5e0; padding-bottom:3px; margin-bottom:2px; }
   .sr-sheet table.sr-mini { margin-top:0; }
   .sr-sheet .sr-mini th { background:#fff; color:#647182; font-size:8.5px; padding:4px 6px 3px; border-bottom:1px solid #dde3ea; }
 
-  .sr-notes { margin-top:10px; }
+  .sr-notes { margin-top:8px; }
   .sr-notes ul { list-style:none; margin:4px 0 0; padding:0; }
   .sr-notes li { display:flex; gap:10px; padding:2px 0; font-size:10.5px; color:#16283c; break-inside:avoid; }
   .sr-lvl { flex:0 0 70px; font-size:8.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; padding-top:1px; color:#647182; }
   .sr-n-action .sr-lvl { color:#aa2d28; }
   .sr-n-check .sr-lvl { color:#965f0a; }
 
-  .sr-sign { margin-top:12px; border:1px solid #cdd5e0; border-radius:5px; break-inside:avoid; page-break-inside:avoid; }
+  .sr-sign { margin-top:10px; border:1px solid #cdd5e0; border-radius:5px; break-inside:avoid; page-break-inside:avoid; }
   .sr-sign-row { display:grid; grid-template-columns:40% 1fr; gap:20px; align-items:end; padding:7px 12px 6px; }
   .sr-sign-row + .sr-sign-row { border-top:1px solid #cdd5e0; }
   .sr-sign-t { font-size:9.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#0b5fa8; }
@@ -1465,6 +1476,8 @@
     body.sr-printing .sr-sheet .sr-table { font-size:10.5px !important; }
     body.sr-printing .sr-sheet .sr-table th { padding:5px 6px !important; color:#fff !important; }
     body.sr-printing .sr-sheet .sr-table td { padding:2.5px 6px !important; }
+    body.sr-printing .sr-sheet .sr-table-lg td { padding:5px 8px !important; font-size:12px !important; }
+    body.sr-printing .sr-sheet .sr-table-lg th { padding:6px 8px !important; font-size:10px !important; }
     body.sr-printing .sr-sheet .sr-mini th { padding:4px 6px 3px !important; color:#000 !important; }
     body.sr-printing .sr-sheet .sr-table tr.sr-tot td { color:#fff !important; }
     body.sr-printing .sr-sheet .sr-table thead { display:table-header-group; }
@@ -2137,8 +2150,24 @@
         <div class="card sr-noprint" style="margin-bottom:20px">
           <div class="sr-controls-grid">
             <div>
+              <label class="sr-lbl" for="sr-mode">🗓️ Report by</label>
+              <select id="sr-mode" onchange="srGenerate()">
+                <option value="period">Pay period</option>
+                <option value="range">Date range (from – to)</option>
+                <option value="day">Single date</option>
+              </select>
+            </div>
+            <div id="sr-period-wrap">
               <label class="sr-lbl" for="sr-period">📅 Pay Period</label>
               <select id="sr-period" onchange="srGenerate()" style="border-color:var(--accent);color:var(--accent2);font-family:var(--mono);font-weight:600"></select>
+            </div>
+            <div id="sr-range-wrap" class="sr-range" style="display:none">
+              <div><label class="sr-lbl" for="sr-from">From</label><input type="date" id="sr-from" onchange="srGenerate()"></div>
+              <div><label class="sr-lbl" for="sr-to">To</label><input type="date" id="sr-to" onchange="srGenerate()"></div>
+            </div>
+            <div id="sr-day-wrap" style="display:none">
+              <label class="sr-lbl" for="sr-day">📅 Date</label>
+              <input type="date" id="sr-day" onchange="srGenerate()">
             </div>
             <div>
               <label class="sr-lbl" for="sr-house">🏠 House</label>
@@ -2148,15 +2177,20 @@
               <label class="sr-lbl" for="sr-staff">👤 Staff Member</label>
               <select id="sr-staff" onchange="srGenerate()"></select>
             </div>
-          </div>
-          <div class="sr-custom" id="sr-custom-wrap" style="display:none">
-            <div><label class="sr-lbl" for="sr-from">From</label><input type="date" id="sr-from" onchange="srGenerate()"></div>
-            <div><label class="sr-lbl" for="sr-to">To</label><input type="date" id="sr-to" onchange="srGenerate()"></div>
+            <div>
+              <label class="sr-lbl" for="sr-layout">📄 Layout</label>
+              <select id="sr-layout" onchange="srLayoutChanged()">
+                <option value="full">Full report — hours, pay, review items</option>
+                <option value="sign">Signature copy — name, dates and times only</option>
+              </select>
+            </div>
           </div>
           <div class="sr-opts">
-            <label id="sr-opt-pay-wrap"><input type="checkbox" id="sr-opt-pay" checked onchange="srGenerate()"> Show pay amounts</label>
-            <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Show items to review</label>
+            <label id="sr-opt-pay-wrap"><input type="checkbox" id="sr-opt-pay" checked onchange="srGenerate()"> Include pay amounts</label>
             <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Signature lines</label>
+            <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Items to review</label>
+            <label><input type="checkbox" id="sr-opt-days" onchange="srGenerate()"> List every day (show days off)</label>
+            <label id="sr-opt-cover-wrap"><input type="checkbox" id="sr-opt-cover" onchange="srGenerate()"> Add a summary page for all staff</label>
             <label id="sr-opt-empty-wrap"><input type="checkbox" id="sr-opt-empty" onchange="srGenerate()"> Include staff with no hours</label>
           </div>
         </div>
@@ -10136,7 +10170,20 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed) {
   if (payType === 'external') notes.push({ level: 'info', text: 'Paid through the external payroll program — pay is not calculated from the hours listed here.' });
   if (!rows.length) notes.push({ level: 'info', text: 'No hours recorded in this date range.' });
 
-  return { staff: st, from: fromISO, to: toISO, payType, rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, notes };
+  // ── At a glance ──
+  const isWeekend = iso => { const [y, m, d] = iso.split('-').map(Number); const wd = new Date(y, m - 1, d).getDay(); return wd === 0 || wd === 6; };
+  const stats = {
+    avgShift: counted.length ? totals.hours / counted.length : 0,
+    weekendDays: dates.filter(isWeekend).length,
+    overnight: counted.filter(r => r.overnight).length,
+    houses: houses.length
+  };
+  // Year to date: January 1 of the report's last year through its last date.
+  const yStart = toISO.slice(0, 4) + '-01-01';
+  const ytdRows = allComputed.filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.date >= yStart && s.date <= toISO);
+  const ytd = { hours: ytdRows.reduce((a, s) => a + s.hours, 0), ot: ytdRows.reduce((a, s) => a + s.otHrs, 0), gross: ytdRows.reduce((a, s) => a + s.shiftPay, 0) };
+
+  return { staff: st, from: fromISO, to: toISO, payType, rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
 }
 
 // Is this date range already locked by a confirmed payroll run? A printed
@@ -10186,12 +10233,13 @@ function renderStaffReportPage() {
   const pre = _srPrefill; _srPrefill = null;
   const periods = srPeriodList();
   const cur = periods.find(p => p.isCurrent);
-  const prevPeriod = pre && pre.periodStart ? pre.periodStart : (perSel.value || (cur ? cur.start : (periods[0] ? periods[0].start : 'custom')));
+  const prevPeriod = pre && pre.periodStart ? pre.periodStart : (perSel.value || (cur ? cur.start : (periods[0] ? periods[0].start : '')));
   perSel.innerHTML = periods.map(p => {
     const n = SHIFTS.filter(s => s.date >= p.start && s.date <= p.end).length;
     return `<option value="${esc(p.start)}" data-end="${esc(p.end)}" data-label="${esc(p.label)}">${esc(p.label)}${p.isCurrent ? ' ← CURRENT' : ''}${n ? ' (' + n + ')' : ''}</option>`;
-  }).join('') + '<option value="custom">Custom date range…</option>';
-  perSel.value = [...perSel.options].some(o => o.value === prevPeriod) ? prevPeriod : 'custom';
+  }).join('');
+  if ([...perSel.options].some(o => o.value === prevPeriod)) perSel.value = prevPeriod;
+  if (pre && pre.periodStart) document.getElementById('sr-mode').value = 'period';
 
   const prevHouse = pre ? (pre.house || '') : houseSel.value;
   houseSel.innerHTML = '<option value="">All houses</option>' + LOCATIONS.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('');
@@ -10207,13 +10255,24 @@ function renderStaffReportPage() {
   srGenerate();
 }
 
+// "Report by" decides what the dates mean: a whole pay period, any two
+// dates, or one single day. Whatever is chosen, overtime on each shift is
+// still the overtime payroll worked out for that shift's full pay period.
 function srGetRange() {
-  const perSel = document.getElementById('sr-period');
-  const custom = perSel.value === 'custom';
-  document.getElementById('sr-custom-wrap').style.display = custom ? '' : 'none';
-  if (!custom) {
+  const mode = document.getElementById('sr-mode').value;
+  document.getElementById('sr-period-wrap').style.display = mode === 'period' ? '' : 'none';
+  document.getElementById('sr-range-wrap').style.display = mode === 'range' ? '' : 'none';
+  document.getElementById('sr-day-wrap').style.display = mode === 'day' ? '' : 'none';
+  if (mode === 'period') {
+    const perSel = document.getElementById('sr-period');
     const opt = perSel.options[perSel.selectedIndex];
-    return { from: perSel.value, to: opt.getAttribute('data-end'), label: opt.getAttribute('data-label'), isPeriod: true };
+    if (!opt) return { error: 'No pay periods are set up yet.' };
+    return { from: perSel.value, to: opt.getAttribute('data-end'), label: opt.getAttribute('data-label'), mode, isPeriod: true };
+  }
+  if (mode === 'day') {
+    const dayEl = document.getElementById('sr-day');
+    if (!dayEl.value) dayEl.value = todayLocalISO();
+    return { from: dayEl.value, to: dayEl.value, label: `${srDayName(dayEl.value)} ${formatDateDisplay(dayEl.value)}`, mode, isPeriod: false };
   }
   const fromEl = document.getElementById('sr-from'), toEl = document.getElementById('sr-to');
   if (!fromEl.value || !toEl.value) {
@@ -10222,8 +10281,19 @@ function srGetRange() {
     if (!toEl.value) toEl.value = cp.end;
   }
   if (toEl.value < fromEl.value) return { error: 'The "To" date is before the "From" date.' };
-  if (calendarDayDiff(fromEl.value, toEl.value) > 371) return { error: 'Please keep a custom range to one year or less.' };
-  return { from: fromEl.value, to: toEl.value, label: `${formatDateDisplay(fromEl.value)} – ${formatDateDisplay(toEl.value)}`, isPeriod: false };
+  if (calendarDayDiff(fromEl.value, toEl.value) > 371) return { error: 'Please keep a date range to one year or less.' };
+  return { from: fromEl.value, to: toEl.value, label: `${formatDateDisplay(fromEl.value)} – ${formatDateDisplay(toEl.value)}`, mode, isPeriod: false };
+}
+
+// Switching layout sets the tick boxes to what that layout is normally
+// used for. Every box can still be changed by hand afterwards.
+function srLayoutChanged() {
+  const sign = document.getElementById('sr-layout').value === 'sign';
+  document.getElementById('sr-opt-pay').checked = !sign && srCanSeePay();
+  document.getElementById('sr-opt-notes').checked = !sign;
+  document.getElementById('sr-opt-sign').checked = true;
+  document.getElementById('sr-opt-days').checked = sign;
+  srGenerate();
 }
 
 function srGenerate() {
@@ -10238,9 +10308,12 @@ function srGenerate() {
   const house = document.getElementById('sr-house').value;
   const includeEmpty = document.getElementById('sr-opt-empty').checked;
   const opts = {
+    layout: document.getElementById('sr-layout').value === 'sign' ? 'sign' : 'full',
     showPay: srCanSeePay() && document.getElementById('sr-opt-pay').checked,
     showNotes: document.getElementById('sr-opt-notes').checked,
-    showSign: document.getElementById('sr-opt-sign').checked
+    showSign: document.getElementById('sr-opt-sign').checked,
+    everyDay: document.getElementById('sr-opt-days').checked && calendarDayDiff(range.from, range.to) <= 62,
+    cover: document.getElementById('sr-opt-cover').checked
   };
   const all = computeShiftsWithOT();
   const inRange = all.filter(s => s.date >= range.from && s.date <= range.to);
@@ -10260,6 +10333,7 @@ function srGenerate() {
   staffSel.value = pool.some(s => s.id === want) ? want : '';
   const one = staffSel.value;
   document.getElementById('sr-opt-empty-wrap').style.display = one ? 'none' : '';
+  document.getElementById('sr-opt-cover-wrap').style.display = one ? 'none' : '';
 
   const hasRows = new Set(inRange.map(s => s.staff));
   let chosen;
@@ -10267,20 +10341,24 @@ function srGenerate() {
   else chosen = pool.filter(s => hasRows.has(s.id) || (includeEmpty && s.status === 'Active'));
 
   const reports = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all));
+  if (reports.length < 2) opts.cover = false;
   const meta = {
     range, house, status: srRangeStatus(range.from, range.to),
     generatedBy: _currentUser ? (_currentUser.name || _currentUser.username || '') : '',
     generatedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' })
   };
+  // How the dates are worded everywhere on the sheet.
+  meta.rangeText = range.mode === 'day' ? `${srDayName(range.from)} ${formatDateDisplay(range.from)}` : `${formatDateDisplay(range.from)} – ${formatDateDisplay(range.to)}`;
+  meta.rangeWord = range.mode === 'period' ? 'Pay period' : range.mode === 'day' ? 'Date' : 'Dates';
   _srLast = { reports, opts, meta };
 
   if (!reports.length) {
     overview.innerHTML = '';
-    out.innerHTML = `<div class="sr-empty">No hours recorded for ${esc(range.label)}${house ? ' at ' + esc(house) : ''}.<br><span style="font-size:12px">Pick a different pay period, or tick “Include staff with no hours”.</span></div>`;
+    out.innerHTML = `<div class="sr-empty">No hours recorded for ${esc(range.label)}${house ? ' at ' + esc(house) : ''}.<br><span style="font-size:12px">Pick different dates, or tick “Include staff with no hours”.</span></div>`;
     return;
   }
   overview.innerHTML = reports.length > 1 ? srOverviewHtml(reports, opts, meta) : '';
-  out.innerHTML = reports.map((r, i) => srSheetHtml(r, opts, meta, i + 1, reports.length)).join('');
+  out.innerHTML = (opts.cover ? srCoverHtml(reports, opts, meta) : '') + reports.map((r, i) => srSheetHtml(r, opts, meta, i + 1, reports.length)).join('');
 }
 
 // On-screen only: a one-line-per-person roll-up of the whole batch, so the
@@ -10315,22 +10393,138 @@ function srOverviewHtml(reports, opts, meta) {
   </div>`;
 }
 
-function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : 'Manual'; }
+// Shifts typed in by the office come from the paper time log sheets staff
+// fill in to register their time, so that is what the report calls them.
+function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : 'Time log'; }
 function srLeaveLabel(t) { return t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : 'Time off'; }
-
-function srSheetHtml(r, opts, meta, n, total) {
-  const st = r.staff, T = r.totals;
-  const showPay = opts.showPay && r.payType === 'hourly';
-  const cols = showPay ? 10 : 9;
-  const rateText = r.payType === 'salary' ? 'Salary' : r.payType === 'external' ? 'External payroll'
+function srRateText(r) {
+  const st = r.staff;
+  return r.payType === 'salary' ? 'Salary' : r.payType === 'external' ? 'External payroll'
     : !r.rates.length ? (st.rate > 0 ? $fmt(st.rate) + '/hr' : 'House rate')
     : r.rates.length === 1 ? $fmt(r.rates[0]) + '/hr' : $fmt(r.rates[0]) + ' – ' + $fmt(r.rates[r.rates.length - 1]) + '/hr';
+}
+
+// One list of "lines" per week, shared by the screen, the printout and the
+// PDF: either a shift, or (when "List every day" is on) a day with nothing
+// worked, shown as Off or as approved time off.
+function srWeekLines(r, w, everyDay) {
+  if (!everyDay) return w.rows.map(x => ({ kind: 'shift', x }));
+  const lines = [];
+  let d = w.start < r.from ? r.from : w.start;
+  const last = w.end > r.to ? r.to : w.end;
+  for (let guard = 0; d <= last && guard < 8; guard++, d = srAddDays(d, 1)) {
+    const dayRows = w.rows.filter(x => x.date === d);
+    if (dayRows.length) dayRows.forEach(x => lines.push({ kind: 'shift', x }));
+    else {
+      const lv = r.leave.find(l => l.status === 'approved' && l.startDate <= d && l.endDate >= d);
+      lines.push({ kind: 'off', date: d, day: srDayName(d), text: lv ? 'Time off — ' + srLeaveLabel(lv.type) : 'Off' });
+    }
+  }
+  return lines;
+}
+
+function srSignHtml(r, meta) {
+  const st = r.staff;
+  const fill = t => `<b class="sr-fill">${t}</b>`;
+  return `<div class="sr-sign">
+      <div class="sr-sign-row">
+        <div><div class="sr-sign-t">Employee</div><div class="sr-sign-p">The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${esc(meta.rangeWord)}: <b>${esc(meta.rangeText)}</b>.</div></div>
+        <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(esc(st.first) + ' ' + esc(st.last))}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
+      </div>
+      <div class="sr-sign-row">
+        <div><div class="sr-sign-t">Program Manager / Supervisor</div><div class="sr-sign-p">I have reviewed these hours against the schedule and the time log sheets, and I approve this timesheet for payroll.</div></div>
+        <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill('')}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
+      </div>
+    </div>`;
+}
+
+function srNotesHtml(r) {
+  const lvlLabel = { action: 'Settle first', check: 'Check', info: 'Note' };
+  return `<div class="sr-notes">
+      <div class="sr-h">Items to review before signing</div>
+      ${r.notes.length ? `<ul>${r.notes.map(nt => `<li class="sr-n-${nt.level}"><span class="sr-lvl">${lvlLabel[nt.level]}</span>${esc(nt.text)}</li>`).join('')}</ul>` : '<div class="sr-dim">Nothing flagged — no missed meal breaks, overrides, rejected shifts or pending entries in these dates.</div>'}
+    </div>`;
+}
+
+function srFootHtml(meta, n, total) {
+  return `<div class="sr-foot">
+      <span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span>
+      <span>Confidential personnel and payroll record · ${n} of ${total}</span>
+    </div>`;
+}
+
+function srSheetHtml(r, opts, meta, n, total) {
+  return opts.layout === 'sign' ? srSignSheetHtml(r, opts, meta, n, total) : srFullSheetHtml(r, opts, meta, n, total);
+}
+
+// ── Signature copy: just the name, the dates, the times, and where to sign ──
+function srSignSheetHtml(r, opts, meta, n, total) {
+  const st = r.staff, T = r.totals;
+  const showPay = opts.showPay && r.payType === 'hourly';
+  const cols = showPay ? 6 : 5;
+  let body = '';
+  r.weeks.forEach((w, wi) => {
+    if (r.weeks.length > 1) body += `<tr class="sr-wk"><td colspan="${cols}">Week ${wi + 1} · ${srDayName(w.start)} ${esc(formatDateDisplay(w.start))} – ${srDayName(w.end)} ${esc(formatDateDisplay(w.end))}</td></tr>`;
+    const lines = srWeekLines(r, w, opts.everyDay);
+    if (!lines.length) body += `<tr><td colspan="${cols}" class="sr-dim" style="font-style:italic">No time recorded this week</td></tr>`;
+    lines.forEach(ln => {
+      if (ln.kind === 'off') { body += `<tr class="sr-off"><td class="sr-nw"><b>${ln.day}</b> ${esc(formatDateDisplay(ln.date))}</td><td colspan="${cols - 1}">${esc(ln.text)}</td></tr>`; return; }
+      const x = ln.x;
+      body += `<tr class="${x.rejected ? 'sr-rej' : ''}">
+        <td class="sr-nw"><b>${x.day}</b> ${esc(formatDateDisplay(x.date))}</td>
+        <td>${esc(x.location)}${x.rejected ? ' <span class="sr-flag">— not counted' + (x.rejectedReason ? ': ' + esc(x.rejectedReason) : '') + '</span>' : ''}</td>
+        <td class="sr-nw">${esc(srTime(x.start))}</td>
+        <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
+        <td class="sr-num"><b>${x.rejected ? '<s>' + srHrs(x.enteredHours) + '</s>' : srHrs(x.hours)}</b></td>
+        ${showPay ? `<td class="sr-num">${x.rejected ? '' : $fmt(x.pay)}</td>` : ''}
+      </tr>`;
+    });
+    if (r.weeks.length > 1) body += `<tr class="sr-sub"><td colspan="4">Week ${wi + 1} total</td><td class="sr-num">${srHrs(w.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(w.pay)}</td>` : ''}</tr>`;
+  });
+  body += `<tr class="sr-tot"><td colspan="4">TOTAL HOURS · ${T.days} day${T.days !== 1 ? 's' : ''} worked · Regular ${srHrs(T.reg)} · Overtime ${srHrs(T.ot)}</td><td class="sr-num">${srHrs(T.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}</tr>`;
+
+  return `<section class="sr-sheet sr-signcopy" id="sr-sheet-${esc(st.id)}">
+    <div class="sr-head">
+      <div>
+        <div class="sr-org">American Safety Options, Inc.</div>
+        <div class="sr-doc">Employee Timesheet</div>
+      </div>
+      <div class="sr-head-r"><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
+    </div>
+    <div class="sr-who">
+      <div><span>Employee</span><b>${esc(st.first)} ${esc(st.last)}</b></div>
+      <div><span>${esc(meta.rangeWord)}</span><b>${esc(meta.rangeText)}</b></div>
+      <div class="sr-who-s"><span>Staff ID</span>${esc(st.id)}</div>
+      <div class="sr-who-s"><span>Home house</span>${esc(st.loc || '—')}</div>
+      ${showPay ? `<div class="sr-who-s"><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
+    </div>
+    <table class="sr-table sr-table-lg">
+      <thead><tr><th>Date</th><th>House worked</th><th>Time in</th><th>Time out</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out records' : ''}. +1 = shift ended the next day.</div>
+    ${opts.showNotes ? srNotesHtml(r) : ''}
+    <div class="sr-end">
+    ${opts.showSign ? srSignHtml(r, meta) : ''}
+    ${srFootHtml(meta, n, total)}
+    </div>
+  </section>`;
+}
+
+// ── Full report ──
+function srFullSheetHtml(r, opts, meta, n, total) {
+  const st = r.staff, T = r.totals, S = r.stats;
+  const showPay = opts.showPay && r.payType === 'hourly';
+  const cols = showPay ? 10 : 9;
 
   let body = '';
   r.weeks.forEach((w, wi) => {
-    body += `<tr class="sr-wk"><td colspan="${cols}">Week ${wi + 1} · ${srDayName(w.start)} ${esc(formatDateDisplay(w.start))} – ${srDayName(w.end)} ${esc(formatDateDisplay(w.end))}${w.partial ? ' <span class="sr-dim">(only part of this week is inside the report range)</span>' : ''}</td></tr>`;
-    if (!w.rows.length) body += `<tr><td colspan="${cols}" class="sr-dim" style="font-style:italic">No shifts this week</td></tr>`;
-    w.rows.forEach(x => {
+    body += `<tr class="sr-wk"><td colspan="${cols}">Week ${wi + 1} · ${srDayName(w.start)} ${esc(formatDateDisplay(w.start))} – ${srDayName(w.end)} ${esc(formatDateDisplay(w.end))}${w.partial ? ' <span class="sr-dim">(only part of this week is inside the report dates)</span>' : ''}</td></tr>`;
+    const lines = srWeekLines(r, w, opts.everyDay);
+    if (!lines.length) body += `<tr><td colspan="${cols}" class="sr-dim" style="font-style:italic">No shifts this week</td></tr>`;
+    lines.forEach(ln => {
+      if (ln.kind === 'off') { body += `<tr class="sr-off"><td class="sr-nw"><b>${ln.day}</b> ${esc(formatDateDisplay(ln.date))}</td><td colspan="${cols - 1}">${esc(ln.text)}</td></tr>`; return; }
+      const x = ln.x;
       body += `<tr class="${x.rejected ? 'sr-rej' : ''}">
         <td class="sr-nw"><b>${x.day}</b> ${esc(formatDateDisplay(x.date))}</td>
         <td class="sr-nw">${esc(x.location)}${x.location && st.loc && x.location !== st.loc ? ' <span class="sr-dim" title="Not this staff member’s home house">•</span>' : ''}</td>
@@ -10341,7 +10535,7 @@ function srSheetHtml(r, opts, meta, n, total) {
         <td class="sr-num">${x.rejected ? '' : srHrs(x.reg)}</td>
         <td class="sr-num">${x.rejected ? '' : (x.ot > 0 ? '<b>' + srHrs(x.ot) + '</b>' : '<span class="sr-dim">—</span>')}</td>
         ${showPay ? `<td class="sr-num">${x.rejected ? '' : $fmt(x.pay)}</td>` : ''}
-        <td class="sr-src">${srSourceLabel(x.source)}${x.flags.length ? ' · <span class="sr-flag">' + esc(x.flags.join('; ')) + '</span>' : ''}</td>
+        <td class="sr-src">${srSourceLabel(x.source)}${x.flags.length ? ' · <span class="sr-flag">' + esc(x.rejected && opts.showNotes ? 'Rejected' : x.flags.join('; ')) + '</span>' : ''}</td>
       </tr>`;
     });
     body += `<tr class="sr-sub">
@@ -10351,14 +10545,13 @@ function srSheetHtml(r, opts, meta, n, total) {
     </tr>`;
   });
   body += `<tr class="sr-tot">
-    <td colspan="5">TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : 'DATE RANGE'}</td>
+    <td colspan="5">TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : meta.range.mode === 'day' ? 'DATE' : 'DATE RANGE'}</td>
     <td class="sr-num">${srHrs(T.hours)}</td><td class="sr-num">${srHrs(T.reg)}</td><td class="sr-num">${srHrs(T.ot)}</td>
     ${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}<td></td>
   </tr>`;
 
   const tile = (label, val, sub) => `<div class="sr-tile"><div class="sr-tile-l">${label}</div><div class="sr-tile-v">${val}</div>${sub ? `<div class="sr-tile-s">${sub}</div>` : ''}</div>`;
-  const lvlLabel = { action: 'Settle first', check: 'Check', info: 'Note' };
-  const fromTo = `${esc(formatDateDisplay(r.from))} – ${esc(formatDateDisplay(r.to))}`;
+  const fact = (label, val) => `<div><span>${label}</span>${val}</div>`;
 
   return `<section class="sr-sheet" id="sr-sheet-${esc(st.id)}">
     <div class="sr-head">
@@ -10367,7 +10560,7 @@ function srSheetHtml(r, opts, meta, n, total) {
         <div class="sr-doc">Staff Timesheet Report</div>
       </div>
       <div class="sr-head-r">
-        <div class="sr-period">${meta.range.isPeriod ? 'Pay period ' : ''}${fromTo}</div>
+        <div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div>
         <div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div>
       </div>
     </div>
@@ -10380,7 +10573,8 @@ function srSheetHtml(r, opts, meta, n, total) {
         <div><span>Employment</span>${esc(st.type || '—')}</div>
         <div><span>Home house</span>${esc(st.loc || '—')}</div>
         <div><span>Status</span>${esc(st.status || '—')}</div>
-        ${opts.showPay ? `<div><span>Pay rate</span>${esc(rateText)}</div>` : ''}
+        ${st.start ? `<div><span>Hire date</span>${esc(formatDateDisplay(st.start))}</div>` : ''}
+        ${opts.showPay ? `<div><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
       </div>
     </div>
 
@@ -10392,11 +10586,21 @@ function srSheetHtml(r, opts, meta, n, total) {
       ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
     </div>
 
+    <div class="sr-facts">
+      ${fact('Average shift', srHrs(S.avgShift) + ' hrs')}
+      ${fact('Longest shift', srHrs(T.longest) + ' hrs')}
+      ${fact('Weekend days', S.weekendDays)}
+      ${fact('Overnight shifts', S.overnight)}
+      ${fact('Houses worked', S.houses)}
+      ${fact('Days in a row', r.streak.len)}
+      ${fact('Year to date', srHrs(r.ytd.hours) + ' hrs · ' + srHrs(r.ytd.ot) + ' OT' + (showPay ? ' · ' + $fmt(r.ytd.gross) : ''))}
+    </div>
+
     <table class="sr-table">
       <thead><tr><th>Date</th><th>House worked</th><th>In</th><th>Out</th><th class="sr-num">Meal</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}<th>Entry / notes</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <div class="sr-key">Meal = unpaid meal break recorded on a clocked shift, already taken out of Hours (— means the shift was typed in, so no break record exists). +1 = shift ended the next day. • = worked away from home house. Entry: Clock = employee clocked in and out; Manual = typed in by the office; Override = a supervisor clocked in or out for the employee.</div>
+    <div class="sr-key">Meal = unpaid meal break on a clocked shift, already taken out of Hours. +1 = shift ended the next day. • = worked away from home house. Entry: Time log = from the employee’s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.</div>
 
     <div class="sr-two">
       <div>
@@ -10407,7 +10611,7 @@ function srSheetHtml(r, opts, meta, n, total) {
         </table>` : '<div class="sr-dim">No hours worked.</div>'}
       </div>
       <div>
-        <div class="sr-h">Time off in this range</div>
+        <div class="sr-h">Time off in these dates</div>
         ${r.leave.length ? `<table class="sr-table sr-mini">
           <thead><tr><th>Type</th><th>Dates</th><th class="sr-num">Hours</th><th>Status</th></tr></thead>
           <tbody>${r.leave.map(l => `<tr><td>${esc(srLeaveLabel(l.type))}</td><td class="sr-nw">${esc(formatDateDisplay(l.startDate))}${l.endDate !== l.startDate ? ' – ' + esc(formatDateDisplay(l.endDate)) : ''}</td><td class="sr-num">${srHrs(l.hours)}</td><td>${l.status === 'approved' ? 'Approved' : 'Pending'}</td></tr>`).join('')}</tbody>
@@ -10416,28 +10620,39 @@ function srSheetHtml(r, opts, meta, n, total) {
       </div>
     </div>
 
-    ${opts.showNotes ? `<div class="sr-notes">
-      <div class="sr-h">Items to review before signing</div>
-      ${r.notes.length ? `<ul>${r.notes.map(nt => `<li class="sr-n-${nt.level}"><span class="sr-lvl">${lvlLabel[nt.level]}</span>${esc(nt.text)}</li>`).join('')}</ul>` : '<div class="sr-dim">Nothing flagged — no missed meal breaks, overrides, rejected shifts or pending entries in this range.</div>'}
-    </div>` : ''}
+    ${opts.showNotes ? srNotesHtml(r) : ''}
 
     <div class="sr-end">
-    ${opts.showSign ? `<div class="sr-sign">
-      <div class="sr-sign-row">
-        <div><div class="sr-sign-t">Employee</div><div class="sr-sign-p">I have reviewed this timesheet. It is a true and complete record of all the time I worked in this period, and I have reported anything that is missing or wrong.</div></div>
-        <div class="sr-line"><div><i></i>Signature</div><div><i></i>Printed name</div><div class="sr-line-d"><i></i>Date</div></div>
-      </div>
-      <div class="sr-sign-row">
-        <div><div class="sr-sign-t">Program Manager / Supervisor</div><div class="sr-sign-p">I have reviewed these hours against the schedule and the items listed above, and I approve this timesheet for payroll.</div></div>
-        <div class="sr-line"><div><i></i>Signature</div><div><i></i>Printed name</div><div class="sr-line-d"><i></i>Date</div></div>
-      </div>
-    </div>` : ''}
+    ${opts.showSign ? srSignHtml(r, meta) : ''}
+    ${srFootHtml(meta, n, total)}
+    </div>
+  </section>`;
+}
 
-    <div class="sr-foot">
-      <span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span>
-      <span>Confidential personnel and payroll record · ${n} of ${total}</span>
+// ── Summary page for the whole batch (prints first when ticked) ──
+function srCoverTotals(reports) {
+  return reports.reduce((a, r) => ({ days: a.days + r.totals.days, shifts: a.shifts + r.totals.shifts, hours: a.hours + r.totals.hours, reg: a.reg + r.totals.reg, ot: a.ot + r.totals.ot, leave: a.leave + r.leaveHours, gross: a.gross + (r.payType === 'hourly' ? r.totals.gross : 0) }), { days: 0, shifts: 0, hours: 0, reg: 0, ot: 0, leave: 0, gross: 0 });
+}
+function srCoverHtml(reports, opts, meta) {
+  const t = srCoverTotals(reports);
+  return `<section class="sr-sheet sr-cover" id="sr-sheet-cover">
+    <div class="sr-head">
+      <div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Timesheet Summary — ${reports.length} staff${meta.house ? ' · ' + esc(meta.house) : ''}</div></div>
+      <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
-    </div>
+    <table class="sr-table">
+      <thead><tr><th>Staff</th><th>ID</th><th>Home house</th><th class="sr-num">Days</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th><th class="sr-num">Time off</th>${opts.showPay ? '<th class="sr-num">Gross pay</th>' : ''}<th class="sr-num">To settle</th><th class="sr-num">To check</th></tr></thead>
+      <tbody>${reports.map(r => `<tr>
+        <td class="sr-nw"><b>${esc(r.staff.last)}, ${esc(r.staff.first)}</b></td><td>${esc(r.staff.id)}</td><td class="sr-nw">${esc(r.staff.loc || '—')}</td>
+        <td class="sr-num">${r.totals.days}</td><td class="sr-num">${r.totals.shifts}</td><td class="sr-num"><b>${srHrs(r.totals.hours)}</b></td><td class="sr-num">${srHrs(r.totals.reg)}</td><td class="sr-num">${r.totals.ot > 0 ? '<b>' + srHrs(r.totals.ot) + '</b>' : srHrs(0)}</td><td class="sr-num">${srHrs(r.leaveHours)}</td>
+        ${opts.showPay ? `<td class="sr-num">${r.payType === 'hourly' ? $fmt(r.totals.gross) : '—'}</td>` : ''}
+        <td class="sr-num">${r.notes.filter(x => x.level === 'action').length || '<span class="sr-dim">0</span>'}</td><td class="sr-num">${r.notes.filter(x => x.level === 'check').length || '<span class="sr-dim">0</span>'}</td>
+      </tr>`).join('')}
+      <tr class="sr-tot"><td colspan="3">TOTAL</td><td class="sr-num">${t.days}</td><td class="sr-num">${t.shifts}</td><td class="sr-num">${srHrs(t.hours)}</td><td class="sr-num">${srHrs(t.reg)}</td><td class="sr-num">${srHrs(t.ot)}</td><td class="sr-num">${srHrs(t.leave)}</td>${opts.showPay ? `<td class="sr-num">${$fmt(t.gross)}</td>` : ''}<td></td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="sr-key">To settle = items that should be resolved before a timesheet is signed (unapproved clock entries, pending time off, inactive staff with hours). To check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person’s sheet.</div>
+    <div class="sr-foot"><span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span><span>Confidential personnel and payroll record · summary</span></div>
   </section>`;
 }
 
@@ -10510,11 +10725,13 @@ function srExportCSV() {
 
 // ── PDF ──
 // A real PDF drawn line by line (not a screenshot), one staff member per
-// page, continuing onto extra pages when a timesheet is long.
+// page, continuing onto extra pages when a timesheet is long. It follows the
+// same layout and tick boxes as the screen.
 function srDownloadPDF() {
-  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to export yet — pick a pay period that has hours', 'warn'); return; }
+  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to export yet — pick dates that have hours', 'warn'); return; }
   if (!window.jspdf) { showToast('The PDF tool did not load — use Print and choose “Save as PDF” instead', 'danger'); return; }
   const { reports, opts, meta } = _srLast;
+  const sign = opts.layout === 'sign';
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40, R = W - M, UW = W - M * 2, BOTTOM = H - 46;
@@ -10523,37 +10740,74 @@ function srDownloadPDF() {
   const tx = s => String(s == null ? '' : s).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/•/g, '*').replace(/·/g, '|').replace(/[^\x00-\xFF]/g, '');
   const fit = (s, w) => { s = tx(s); if (doc.getTextWidth(s) <= w) return s; while (s.length > 1 && doc.getTextWidth(s + '...') > w) s = s.slice(0, -1); return s + '...'; };
   const font = (style, size, color) => { doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...(color || navy)); };
-  const pageOwner = [];
+  const rangeTxt = tx(meta.rangeText), rangeWord = tx(meta.rangeWord);
+  const statusColor = meta.status.final ? [20, 110, 70] : red;
+  const pageOwner = []; // which sheet each page belongs to (-1 = summary page)
   let y = 0;
+  const letterhead = (title, right) => {
+    y = 50;
+    font('bold', 15, blue); doc.text('American Safety Options, Inc.', M, y);
+    font('bold', 11, navy); doc.text(tx(title), M, y + 16);
+    if (right) { font('bold', 10, navy); doc.text(tx(right), R, y, { align: 'right' }); }
+    font('bold', 8, statusColor); doc.text(fit(meta.status.text, 300), R, y + (right ? 14 : 6), { align: 'right' });
+    y += 26; doc.setDrawColor(...blue); doc.setLineWidth(1.5); doc.line(M, y, R, y); y += 20;
+  };
+
+  // ── Summary page ──
+  if (opts.cover) {
+    pageOwner.push(-1);
+    letterhead(`Timesheet Summary - ${reports.length} staff${meta.house ? ' | ' + meta.house : ''}`, `${rangeWord} ${rangeTxt}`);
+    const cc = [{ h: 'Staff', w: 0 }, { h: 'ID', w: 40 }, { h: 'Home house', w: 92 }, { h: 'Days', w: 30, num: true }, { h: 'Shifts', w: 34, num: true }, { h: 'Hours', w: 42, num: true }, { h: 'Regular', w: 42, num: true }, { h: 'OT', w: 36, num: true }, { h: 'Time off', w: 40, num: true }]
+      .concat(opts.showPay ? [{ h: 'Gross pay', w: 58, num: true }] : []).concat([{ h: 'Settle', w: 32, num: true }, { h: 'Check', w: 32, num: true }]);
+    cc[0].w = UW - cc.reduce((a, c) => a + c.w, 0);
+    let cx = M; cc.forEach(c => { c.x = cx; cx += c.w; });
+    const put = (c, t, yy) => { if (c.num) doc.text(tx(t), c.x + c.w - 4, yy, { align: 'right' }); else doc.text(fit(t, c.w - 6), c.x + 3, yy); };
+    const head = () => { doc.setFillColor(...navy); doc.rect(M, y, UW, 15, 'F'); font('bold', 7.5, [255, 255, 255]); cc.forEach(c => put(c, c.h, y + 10.5)); y += 15; };
+    head();
+    reports.forEach(r => {
+      if (y + 14 > BOTTOM) { doc.addPage(); pageOwner.push(-1); y = 44; head(); }
+      font('normal', 8, navy);
+      const v = [`${r.staff.last}, ${r.staff.first}`, r.staff.id, r.staff.loc || '-', r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
+        .concat(opts.showPay ? [r.payType === 'hourly' ? $fmt(r.totals.gross) : '-'] : []).concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]);
+      cc.forEach((c, i) => put(c, String(v[i]), y + 10));
+      doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + 14, R, y + 14); y += 14;
+    });
+    const t = srCoverTotals(reports);
+    doc.setFillColor(...navy); doc.rect(M, y, UW, 17, 'F'); font('bold', 8.5, [255, 255, 255]);
+    const tv = ['TOTAL', '', '', t.days, t.shifts, srHrs(t.hours), srHrs(t.reg), srHrs(t.ot), srHrs(t.leave)].concat(opts.showPay ? [$fmt(t.gross)] : []).concat(['', '']);
+    cc.forEach((c, i) => put(c, String(tv[i]), y + 12));
+    y += 26; font('normal', 6.5, gray);
+    doc.splitTextToSize('Settle = items that should be resolved before a timesheet is signed (unapproved clock entries, pending time off, inactive staff with hours). Check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person\'s sheet.', UW).forEach(l => { doc.text(l, M, y); y += 8; });
+  }
 
   reports.forEach((r, idx) => {
-    const st = r.staff, T = r.totals;
+    const st = r.staff, T = r.totals, S = r.stats;
     const showPay = opts.showPay && r.payType === 'hourly';
     const name = `${st.first} ${st.last}`;
-    const rangeTxt = `${formatDateDisplay(r.from)} - ${formatDateDisplay(r.to)}`;
-    if (idx > 0) doc.addPage();
+    if (idx > 0 || opts.cover) doc.addPage();
     pageOwner.push(idx);
 
-    const cols = [
-      { h: 'Date', w: 66 }, { h: 'House worked', w: showPay ? 88 : 104 }, { h: 'In', w: 44 }, { h: 'Out', w: 54 },
-      { h: 'Meal', w: 28, num: true }, { h: 'Hours', w: 36, num: true }, { h: 'Regular', w: 40, num: true }, { h: 'OT', w: 32, num: true }
-    ].concat(showPay ? [{ h: 'Pay', w: 50, num: true }] : []);
-    cols.push({ h: 'Entry / notes', w: UW - cols.reduce((a, c) => a + c.w, 0), pad: true });
+    const cols = sign
+      ? [{ h: 'Date', w: 96 }, { h: 'House worked', w: 0, grow: true }, { h: 'Time in', w: 76 }, { h: 'Time out', w: 86 }, { h: 'Hours', w: 56, num: true }].concat(showPay ? [{ h: 'Pay', w: 66, num: true }] : [])
+      : [{ h: 'Date', w: 66 }, { h: 'House worked', w: showPay ? 88 : 104 }, { h: 'In', w: 44 }, { h: 'Out', w: 54 }, { h: 'Meal', w: 28, num: true }, { h: 'Hours', w: 36, num: true }, { h: 'Regular', w: 40, num: true }, { h: 'OT', w: 32, num: true }]
+          .concat(showPay ? [{ h: 'Pay', w: 50, num: true }] : []).concat([{ h: 'Entry / notes', w: 0, grow: true, pad: true }]);
+    cols.find(c => c.grow).w = UW - cols.reduce((a, c) => a + c.w, 0);
     let cx = M; cols.forEach(c => { c.x = cx; cx += c.w; });
+    const FS = sign ? 9 : 7.5, RH = sign ? 16 : 12.5, BL = sign ? 11 : 9; // font size, row height, text baseline
     const cell = (c, text, yy) => {
       if (c.num) doc.text(tx(text), c.x + c.w - 4, yy, { align: 'right' });
       else doc.text(fit(text, c.w - (c.pad ? 12 : 6)), c.x + (c.pad ? 8 : 3), yy);
     };
     const tableHead = () => {
-      doc.setFillColor(...navy); doc.rect(M, y, UW, 15, 'F');
-      font('bold', 7.5, [255, 255, 255]);
-      cols.forEach(c => cell(c, c.h, y + 10.5));
-      y += 15;
+      doc.setFillColor(...navy); doc.rect(M, y, UW, RH + 2, 'F');
+      font('bold', FS, [255, 255, 255]);
+      cols.forEach(c => cell(c, c.h, y + BL + 1));
+      y += RH + 2;
     };
     const contHead = () => {
       y = 44;
       font('bold', 10, navy); doc.text(tx(`${name} (${st.id})`), M, y);
-      font('normal', 8, gray); doc.text(tx(`Staff Timesheet Report | ${rangeTxt} | continued`), R, y, { align: 'right' });
+      font('normal', 8, gray); doc.text(tx(`${sign ? 'Employee Timesheet' : 'Staff Timesheet Report'} | ${rangeTxt} | continued`), R, y, { align: 'right' });
       y += 8; doc.setDrawColor(...blue); doc.setLineWidth(0.8); doc.line(M, y, R, y); y += 14;
     };
     const ensure = (h, inTable) => {
@@ -10563,110 +10817,143 @@ function srDownloadPDF() {
     };
     const heading = t => { ensure(30); font('bold', 8.5, blue); doc.text(tx(t).toUpperCase(), M, y); y += 5; doc.setDrawColor(...rule); doc.setLineWidth(0.6); doc.line(M, y, R, y); y += 11; };
 
-    // ── Letterhead ──
-    y = 50;
-    font('bold', 15, blue); doc.text('American Safety Options, Inc.', M, y);
-    font('bold', 11, navy); doc.text('Staff Timesheet Report', M, y + 16);
-    font('bold', 10, navy); doc.text(tx((meta.range.isPeriod ? 'Pay period ' : '') + rangeTxt), R, y, { align: 'right' });
-    font('bold', 8, meta.status.final ? [20, 110, 70] : red); doc.text(fit(meta.status.text, 300), R, y + 14, { align: 'right' });
-    y += 26; doc.setDrawColor(...blue); doc.setLineWidth(1.5); doc.line(M, y, R, y); y += 20;
+    if (sign) {
+      // ── Signature copy: name and dates, big and plain ──
+      letterhead('Employee Timesheet', '');
+      doc.setFillColor(...shade); doc.roundedRect(M, y - 6, UW, 50, 3, 3, 'F');
+      font('normal', 7, gray); doc.text('EMPLOYEE', M + 12, y + 8); doc.text(rangeWord.toUpperCase(), M + UW / 2, y + 8);
+      font('bold', 15, navy); doc.text(fit(name, UW / 2 - 24), M + 12, y + 26); doc.text(rangeTxt, M + UW / 2, y + 26);
+      font('normal', 7.5, gray); doc.text(tx(`Staff ID ${st.id}  |  Home house: ${st.loc || '-'}${showPay ? '  |  Pay rate: ' + srRateText(r) : ''}`), M + 12, y + 38);
+      y += 58;
+    } else {
+      letterhead('Staff Timesheet Report', `${rangeWord} ${rangeTxt}`);
+      // ── Employee ──
+      font('bold', 14, navy); doc.text(tx(name), M, y); y += 8;
+      const fields = [['STAFF ID', st.id], ['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
+      if (st.start) fields.push(['HIRE DATE', formatDateDisplay(st.start)]);
+      if (opts.showPay) fields.push(['PAY RATE', srRateText(r)]);
+      const fw = UW / fields.length;
+      fields.forEach((f, i) => {
+        font('normal', 6.5, gray); doc.text(f[0], M + i * fw, y + 9);
+        font('bold', 9, navy); doc.text(fit(f[1], fw - 6), M + i * fw, y + 21);
+      });
+      y += 34;
+      // ── Summary tiles ──
+      const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+      if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
+      const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
+      tiles.forEach((t, i) => {
+        const bx = M + i * (tw + gap);
+        doc.setFillColor(...shade); doc.roundedRect(bx, y, tw, 40, 3, 3, 'F');
+        font('normal', 6.5, gray); doc.text(t[0], bx + 8, y + 12);
+        font('bold', 14, navy); doc.text(tx(t[1]), bx + 8, y + 26);
+        font('normal', 6.5, gray); if (t[2]) doc.text(fit(t[2], tw - 12), bx + 8, y + 35);
+      });
+      y += 46;
+      // ── At a glance ──
+      const facts = [['AVERAGE SHIFT', srHrs(S.avgShift) + ' hrs'], ['LONGEST SHIFT', srHrs(T.longest) + ' hrs'], ['WEEKEND DAYS', S.weekendDays], ['OVERNIGHT SHIFTS', S.overnight], ['HOUSES WORKED', S.houses], ['DAYS IN A ROW', r.streak.len], ['YEAR TO DATE', srHrs(r.ytd.hours) + ' hrs | ' + srHrs(r.ytd.ot) + ' OT' + (showPay ? ' | ' + $fmt(r.ytd.gross) : '')]];
+      let fx = M;
+      facts.forEach((f, i) => {
+        const wv = i === facts.length - 1 ? R - fx : 62;
+        font('normal', 5.8, gray); doc.text(f[0], fx, y + 7);
+        font('bold', 8, navy); doc.text(fit(String(f[1]), wv - 4), fx, y + 16);
+        fx += wv;
+      });
+      y += 24;
+    }
 
-    // ── Employee ──
-    font('bold', 14, navy); doc.text(tx(name), M, y); y += 8;
-    const fields = [['STAFF ID', st.id], ['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
-    if (opts.showPay) fields.push(['PAY RATE', r.payType === 'salary' ? 'Salary' : r.payType === 'external' ? 'External payroll' : !r.rates.length ? (st.rate > 0 ? $fmt(st.rate) + '/hr' : 'House rate') : r.rates.length === 1 ? $fmt(r.rates[0]) + '/hr' : $fmt(r.rates[0]) + ' - ' + $fmt(r.rates[r.rates.length - 1]) + '/hr']);
-    const fw = UW / fields.length;
-    fields.forEach((f, i) => {
-      font('normal', 6.5, gray); doc.text(f[0], M + i * fw, y + 9);
-      font('bold', 9, navy); doc.text(fit(f[1], fw - 6), M + i * fw, y + 21);
-    });
-    y += 34;
-
-    // ── Summary tiles ──
-    const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
-    if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
-    const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
-    tiles.forEach((t, i) => {
-      const bx = M + i * (tw + gap);
-      doc.setFillColor(...shade); doc.roundedRect(bx, y, tw, 40, 3, 3, 'F');
-      font('normal', 6.5, gray); doc.text(t[0], bx + 8, y + 12);
-      font('bold', 14, navy); doc.text(tx(t[1]), bx + 8, y + 26);
-      font('normal', 6.5, gray); if (t[2]) doc.text(fit(t[2], tw - 12), bx + 8, y + 35);
-    });
-    y += 50;
-
-    // ── Shift detail ──
+    // ── Shift list ──
     tableHead();
-    const RH = 12.5;
     r.weeks.forEach((w, wi) => {
-      ensure(RH * 2, true);
-      doc.setFillColor(...shade); doc.rect(M, y, UW, RH, 'F');
-      font('bold', 7.5, blue);
-      doc.text(tx(`Week ${wi + 1} | ${srDayName(w.start)} ${formatDateDisplay(w.start)} - ${srDayName(w.end)} ${formatDateDisplay(w.end)}${w.partial ? '  (only part of this week is inside the report range)' : ''}`), M + 3, y + 9);
-      y += RH;
-      if (!w.rows.length) { ensure(RH, true); font('italic', 7.5, gray); doc.text('No shifts this week', M + 3, y + 9); y += RH; }
-      w.rows.forEach(x => {
+      const showWeek = !sign || r.weeks.length > 1;
+      if (showWeek) {
+        ensure(RH * 2, true);
+        doc.setFillColor(...shade); doc.rect(M, y, UW, RH, 'F');
+        font('bold', FS, blue);
+        doc.text(tx(`Week ${wi + 1} | ${srDayName(w.start)} ${formatDateDisplay(w.start)} - ${srDayName(w.end)} ${formatDateDisplay(w.end)}${!sign && w.partial ? '  (only part of this week is inside the report dates)' : ''}`), M + 3, y + BL);
+        y += RH;
+      }
+      const lines = srWeekLines(r, w, opts.everyDay);
+      if (!lines.length) { ensure(RH, true); font('italic', FS, gray); doc.text(sign ? 'No time recorded this week' : 'No shifts this week', M + 3, y + BL); y += RH; }
+      lines.forEach(ln => {
         ensure(RH, true);
-        font('normal', 7.5, x.rejected ? gray : navy);
-        const vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.location && st.loc && x.location !== st.loc ? ' *' : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''),
-          x.mealMin === null ? '-' : x.mealMin + 'm', x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')];
-        if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
-        vals.push(srSourceLabel(x.source) + (x.flags.length ? ' | ' + x.flags.join('; ') : ''));
-        cols.forEach((c, i) => cell(c, vals[i], y + 9));
+        if (ln.kind === 'off') {
+          font('normal', FS, gray);
+          cell(cols[0], `${ln.day} ${formatDateDisplay(ln.date)}`, y + BL); doc.text(tx(ln.text), cols[1].x + 3, y + BL);
+        } else {
+          const x = ln.x;
+          font('normal', FS, x.rejected ? gray : navy);
+          let vals;
+          if (sign) {
+            vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.rejected ? ' - not counted' + (x.rejectedReason ? ': ' + x.rejectedReason : '') : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''), x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours)];
+            if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
+          } else {
+            vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.location && st.loc && x.location !== st.loc ? ' *' : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''),
+              x.mealMin === null ? '-' : x.mealMin + 'm', x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')];
+            if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
+            vals.push(srSourceLabel(x.source) + (x.flags.length ? ' | ' + (x.rejected && opts.showNotes ? 'Rejected' : x.flags.join('; ')) : ''));
+          }
+          cols.forEach((c, i) => cell(c, vals[i], y + BL));
+        }
         doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + RH, R, y + RH);
         y += RH;
       });
-      ensure(RH, true);
-      font('bold', 7.5, navy);
-      doc.text(tx(`Week ${wi + 1} total | ${w.days} day${w.days !== 1 ? 's' : ''} worked`), M + 3, y + 9);
-      const sub = { Hours: srHrs(w.hours), Regular: srHrs(w.reg), OT: srHrs(w.ot), Pay: $fmt(w.pay) };
-      cols.forEach(c => { if (sub[c.h] !== undefined) cell(c, sub[c.h], y + 9); });
-      doc.setDrawColor(...navy); doc.setLineWidth(0.6); doc.line(M, y + RH, R, y + RH);
-      y += RH + 3;
+      if (showWeek) {
+        ensure(RH, true);
+        font('bold', FS, navy);
+        doc.text(tx(`Week ${wi + 1} total${sign ? '' : ' | ' + w.days + ' day' + (w.days !== 1 ? 's' : '') + ' worked'}`), M + 3, y + BL);
+        const sub = { Hours: srHrs(w.hours), Regular: srHrs(w.reg), OT: srHrs(w.ot), Pay: $fmt(w.pay) };
+        cols.forEach(c => { if (sub[c.h] !== undefined) cell(c, sub[c.h], y + BL); });
+        doc.setDrawColor(...navy); doc.setLineWidth(0.6); doc.line(M, y + RH, R, y + RH);
+        y += RH + 3;
+      }
     });
-    ensure(18, true);
-    doc.setFillColor(...navy); doc.rect(M, y, UW, 17, 'F');
-    font('bold', 8.5, [255, 255, 255]);
-    doc.text(`TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : 'DATE RANGE'}`, M + 3, y + 12);
-    const tot = { Hours: srHrs(T.hours), Regular: srHrs(T.reg), OT: srHrs(T.ot), Pay: $fmt(T.gross) };
-    cols.forEach(c => { if (tot[c.h] !== undefined) cell(c, tot[c.h], y + 12); });
-    y += 24;
+    ensure(20, true);
+    doc.setFillColor(...navy); doc.rect(M, y, UW, sign ? 20 : 17, 'F');
+    font('bold', sign ? 9.5 : 8.5, [255, 255, 255]);
+    doc.text(tx(sign ? `TOTAL HOURS | ${T.days} day${T.days !== 1 ? 's' : ''} worked | Regular ${srHrs(T.reg)} | Overtime ${srHrs(T.ot)}` : `TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : meta.range.mode === 'day' ? 'DATE' : 'DATE RANGE'}`), M + 3, y + (sign ? 14 : 12));
+    const tot = sign ? { Hours: srHrs(T.hours), Pay: $fmt(T.gross) } : { Hours: srHrs(T.hours), Regular: srHrs(T.reg), OT: srHrs(T.ot), Pay: $fmt(T.gross) };
+    cols.forEach(c => { if (tot[c.h] !== undefined) cell(c, tot[c.h], y + (sign ? 14 : 12)); });
+    y += sign ? 28 : 23;
     font('normal', 6.3, gray);
-    doc.splitTextToSize('Meal = unpaid meal break recorded on a clocked shift, already taken out of Hours (- means the shift was typed in, so no break record exists). +1 = shift ended the next day. * = worked away from home house. (Hours in brackets) = rejected shift, not counted. Entry: Clock = employee clocked in and out; Manual = typed in by the office; Override = a supervisor clocked in or out for the employee.', UW)
-      .forEach(l => { ensure(8); doc.text(l, M, y); y += 8; });
-    y += 10;
+    doc.splitTextToSize(sign
+      ? `Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out records' : ''}. +1 = shift ended the next day.`
+      : 'Meal = unpaid meal break on a clocked shift, already taken out of Hours. +1 = shift ended the next day. * = worked away from home house. (Hours in brackets) = rejected, not counted. Entry: Time log = from the employee\'s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.', UW)
+      .forEach(l => { ensure(8); doc.text(l, M, y); y += 7.5; });
+    y += 8;
 
-    // ── Hours by house ──
-    if (r.houses.length) {
-      heading('Hours by house');
-      r.houses.forEach(h => {
+    if (!sign) {
+      // ── Hours by house ──
+      if (r.houses.length) {
+        heading('Hours by house');
+        r.houses.forEach(h => {
+          ensure(12); font('normal', 8, navy);
+          doc.text(fit(h.name + (h.home ? ' (home)' : ''), 190), M, y);
+          doc.text(`${h.shifts} shift${h.shifts !== 1 ? 's' : ''}`, M + 250, y, { align: 'right' });
+          doc.text(`${srHrs(h.hours)} hrs`, M + 330, y, { align: 'right' });
+          if (showPay) { doc.text(h.rates.length === 1 ? $fmt(h.rates[0]) + '/hr' : 'rate varies', M + 420, y, { align: 'right' }); doc.text($fmt(h.pay), R, y, { align: 'right' }); }
+          y += 11;
+        });
+        y += 6;
+      }
+      // ── Time off ──
+      heading('Time off in these dates');
+      if (!r.leave.length) { font('normal', 8, gray); doc.text('None requested.', M, y); y += 12; }
+      r.leave.forEach(l => {
         ensure(12); font('normal', 8, navy);
-        doc.text(fit(h.name + (h.home ? ' (home)' : ''), 190), M, y);
-        doc.text(`${h.shifts} shift${h.shifts !== 1 ? 's' : ''}`, M + 250, y, { align: 'right' });
-        doc.text(`${srHrs(h.hours)} hrs`, M + 330, y, { align: 'right' });
-        if (showPay) { doc.text(h.rates.length === 1 ? $fmt(h.rates[0]) + '/hr' : 'rate varies', M + 420, y, { align: 'right' }); doc.text($fmt(h.pay), R, y, { align: 'right' }); }
-        y += 11;
+        doc.text(tx(srLeaveLabel(l.type)), M, y);
+        doc.text(tx(formatDateDisplay(l.startDate) + (l.endDate !== l.startDate ? ' - ' + formatDateDisplay(l.endDate) : '')), M + 110, y);
+        doc.text(`${srHrs(l.hours)} hrs`, M + 330, y, { align: 'right' });
+        doc.text(l.status === 'approved' ? 'Approved' : 'Pending', M + 350, y);
+        y += 12;
       });
-      y += 6;
+      ensure(12); font('normal', 7, gray); doc.text(`PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs`, M, y); y += 14;
     }
-
-    // ── Time off ──
-    heading('Time off in this range');
-    if (!r.leave.length) { font('normal', 8, gray); doc.text('None requested.', M, y); y += 12; }
-    r.leave.forEach(l => {
-      ensure(12); font('normal', 8, navy);
-      doc.text(tx(srLeaveLabel(l.type)), M, y);
-      doc.text(tx(formatDateDisplay(l.startDate) + (l.endDate !== l.startDate ? ' - ' + formatDateDisplay(l.endDate) : '')), M + 110, y);
-      doc.text(`${srHrs(l.hours)} hrs`, M + 330, y, { align: 'right' });
-      doc.text(l.status === 'approved' ? 'Approved' : 'Pending', M + 350, y);
-      y += 12;
-    });
-    ensure(12); font('normal', 7, gray); doc.text(`PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs`, M, y); y += 14;
 
     // ── Items to review ──
     if (opts.showNotes) {
       heading('Items to review before signing');
-      if (!r.notes.length) { font('normal', 8, gray); doc.text('Nothing flagged - no missed meal breaks, overrides, rejected shifts or pending entries in this range.', M, y); y += 12; }
+      if (!r.notes.length) { font('normal', 8, gray); doc.text('Nothing flagged - no missed meal breaks, overrides, rejected shifts or pending entries in these dates.', M, y); y += 12; }
       r.notes.forEach(nt => {
         const lbl = nt.level === 'action' ? 'SETTLE FIRST' : nt.level === 'check' ? 'CHECK' : 'NOTE';
         font('normal', 8, navy);
@@ -10679,37 +10966,37 @@ function srDownloadPDF() {
       y += 8;
     }
 
-    // ── Signatures ──
+    // ── Signatures (employee name and dates are printed in) ──
     if (opts.showSign) {
       const SH = 50;
       ensure(SH * 2 + 8);
       y += 4;
       doc.setDrawColor(...rule); doc.setLineWidth(0.8); doc.roundedRect(M, y, UW, SH * 2, 3, 3, 'S');
       doc.line(M, y + SH, R, y + SH);
-      [['EMPLOYEE', 'I have reviewed this timesheet. It is a true and complete record of all the time I worked in this period, and I have reported anything that is missing or wrong.'],
-       ['PROGRAM MANAGER / SUPERVISOR', 'I have reviewed these hours against the schedule and the items listed above, and I approve this timesheet for payroll.']].forEach((b, i) => {
+      [['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name],
+       ['PROGRAM MANAGER / SUPERVISOR', 'I have reviewed these hours against the schedule and the time log sheets, and I approve this timesheet for payroll.', '']].forEach((b, i) => {
         const by = y + i * SH, lx = M + 232;
         font('bold', 7.5, blue); doc.text(b[0], M + 10, by + 13);
         font('normal', 6.5, gray); doc.splitTextToSize(b[1], 205).forEach((l, k) => doc.text(l, M + 10, by + 23 + k * 7.5));
         doc.setDrawColor(...navy); doc.setLineWidth(0.6);
-        doc.line(lx, by + 34, lx + 118, by + 34); doc.line(lx + 130, by + 34, lx + 222, by + 34); doc.line(lx + 234, by + 34, R - 10, by + 34);
-        font('normal', 6.5, gray); doc.text('Signature', lx, by + 43); doc.text('Printed name', lx + 130, by + 43); doc.text('Date', lx + 234, by + 43);
+        doc.line(lx, by + 35, lx + 118, by + 35); doc.line(lx + 130, by + 35, lx + 222, by + 35); doc.line(lx + 234, by + 35, R - 10, by + 35);
+        if (b[2]) { font('bold', 8.5, navy); doc.text(fit(b[2], 92), lx + 130, by + 31); }
+        font('normal', 6.5, gray); doc.text('Signature', lx, by + 44); doc.text('Printed name', lx + 130, by + 44); doc.text('Date', lx + 234, by + 44);
       });
       y += SH * 2 + 8;
     }
   });
 
   // ── Footers: "page x of y" restarts for each staff member ──
-  const perStaff = {}; pageOwner.forEach(o => { perStaff[o] = (perStaff[o] || 0) + 1; });
+  const perOwner = {}; pageOwner.forEach(o => { perOwner[o] = (perOwner[o] || 0) + 1; });
   const seen = {};
   pageOwner.forEach((o, p) => {
     doc.setPage(p + 1);
     seen[o] = (seen[o] || 0) + 1;
-    const st = reports[o].staff;
     doc.setDrawColor(...rule); doc.setLineWidth(0.5); doc.line(M, H - 34, R, H - 34);
     font('normal', 6.5, gray);
     doc.text(tx(`Generated ${meta.generatedAt}${meta.generatedBy ? ' by ' + meta.generatedBy : ''} | ASO Time System | Confidential personnel and payroll record`), M, H - 23);
-    doc.text(tx(`${st.last}, ${st.first} - page ${seen[o]} of ${perStaff[o]}`), R, H - 23, { align: 'right' });
+    doc.text(tx(o < 0 ? `Summary - page ${seen[o]} of ${perOwner[o]}` : `${reports[o].staff.last}, ${reports[o].staff.first} - page ${seen[o]} of ${perOwner[o]}`), R, H - 23, { align: 'right' });
   });
 
   doc.save(srFileStem() + '.pdf');

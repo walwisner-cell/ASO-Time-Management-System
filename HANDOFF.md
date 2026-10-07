@@ -10,7 +10,7 @@ A prior session's handoff described a large amount of finished work (tax bracket
 
 ## How to verify anything in this project
 1. `npm install`
-2. `node test.js` — 117 automated HTTP-level checks at last count (the text below still says 41; the number has grown). Also run `node test-staff-report.js` (36 checks: pay-period dates across clock changes + the Staff Timesheet Report math). Original description: automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
+2. `node test.js` — 117 automated HTTP-level checks at last count (the text below still says 41; the number has grown). Also run `node test-staff-report.js` (45 checks: pay-period dates across clock changes + the Staff Timesheet Report math). Original description: automated HTTP-level checks (auth, employee data isolation, input validation, audit integrity, clock in/out, staffing caps, supervisor override, etc.). Must show `41 passed, 0 failed`.
 3. `node test-tax-brackets.js` — 7 checks of the federal withholding bracket math against hand-computed values, cross-checked against the actual 2026 IRS Publication 15-T numbers (fetched directly from irs.gov, not a third-party summary — see below for why that mattered). Extracts the real function straight from the live HTML file, so it can never silently drift from what ships.
 4. Whenever you edit `ASO_OT_SYSTEM_SQL.html`'s "DATABASE LAYER" script block, mirror the same edit in `patch_html.py`, then confirm with:
    ```
@@ -33,6 +33,17 @@ A new page, `page-staffreport` ("Staff Timesheet Report"), reachable from the Re
 - Access: `PAGE_ROLES.staffreport` = admin/supervisor/viewer; custom roles need `reports_view`. Pay amounts are gated by `srCanSeePay()`, which is the first place `staff_view_wage` is actually enforced for custom roles (it was another defined-but-unused permission; it is still not enforced on the Timesheet Log or Report Builder).
 - The "Overtime cross-check" note compares hours beyond 40 per workweek with the OT the engine pays under `PAY_CONFIG.otThreshold` per period. Display only. Whether 80-per-14-days is the right rule for ASO is a legal question that was flagged to the owner, not decided in code.
 - Verified in a real browser against a seeded database (DOM text extracted, print rendered to PDF, jsPDF output rendered to images, CSV opened), and by `test-staff-report.js` (36 checks).
+
+### Second pass, same session — the owner asked to choose how the report comes out
+After the first deploy the owner asked for: a choice of dates, pay amounts optional, a plain copy for the employee to sign with the name and pay period on it, the wording to reflect that times come from the staff time log sheets, and more content. Added:
+- **Report by** (`#sr-mode`): pay period / date range / single date. `srGetRange()` returns `{from, to, mode, isPeriod}`; `meta.rangeWord` + `meta.rangeText` are the one place the date wording is decided.
+- **Layout** (`#sr-layout`): `full` or `sign`. `srSheetHtml()` dispatches to `srFullSheetHtml()` / `srSignSheetHtml()`; `srDownloadPDF()` branches on the same flag. `srLayoutChanged()` resets the tick boxes to that layout's usual defaults (signature copy = no pay, no review items, every day listed) — all still changeable by hand.
+- **Signature block** (`srSignHtml`) now prints the employee's name on the Printed-name line and the dates inside the statement.
+- **"Manual" is now "Time log"** in `srSourceLabel()` — on this report only. The Timesheet Log's own badge still says Manual; the stored `source` value is unchanged.
+- **List every day** — `srWeekLines(r, w, everyDay)` is shared by screen, print and PDF and inserts Off / Time off lines.
+- **Summary page for all staff** — `srCoverHtml()` + a cover page in the PDF (`pageOwner` = -1).
+- **More in the full report** — `r.stats` (average shift, weekend days, overnight shifts, houses) and `r.ytd` (Jan 1 to the report's last date) from `srBuildStaffReport()`, plus hire date.
+- `test-staff-report.js` is now 45 checks. Browser-verified again: every mode and layout, print and PDF page counts (one page per person for a normal two-week sheet).
 
 ### Bug 1 — pay period boundaries were computed in milliseconds (clock-change bug)
 `getPeriodForDate()` and four siblings did `anchor + N * periodDays * 86400000`. A day is not always 24h. With a summer anchor, every winter period's Date objects sat at 11 PM the night before, so `fmtPeriod()` (local getters) labelled periods one day early from the Oct 24 – Nov 6, 2026 period onward. With a winter anchor it was worse: `Math.floor` on a diff that is one hour short put the FIRST day of every summer period into the PREVIOUS period, changing which hours count toward OT. Fixed with three shared helpers — `calendarDayDiff`, `periodIndexForDate`, `periodBoundsByIndex` — and `getPeriodForDate`, `getPeriodDatesWithOffset`, `autoAdvancePeriod`, `updatePeriodPreview`, `getPeriodsAroundToday` now all go through them. The payroll week-1/week-2 split and the "days left" counters got the same treatment. Proven with `TZ=America/New_York` for both a May and a January anchor (10 checks in `test-staff-report.js`). **Any new period math must use these helpers, never `* 86400000`.**

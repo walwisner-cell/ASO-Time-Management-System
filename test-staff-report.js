@@ -29,7 +29,7 @@ eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
   'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay',
-  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport'
+  'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel'
 ]));
 
 let passed = 0, failed = 0;
@@ -147,6 +147,24 @@ const r4 = srBuildStaffReport(Object.assign({}, dj, { status: 'Inactive' }), '20
 check('an Inactive staff member with hours is flagged to settle first', r4.notes.some(x => x.level === 'action' && /marked Inactive/.test(x.text)));
 const r5 = srBuildStaffReport({ id: 'S099', first: 'No', last: 'Hours', loc: 'William House', status: 'Active' }, '2026-09-26', '2026-10-09', computeShiftsWithOT());
 check('a staff member with no shifts gets an empty sheet with zero totals, not an error', r5.rows.length === 0 && r5.totals.hours === 0 && r5.weeks.length === 2 && r5.notes.some(x => /No hours recorded/.test(x.text)));
+
+// ───────────────────────── Layout helpers added with the signature copy ─────────────────────────
+console.log('\nSignature copy, single date, every-day list:\n');
+check('at-a-glance figures: average shift 96.5 / 9, 4 weekend days, 1 overnight shift, 2 houses',
+  near(r.stats.avgShift, 96.5 / 9) && r.stats.weekendDays === 4 && r.stats.overnight === 1 && r.stats.houses === 2);
+check('year to date runs Jan 1 through the last report date and leaves out rejected shifts and later periods',
+  near(r.ytd.hours, 96.5) && near(r.ytd.ot, 16.5) && near(r.ytd.gross, 1466.5));
+check('shifts typed in by the office are labelled as coming from the time log sheet', srSourceLabel('manual') === 'Time log' && srSourceLabel(undefined) === 'Time log' && srSourceLabel('clock_in') === 'Clock');
+const wl = srWeekLines(r, r.weeks[1], true);
+check('"List every day" gives all 7 days of week 2: 3 shifts and 4 days with nothing worked', wl.length === 7 && wl.filter(l => l.kind === 'shift').length === 3 && wl.filter(l => l.kind === 'off').length === 4);
+check('a day covered by approved time off says so; a pending request does not',
+  /Time off/.test(wl.find(l => l.date === '2026-10-07').text) && wl.find(l => l.date === '2026-10-09').text === 'Off');
+check('without "List every day" only real shifts are listed', srWeekLines(r, r.weeks[1], false).length === 3);
+const d1 = srBuildStaffReport(dj, '2026-09-29', '2026-09-29', computeShiftsWithOT());
+check('a single-date report holds just that day\u2019s shift (8 hrs at William House)', d1.rows.length === 1 && near(d1.totals.hours, 8) && d1.houses[0].name === 'William House' && d1.weeks.length === 1);
+check('a single-date report with every day listed shows exactly one line', srWeekLines(d1, d1.weeks[0], true).length === 1);
+const d0 = srBuildStaffReport(dj, '2026-10-07', '2026-10-07', computeShiftsWithOT());
+check('a single date with nothing worked gives zero hours and one time-off line', d0.totals.hours === 0 && srWeekLines(d0, d0.weeks[0], true).length === 1 && /Time off/.test(srWeekLines(d0, d0.weeks[0], true)[0].text));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
