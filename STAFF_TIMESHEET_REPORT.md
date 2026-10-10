@@ -9,7 +9,7 @@ I get to it two ways:
 
 ## What is on each sheet
 1. **Header** — the pay period, and whether this is a **Draft** (period still open or payroll not confirmed) or **Final** (payroll confirmed, with who and when).
-2. **Employee block** — name, staff ID, position, employment type, home house, status, pay rate.
+2. **Employee block** — name, position, employment type, home house, status, pay rate. (Staff ID and hire date are not printed on the report; the CSV still has the staff ID.)
 3. **Summary** — hours worked, regular hours, overtime hours, approved time off, gross pay.
 4. **Every shift, grouped by workweek** — date, house worked, in, out, recorded meal break, hours, regular, overtime, pay, and how the shift was entered (clocked, typed in, or supervisor override). Each week has its own subtotal, then a period total.
 5. **Hours by house** — so I can see when someone covered another house.
@@ -37,7 +37,7 @@ I get to it two ways:
 - **Single date** — one day only.
 
 **Layout** — two versions of the sheet:
-- **Full report** — everything listed above, plus an "at a glance" line (average shift, longest shift, weekend days, overnight shifts, houses worked, days in a row, year to date) and the hire date.
+- **Full report** — everything listed above, plus an "at a glance" line (average shift, longest shift, weekend days, overnight shifts, houses worked, days in a row, year to date).
 - **Times only** — the employee's name and the pay period dates in large type, each day's house, time in, time out and hours, and the total.
 
 **Tick boxes** — each one can be changed on either layout:

@@ -21,6 +21,8 @@ The first box on each sheet is now called **Total hours worked** and is always t
 When someone worked at more than one house, the Regular hours and Overtime hours boxes show their main house only (the home house, or the house with the most hours if they did not work at home). Every other house has its own box below. So the boxes add up: for example 80.00 regular + 10.00 overtime at the home house + 6.00 at William House = 96.00 total hours worked. Pay is not changed; the Gross pay box is still the whole pay.
 
 ## Also removed
+Staff ID and hire date are no longer printed on the Staff Timesheet Report (the staff sheets, the times-only copy, the summary page, the by-house sheets, the PDF and the More Than One House page). The CSV still has the staff ID so it can be matched to other records.
+
 The Staff Timesheet Report no longer marks shifts "Edited" or lists "shift was edited after it was first entered" under Items to review. Corrections made from ADP punches are still noted, with the time the time log sheet originally said. Every edit is still recorded in the Audit Trail.
 
 ## The setting

@@ -10475,7 +10475,7 @@ function srCrossoverHtml(cross, opts, meta) {
   const rowsHtml = cross.map(c => {
     const pay = opts.showPay && c.payType === 'hourly';
     return c.houses.map((h, i) => `<tr class="${h.home ? '' : 'sr-away'}">
-        ${i === 0 ? `<td class="sr-nw" rowspan="${c.houses.length + 1}" style="vertical-align:top"><b>${esc(c.staff.last)}, ${esc(c.staff.first)}</b><div class="sr-dim">${esc(c.staff.id)} · home: ${esc(c.staff.loc || 'none on file')}</div></td>` : ''}
+        ${i === 0 ? `<td class="sr-nw" rowspan="${c.houses.length + 1}" style="vertical-align:top"><b>${esc(c.staff.last)}, ${esc(c.staff.first)}</b><div class="sr-dim">home: ${esc(c.staff.loc || 'none on file')}</div></td>` : ''}
         <td class="sr-nw">${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ' <b class="sr-flag">other house</b>'}${meta.house && h.name === meta.house ? ' <span class="sr-dim">← selected</span>' : ''}</td>
         <td class="sr-num">${h.shifts}</td><td class="sr-num"><b>${srHrs(h.hours)}</b></td><td class="sr-num">${srHrs(h.reg)}</td><td class="sr-num">${h.ot > 0 ? '<b>' + srHrs(h.ot) + '</b>' : srHrs(0)}</td>
         ${opts.showPay ? `<td class="sr-num">${pay ? (h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies') : '—'}</td><td class="sr-num">${pay ? $fmt(h.pay) : '—'}</td>` : ''}
@@ -10830,7 +10830,7 @@ function srHouseSheetHtml(h, opts, meta, n, total) {
     d.lines.forEach(l => {
       const x = l.x, pay = opts.showPay && l.payType === 'hourly';
       body += `<tr class="${x.rejected ? 'sr-rej' : l.home ? '' : 'sr-away'}">
-        <td><b>${esc(l.staff.last)}, ${esc(l.staff.first)}</b> <span class="sr-dim">${esc(l.staff.id)}</span>${l.home ? '' : ` <span class="sr-flag">from ${esc(l.staff.loc || 'no home house')}</span>`}</td>
+        <td><b>${esc(l.staff.last)}, ${esc(l.staff.first)}</b>${l.home ? '' : ` <span class="sr-flag">from ${esc(l.staff.loc || 'no home house')}</span>`}</td>
         <td class="sr-nw">${esc(srTime(x.start))}</td>
         <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
         <td class="sr-num"><b>${x.rejected ? '<s>' + srHrs(x.enteredHours) + '</s>' : srHrs(x.hours)}</b></td>
@@ -10929,7 +10929,6 @@ function srSignSheetHtml(r, opts, meta, n, total) {
     <div class="sr-who">
       <div><span>Employee</span><b>${esc(st.first)} ${esc(st.last)}</b></div>
       <div><span>${esc(meta.rangeWord)}</span><b>${esc(meta.rangeText)}</b></div>
-      <div class="sr-who-s"><span>Staff ID</span>${esc(st.id)}</div>
       <div class="sr-who-s"><span>Home house</span>${esc(st.loc || '—')}</div>
       ${r.onlyHouse ? `<div class="sr-who-s"><span>Showing</span>${esc(r.onlyHouse)} only</div>` : ''}
       ${showPay ? `<div class="sr-who-s"><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
@@ -11006,12 +11005,10 @@ function srFullSheetHtml(r, opts, meta, n, total) {
     <div class="sr-emp">
       <div class="sr-emp-name">${esc(st.first)} ${esc(st.last)}</div>
       <div class="sr-emp-grid">
-        <div><span>Staff ID</span>${esc(st.id)}</div>
         <div><span>Position</span>${esc(st.title || '—')}</div>
         <div><span>Employment</span>${esc(st.type || '—')}</div>
         <div><span>Home house</span>${esc(st.loc || '—')}</div>
         <div><span>Status</span>${esc(st.status || '—')}</div>
-        ${st.start ? `<div><span>Hire date</span>${esc(formatDateDisplay(st.start))}</div>` : ''}
         ${opts.showPay ? `<div><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
       </div>
     </div>
@@ -11081,9 +11078,9 @@ function srCoverHtml(reports, opts, meta) {
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
     <table class="sr-table">
-      <thead><tr><th>Staff</th><th>ID</th><th>Home house</th><th class="sr-num">Days</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th><th class="sr-num">Time off</th>${opts.showPay ? '<th class="sr-num">Gross pay</th>' : ''}<th class="sr-num">To settle</th><th class="sr-num">To check</th></tr></thead>
+      <thead><tr><th>Staff</th><th>Home house</th><th class="sr-num">Days</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th><th class="sr-num">Time off</th>${opts.showPay ? '<th class="sr-num">Gross pay</th>' : ''}<th class="sr-num">To settle</th><th class="sr-num">To check</th></tr></thead>
       <tbody>${reports.map(r => `<tr>
-        <td class="sr-nw"><b>${esc(r.staff.last)}, ${esc(r.staff.first)}</b></td><td>${esc(r.staff.id)}</td><td class="sr-nw">${esc(r.staff.loc || '—')}</td>
+        <td class="sr-nw"><b>${esc(r.staff.last)}, ${esc(r.staff.first)}</b></td><td class="sr-nw">${esc(r.staff.loc || '—')}</td>
         <td class="sr-num">${r.totals.days}</td><td class="sr-num">${r.totals.shifts}</td><td class="sr-num"><b>${srHrs(r.totals.hours)}</b></td><td class="sr-num">${srHrs(r.totals.reg)}</td><td class="sr-num">${r.totals.ot > 0 ? '<b>' + srHrs(r.totals.ot) + '</b>' : srHrs(0)}</td><td class="sr-num">${srHrs(r.leaveHours)}</td>
         ${opts.showPay ? `<td class="sr-num">${r.payType === 'hourly' ? $fmt(r.totals.gross) : '—'}</td>` : ''}
         <td class="sr-num">${r.notes.filter(x => x.level === 'action').length || '<span class="sr-dim">0</span>'}</td><td class="sr-num">${r.notes.filter(x => x.level === 'check').length || '<span class="sr-dim">0</span>'}</td>
@@ -11235,7 +11232,7 @@ function srDownloadPDF() {
   if (opts.cover && !houseMode) {
     pageOwner.push(-1);
     letterhead(`Timesheet Summary - ${reports.length} staff${meta.house ? ' | ' + meta.house : ''}`, `${rangeWord} ${rangeTxt}`);
-    const cc = [{ h: 'Staff', w: 0 }, { h: 'ID', w: 40 }, { h: 'Home house', w: 92 }, { h: 'Days', w: 30, num: true }, { h: 'Shifts', w: 34, num: true }, { h: 'Hours', w: 42, num: true }, { h: 'Regular', w: 42, num: true }, { h: 'OT', w: 36, num: true }, { h: 'Time off', w: 40, num: true }]
+    const cc = [{ h: 'Staff', w: 0 }, { h: 'Home house', w: 92 }, { h: 'Days', w: 30, num: true }, { h: 'Shifts', w: 34, num: true }, { h: 'Hours', w: 42, num: true }, { h: 'Regular', w: 42, num: true }, { h: 'OT', w: 36, num: true }, { h: 'Time off', w: 40, num: true }]
       .concat(opts.showPay ? [{ h: 'Gross pay', w: 58, num: true }] : []).concat([{ h: 'Settle', w: 32, num: true }, { h: 'Check', w: 32, num: true }]);
     cc[0].w = UW - cc.reduce((a, c) => a + c.w, 0);
     let cx = M; cc.forEach(c => { c.x = cx; cx += c.w; });
@@ -11245,7 +11242,7 @@ function srDownloadPDF() {
     reports.forEach(r => {
       if (y + 14 > BOTTOM) { doc.addPage(); pageOwner.push(-1); y = 44; head(); }
       font('normal', 8, navy);
-      const v = [`${r.staff.last}, ${r.staff.first}`, r.staff.id, r.staff.loc || '-', r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
+      const v = [`${r.staff.last}, ${r.staff.first}`, r.staff.loc || '-', r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
         .concat(opts.showPay ? [r.payType === 'hourly' ? $fmt(r.totals.gross) : '-'] : []).concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]);
       cc.forEach((c, i) => put(c, String(v[i]), y + 10));
       doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + 14, R, y + 14); y += 14;
@@ -11324,7 +11321,7 @@ function srDownloadPDF() {
     };
     const contHead = () => {
       y = 44;
-      font('bold', 10, navy); doc.text(tx(`${name} (${st.id})`), M, y);
+      font('bold', 10, navy); doc.text(tx(name), M, y);
       font('normal', 8, gray); doc.text(tx(`${sign ? 'Employee Timesheet' : 'Staff Timesheet Report'} | ${rangeTxt} | continued`), R, y, { align: 'right' });
       y += 8; doc.setDrawColor(...blue); doc.setLineWidth(0.8); doc.line(M, y, R, y); y += 14;
     };
@@ -11341,15 +11338,14 @@ function srDownloadPDF() {
       doc.setFillColor(...shade); doc.roundedRect(M, y - 6, UW, 50, 3, 3, 'F');
       font('normal', 7, gray); doc.text('EMPLOYEE', M + 12, y + 8); doc.text(rangeWord.toUpperCase(), M + UW / 2, y + 8);
       font('bold', 15, navy); doc.text(fit(name, UW / 2 - 24), M + 12, y + 26); doc.text(rangeTxt, M + UW / 2, y + 26);
-      font('normal', 7.5, gray); doc.text(tx(`Staff ID ${st.id}  |  Home house: ${st.loc || '-'}${showPay ? '  |  Pay rate: ' + srRateText(r) : ''}`), M + 12, y + 38);
+      font('normal', 7.5, gray); doc.text(tx(`Home house: ${st.loc || '-'}${showPay ? '  |  Pay rate: ' + srRateText(r) : ''}`), M + 12, y + 38);
       y += 58;
       y = srPdfOtherHouses(doc, r, y, { M, UW, font, tx, navy, gray });
     } else {
       letterhead(r.onlyHouse ? `Staff Timesheet Report - ${r.onlyHouse} hours only` : 'Staff Timesheet Report', `${rangeWord} ${rangeTxt}`);
       // ── Employee ──
       font('bold', 14, navy); doc.text(tx(name), M, y); y += 8;
-      const fields = [['STAFF ID', st.id], ['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
-      if (st.start) fields.push(['HIRE DATE', formatDateDisplay(st.start)]);
+      const fields = [['POSITION', st.title || '-'], ['EMPLOYMENT', st.type || '-'], ['HOME HOUSE', st.loc || '-'], ['STATUS', st.status || '-']];
       if (opts.showPay) fields.push(['PAY RATE', srRateText(r)]);
       const fw = UW / fields.length;
       fields.forEach((f, i) => {
