@@ -23,7 +23,17 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION (latest) — ADP match rebuilt on the owner's audit workbook (shift-period matching, six-tab audit, Excel download)
+## THIS SESSION (latest) — v109: overtime counted per house
+
+Owner: "in order to get overtime you have to work 80 hrs and more at a particular location to qualify, so just state the hours from the other locations."
+- `computeShiftsWithOT()` keys the running total by staff + period + **location** when `otByLocationOn()` (i.e. `PAY_CONFIG.otByLocation !== false`; default true). It also returns `otHrsCombined` per shift (overtime if all houses were added together) — display only, never paid.
+- `otRuleText(short)` is the one place the rule is worded; every label that used to print "X hrs per N-day period" uses it.
+- Staff report: `srBuildStaffReport` returns `otherHouses` (only for one-house sheets) and `totals.otCombined`; `srOtherHousesText/Html` and `srPdfOtherHouses` state the other-house hours under the tiles (full sheet, times-only sheet, PDF, CSV column). New review note "Per-house overtime: ..." when combined OT > paid OT.
+- Setting: Pay Period Setup → `#cfg-ot-by-location`. Server: `pay_config.ot_by_location INTEGER DEFAULT 1` (ALTER on start), loaded as `otByLocation`, saved, and guarded by the same admin check as the threshold. Default seed + `patch_html.py` DB_DEFAULTS updated (sync check passes).
+- Tests: the old staff-report checks now run with `otByLocation:false` (they describe combined mode); a new per-house section adds 15 checks (78 total).
+- Legal note given to the owner: FLSA/PA count hours across locations together; per-house OT may underpay. His call with payroll provider/attorney; one-click switch back.
+
+## PREVIOUS SESSION — ADP match rebuilt on the owner's audit workbook (shift-period matching, six-tab audit, Excel download)
 
 The owner sent his own Excel audit (`ASO_Time_Audit_2026-09-27_to_2026-10-03.xlsx`) and said "this is how I want the ADP to match the shift period". The matcher and the page were rebuilt to produce that workbook. **Everything in the older ADP section below about tiers "Ready / Suggested / Needs review", minute-based tolerance on clock times, and `adpInferFromErrors` is superseded by this section.**
 

@@ -91,7 +91,7 @@ if (!SEED_ADMIN_PASSWORD_HASH) {
 }
 
 const DEFAULT_SEED = {
-  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80,
+  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, otByLocation: true,
     defaultDeductions: [
       { id: 'ded_federal', label: 'Federal Withholding', type: 'percent', value: 0 },
       { id: 'ded_fica', label: 'FICA', type: 'percent', value: 7.65 },
@@ -341,6 +341,9 @@ function createSchema() {
   // 5 hours matches California's meal-break trigger, a reasonable default —
   // adjustable per organization since exact thresholds vary by jurisdiction.
   try { db.run(`ALTER TABLE pay_config ADD COLUMN meal_break_threshold_hours REAL DEFAULT 5`); } catch (e) { /* already exists */ }
+  // 1 = overtime counted at each house separately (the owner's rule: overtime
+  // only after the threshold at one house); 0 = all houses combined.
+  try { db.run(`ALTER TABLE pay_config ADD COLUMN ot_by_location INTEGER DEFAULT 1`); } catch (e) { /* already exists */ }
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer',
@@ -524,7 +527,8 @@ function loadDB() {
   const PAY_CONFIG = pcRow
     ? { anchorDate: pcRow.anchor_date, periodDays: pcRow.period_days, otThreshold: pcRow.ot_threshold,
         defaultDeductions: JSON.parse(pcRow.default_deductions || '[]'),
-        mealBreakThresholdHours: pcRow.meal_break_threshold_hours || 5 }
+        mealBreakThresholdHours: pcRow.meal_break_threshold_hours || 5,
+        otByLocation: pcRow.ot_by_location !== 0 }
     : DEFAULT_SEED.PAY_CONFIG;
 
   // Password hashes never leave the server — the client has no legitimate use for them.
@@ -596,12 +600,14 @@ function saveDB(data) {
           DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS } = data;
 
   // PAY_CONFIG
-  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions,meal_break_threshold_hours) VALUES (1,?,?,?,?,?)
+  run(`INSERT INTO pay_config (id,anchor_date,period_days,ot_threshold,default_deductions,meal_break_threshold_hours,ot_by_location) VALUES (1,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET anchor_date=excluded.anchor_date,
        period_days=excluded.period_days, ot_threshold=excluded.ot_threshold,
-       default_deductions=excluded.default_deductions, meal_break_threshold_hours=excluded.meal_break_threshold_hours`,
+       default_deductions=excluded.default_deductions, meal_break_threshold_hours=excluded.meal_break_threshold_hours,
+       ot_by_location=excluded.ot_by_location`,
     [PAY_CONFIG.anchorDate, PAY_CONFIG.periodDays, PAY_CONFIG.otThreshold,
-     JSON.stringify(PAY_CONFIG.defaultDeductions || []), PAY_CONFIG.mealBreakThresholdHours || 5]);
+     JSON.stringify(PAY_CONFIG.defaultDeductions || []), PAY_CONFIG.mealBreakThresholdHours || 5,
+     PAY_CONFIG.otByLocation === false ? 0 : 1]);
 
   // USERS — passwords are managed exclusively through /api/auth/login (self-migration)
   // and /api/users/:id/password. Bulk saves NEVER overwrite an existing user's password
@@ -957,7 +963,8 @@ function authorizeSave(existing, incoming, user) {
   const payPeriodFieldsChanged = incomingPC.anchorDate !== existingPC.anchorDate
     || incomingPC.periodDays !== existingPC.periodDays
     || incomingPC.otThreshold !== existingPC.otThreshold
-    || incomingPC.mealBreakThresholdHours !== existingPC.mealBreakThresholdHours;
+    || incomingPC.mealBreakThresholdHours !== existingPC.mealBreakThresholdHours
+    || (incomingPC.otByLocation !== false) !== (existingPC.otByLocation !== false);
   if (payPeriodFieldsChanged && !canPayConfig)
     return 'Pay period settings can only be changed by an admin account';
 

@@ -32,7 +32,7 @@ function extractFunctions(names) {
 }
 
 eval(extractFunctions([
-  'buildPayrollDetailRows', 'excludeInactiveUnapproved', 'computeShiftsWithOT',
+  'buildPayrollDetailRows', 'excludeInactiveUnapproved', 'otByLocationOn', 'computeShiftsWithOT',
   'getLocRate', 'getLocOTMult', 'getLocOTRate', 'getPeriodForDate', 'fmtPeriod'
 ]));
 

@@ -2671,6 +2671,14 @@
                   <input type="number" id="cfg-ot-threshold" step="1" min="1" value="80">
                 </div>
                 <div class="form-field">
+                  <label>Overtime Counted</label>
+                  <select id="cfg-ot-by-location">
+                    <option value="1">At each house separately</option>
+                    <option value="0">All houses combined</option>
+                  </select>
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px">At each house separately: staff qualify for overtime only after the threshold at one house. Hours at other houses are paid and listed on reports, but not added together for overtime.</div>
+                </div>
+                <div class="form-field">
                   <label>Meal Break Warning Threshold (hrs)</label>
                   <input type="number" id="cfg-meal-break-threshold" step="0.5" min="0" value="5">
                   <div style="font-size:11px;color:var(--text3);margin-top:4px">Clock-tracked shifts at or above this length with no meal break logged show a warning on the Timesheet and Approvals pages. 5 hours matches California's trigger — adjust for your state.</div>
@@ -3939,7 +3947,7 @@ var PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS, PENDING_APPROVALS,
 let _unsavedToFile = false;
 
 const DB_DEFAULTS = {
-  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, defaultDeductions: [] },
+  PAY_CONFIG: { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, otByLocation: true, defaultDeductions: [] },
   USERS: [{ id:'U001', username:'admin', password:'admin123', name:'Admin', role:'admin' }],
   LOCATIONS: [], STAFF: [], SHIFTS: [],
   PENDING_APPROVALS: [], APPROVED_EXCEPTIONS: [],
@@ -4490,8 +4498,20 @@ function setTimeParts(prefix, hhmm) {
 // ──────────────────────────────────────────────────────────
 // OT CALCULATION ENGINE
 // ──────────────────────────────────────────────────────────
+// Overtime is counted per house: a staff member qualifies for overtime only
+// after working PAY_CONFIG.otThreshold hours at ONE house in the pay period.
+// Hours at other houses are kept and paid, but each house is counted on its
+// own. Turned off (otByLocation === false) it counts every house together.
+function otByLocationOn() { return !PAY_CONFIG || PAY_CONFIG.otByLocation !== false; }
+function otRuleText(short) {
+  const one = otByLocationOn();
+  if (short) return one ? `after ${PAY_CONFIG.otThreshold} hrs at one house` : `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`;
+  return `${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period${one ? ', counted at each house separately' : ', all houses combined'}`;
+}
+
 function computeShiftsWithOT() {
   const threshold = PAY_CONFIG.otThreshold;
+  const perHouse = otByLocationOn();
   const sorted = [...SHIFTS].sort((a,b) => {
     const d = a.date.localeCompare(b.date);
     if (d !== 0) return d;
@@ -4500,11 +4520,16 @@ function computeShiftsWithOT() {
     return a.id.localeCompare(b.id);
   });
   const periodHrs = {};
+  // Running total with every house added together — only used to show, on
+  // reports, what overtime would be if the houses were combined. Never paid.
+  const combinedHrs = {};
   return sorted.map(sh => {
     const { start: ps, end: pe } = getPeriodForDate(sh.date);
     const period = fmtPeriod(ps, pe);
-    const periodKey = sh.staff + '|' + ps.toISOString().split('T')[0];
+    const staffPeriodKey = sh.staff + '|' + ps.toISOString().split('T')[0];
+    const periodKey = perHouse ? staffPeriodKey + '|' + (sh.location || '') : staffPeriodKey;
     if (!periodHrs[periodKey]) periodHrs[periodKey] = 0;
+    if (!combinedHrs[staffPeriodKey]) combinedHrs[staffPeriodKey] = 0;
 
     // A rejected shift stays fully visible (the whole point is the employee
     // can see it happened and why it doesn't count) but contributes nothing
@@ -4513,9 +4538,12 @@ function computeShiftsWithOT() {
     if (sh.shiftStatus === 'rejected') {
       const approvedEx = APPROVED_EXCEPTIONS.find(a => a.shiftId === sh.id);
       return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate: 0, otRate: 0,
-               regHrs: 0, otHrs: 0, regPay: 0, otPay: 0, shiftPay: 0,
+               regHrs: 0, otHrs: 0, regPay: 0, otPay: 0, shiftPay: 0, otHrsCombined: 0,
                runningHrs: periodHrs[periodKey], approvedEx: approvedEx || null };
     }
+    const combinedBefore = combinedHrs[staffPeriodKey];
+    combinedHrs[staffPeriodKey] = combinedBefore + sh.hours;
+    const otHrsCombined = Math.max(0, combinedHrs[staffPeriodKey] - Math.max(threshold, combinedBefore));
 
     const runningBefore = periodHrs[periodKey];
     const hrs = sh.hours;
@@ -4543,7 +4571,7 @@ function computeShiftsWithOT() {
     periodHrs[periodKey] = runningAfter;
     // mark if approved exception
     const approvedEx = APPROVED_EXCEPTIONS.find(a => a.shiftId === sh.id);
-    return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate, otRate, regHrs, otHrs, regPay, otPay, shiftPay: regPay + otPay, runningHrs: runningAfter, approvedEx: approvedEx || null };
+    return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate, otRate, regHrs, otHrs, regPay, otPay, shiftPay: regPay + otPay, runningHrs: runningAfter, otHrsCombined, approvedEx: approvedEx || null };
   });
 }
 
@@ -4805,7 +4833,7 @@ function openNewPeriodModal() {
     <div style="background:rgba(14,143,94,0.07);border:1px solid rgba(14,143,94,0.2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.6">
       <b style="color:var(--success)">The new pay period is now active.</b> You can begin entering shift data for 
       <b style="color:var(--text)">${cpLabel}</b>.<br>
-      <span style="font-size:12px;color:var(--text3)">OT threshold: ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period · Shifts entered will automatically be assigned to this period.</span>
+      <span style="font-size:12px;color:var(--text3)">OT threshold: ${otRuleText()} · Shifts entered will automatically be assigned to this period.</span>
     </div>
   `;
   document.getElementById('np-content').innerHTML = html;
@@ -4995,6 +5023,7 @@ function renderPayConfig() {
   document.getElementById('cfg-anchor-date').value = PAY_CONFIG.anchorDate;
   document.getElementById('cfg-period-type').value = String(PAY_CONFIG.periodDays);
   document.getElementById('cfg-ot-threshold').value = PAY_CONFIG.otThreshold;
+  document.getElementById('cfg-ot-by-location').value = otByLocationOn() ? '1' : '0';
   document.getElementById('cfg-meal-break-threshold').value = PAY_CONFIG.mealBreakThresholdHours || 5;
   updatePeriodPreview();
   renderPayConfigStatusBanner();
@@ -5077,13 +5106,14 @@ function applyPayConfig() {
   const mealBreakThreshold = parseFloat(document.getElementById('cfg-meal-break-threshold').value);
   if (!anchor || !days || !ot) { showToast('Please fill all fields', 'danger'); return; }
   if (!Number.isFinite(mealBreakThreshold) || mealBreakThreshold < 0) { showToast('Meal break threshold must be 0 or greater', 'danger'); return; }
-  PAY_CONFIG = { ...PAY_CONFIG, anchorDate: anchor, periodDays: days, otThreshold: ot, mealBreakThresholdHours: mealBreakThreshold };
+  const otByLocation = document.getElementById('cfg-ot-by-location').value !== '0';
+  PAY_CONFIG = { ...PAY_CONFIG, anchorDate: anchor, periodDays: days, otThreshold: ot, otByLocation, mealBreakThresholdHours: mealBreakThreshold };
   dbSave();
   updateTopbarPeriod();
   updatePeriodPreview();
   renderPayConfigStatusBanner();
   populateCorrShiftDropdown();
-  showToast(`Pay period updated — ${days}-day cycle, ${ot}hr OT threshold`);
+  showToast(`Pay period updated — ${days}-day cycle, ${ot}hr OT threshold${otByLocation ? ' at each house' : ', all houses combined'}`);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -6770,7 +6800,7 @@ function renderTimesheet() {
   // Populate Add Shift pay period dropdown
   populateShiftPeriodDropdown();
   syncDateToSelectedPeriod();
-  document.getElementById('ts-ot-threshold-label').textContent = `OT threshold: ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period`;
+  document.getElementById('ts-ot-threshold-label').textContent = `OT threshold: ${otRuleText()}`;
   renderTimesheetPeriodContext();
 
   // ── Populate FILTER dropdowns ──────────────────────────
@@ -6938,7 +6968,7 @@ function renderTimesheetTable() {
       <th>#</th><th>Date</th><th>Staff</th><th>Location</th>
       <th>Time</th><th>Hrs</th><th>Rate</th>
       <th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th>Shift Pay</th>
-      <th>Period Hrs</th><th>Info</th><th></th>
+      <th>${otByLocationOn() ? 'House Period Hrs' : 'Period Hrs'}</th><th>Info</th><th></th>
     </tr></thead><tbody>`;
 
   data.forEach((s, i) => {
@@ -9774,7 +9804,7 @@ function rbBuildIndividualReport(staffArr, allComputed, fromDate, toDate, otThre
       ${shifts.length === 0 ? '<div style="color:var(--text3);font-size:13px;padding:12px 0">No shifts found for this staff member in the selected date range.</div>' : `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Reg Hrs</th><th>OT Hrs</th><th>Rate</th><th>OT Rate</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>Period Running Hrs</th></tr></thead>
+          <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Reg Hrs</th><th>OT Hrs</th><th>Rate</th><th>OT Rate</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>${otByLocationOn() ? 'Running Hrs at This House' : 'Period Running Hrs'}</th></tr></thead>
           <tbody>
             ${shifts.map(s => `<tr>
               <td class="mono">${formatDateDisplay(s.date)}</td>
@@ -9910,7 +9940,7 @@ function rbBuildOvertimeReport(allComputed, fromDate, toDate, staffIds) {
         <span class="badge ${lvl}" style="margin-left:10px">${lbl}</span>
       </div>
       <div class="table-wrap"><table style="font-size:12px">
-        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>OT Hrs</th><th>OT Pay</th><th>Period Running Hrs</th></tr></thead>
+        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>OT Hrs</th><th>OT Pay</th><th>${otByLocationOn() ? 'Running Hrs at This House' : 'Period Running Hrs'}</th></tr></thead>
         <tbody>
           ${d.shifts.sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr>
             <td class="mono">${formatDateDisplay(s.date)}</td>
@@ -10214,7 +10244,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
       mealMin, rejected, rejectedReason: s.rejectedReason || '', rejectedBy: s.rejectedBy || '',
       // A rejected shift is listed (so nothing silently disappears) but counts for nothing.
       hours: rejected ? 0 : s.hours, enteredHours: s.hours,
-      reg: s.regHrs, ot: s.otHrs, rate: s.locRate, regPay: s.regPay, otPay: s.otPay, pay: s.shiftPay,
+      reg: s.regHrs, ot: s.otHrs, otCombined: s.otHrsCombined || 0, rate: s.locRate, regPay: s.regPay, otPay: s.otPay, pay: s.shiftPay,
       source: s.source || 'manual', missingMeal,
       approvedEx: !rejected && !!s.approvedEx, corrected: !rejected && !!s._corrected, adpWas: s.adpCorrected ? s.adpCorrected.from : '', flags
     };
@@ -10244,7 +10274,8 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     days: new Set(counted.map(r => r.date)).size,
     hours: sum(counted, 'hours'), reg: sum(counted, 'reg'), ot: sum(counted, 'ot'),
     regPay: sum(counted, 'regPay'), otPay: sum(counted, 'otPay'), gross: sum(counted, 'pay'),
-    longest: counted.reduce((m, r) => Math.max(m, r.hours), 0)
+    longest: counted.reduce((m, r) => Math.max(m, r.hours), 0),
+    otCombined: sum(counted, 'otCombined')
   };
 
   // ── Hours by house ──
@@ -10257,6 +10288,21 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const houses = Object.values(houseMap).sort((a, b) => b.hours - a.hours)
     .map(h => ({ name: h.name, shifts: h.shifts, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
   const rates = [...new Set(counted.map(r => r.rate))].sort((a, b) => a - b);
+
+  // ── Hours at other houses ──
+  // With "only hours worked at [house]", the sheet leaves out the other
+  // houses. They are still stated here so nothing is hidden: hours, regular
+  // and overtime at each other house in the same dates. Overtime is counted
+  // per house, so these hours do not add to this house's overtime.
+  const otherMap = {};
+  if (onlyHouse) allComputed
+    .filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.location !== onlyHouse && s.date >= fromISO && s.date <= toISO)
+    .forEach(s => {
+      const k = s.location || '—';
+      if (!otherMap[k]) otherMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, home: k === st.loc };
+      const h = otherMap[k]; h.shifts++; h.hours += s.hours; h.reg += s.regHrs; h.ot += s.otHrs; h.pay += s.shiftPay;
+    });
+  const otherHouses = Object.values(otherMap).sort((a, b) => b.hours - a.hours);
 
   // ── Time off that touches this date range (denied requests left out) ──
   const leave = (LEAVE_REQUESTS || [])
@@ -10300,7 +10346,12 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const weeklyRule = PAY_CONFIG.periodDays === 7 && PAY_CONFIG.otThreshold === 40;
   if (payType === 'hourly' && !weeklyRule && over40 > totals.ot + 0.005) {
     const detail = fullWeeks.filter(w => w.over40 > 0).map(w => `${srShortDate(w.start)}–${srShortDate(w.end)}: ${srHrs(w.hours)} hrs`).join('; ');
-    notes.push({ level: 'check', text: `Overtime cross-check: ${srHrs(over40)} hrs were worked beyond 40 in a workweek (${detail}), but ${srHrs(totals.ot)} overtime hrs are paid under the current rule of ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period.` });
+    notes.push({ level: 'check', text: `Overtime cross-check: ${srHrs(over40)} hrs were worked beyond 40 in a workweek (${detail}), but ${srHrs(totals.ot)} overtime hrs are paid under the current rule of ${otRuleText()}.` });
+  }
+  // Per-house overtime cross-check: what overtime would be with every house
+  // added together. Shown so the difference is visible; changes no pay.
+  if (payType === 'hourly' && otByLocationOn() && !onlyHouse && totals.otCombined > totals.ot + 0.005) {
+    notes.push({ level: 'check', text: `Per-house overtime: ${srHrs(totals.hours)} hrs were worked across ${houses.length} houses. Each house is counted on its own, so ${srHrs(totals.ot)} overtime hrs are paid. With all houses added together it would be ${srHrs(totals.otCombined)} overtime hrs.` });
   }
   leave.filter(l => l.status === 'pending').forEach(l => notes.push({ level: 'action', text: `Time-off request still pending: ${l.type}, ${fd(l.startDate)}${l.endDate !== l.startDate ? ' – ' + fd(l.endDate) : ''}, ${srHrs(l.hours)} hrs.` }));
   if (st.status !== 'Active' && totals.hours > 0) notes.push({ level: 'action', text: 'Staff member is marked Inactive but has hours in this range — payroll holds these until approved on the Approvals page.' });
@@ -10321,7 +10372,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const ytdRows = allComputed.filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.date >= yStart && s.date <= toISO);
   const ytd = { hours: ytdRows.reduce((a, s) => a + s.hours, 0), ot: ytdRows.reduce((a, s) => a + s.otHrs, 0), gross: ytdRows.reduce((a, s) => a + s.shiftPay, 0) };
 
-  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, houses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
+  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, houses, otherHouses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
 }
 
 // For Payroll: everyone who worked somewhere other than their home house,
@@ -10335,6 +10386,37 @@ function srHouseCrossover(fullReports) {
       homeHours: r.houses.filter(h => h.home).reduce((a, h) => a + h.hours, 0), awayHours: away.reduce((a, h) => a + h.hours, 0),
       total: { shifts: r.totals.shifts, hours: r.totals.hours, reg: r.totals.reg, ot: r.totals.ot, pay: r.totals.gross } };
   }).filter(Boolean).sort((a, b) => (a.staff.last + a.staff.first).localeCompare(b.staff.last + b.staff.first));
+}
+
+// "Hours at other houses" line under the summary tiles. With the per-house
+// overtime rule, the tiles count one house; the hours worked at any other
+// house are stated here, with their own regular and overtime.
+function srOtherHousesText(r) {
+  const list = r.onlyHouse ? (r.otherHouses || []) : r.houses.filter(h => !h.home && r.houses.length > 1);
+  if (!list.length) return null;
+  const total = list.reduce((a, h) => a + h.hours, 0);
+  const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
+  const head = r.onlyHouse ? `Also worked at other houses in these dates — ${srHrs(total)} hrs, not on this sheet` : `Hours at other houses — ${srHrs(total)} hrs`;
+  const tail = otByLocationOn() ? (r.onlyHouse ? `These hours do not count toward overtime at ${r.onlyHouse}; each house is counted on its own.` : `Each house is counted on its own toward overtime (${PAY_CONFIG.otThreshold} hrs at one house).`) : '';
+  return { head, items, tail };
+}
+function srOtherHousesHtml(r) {
+  const t = srOtherHousesText(r);
+  if (!t) return '';
+  return `<div class="sr-key" style="margin:6px 0 8px;padding:6px 8px;border:1px solid #c9d6e8;border-radius:4px;background:#f5f8fc;font-size:10px;color:#1f3864"><b>${esc(t.head)}:</b> ${t.items.map(esc).join(' · ')}${t.tail ? '<br><span style="color:#555">' + esc(t.tail) + '</span>' : ''}</div>`;
+}
+
+// PDF version of the "hours at other houses" line. Returns the new y.
+function srPdfOtherHouses(doc, r, y, k) {
+  const t = srOtherHousesText(r);
+  if (!t) return y;
+  const lines = doc.splitTextToSize(k.tx(t.head + ': ' + t.items.join(' | ')), k.UW - 12);
+  const tail = t.tail ? doc.splitTextToSize(k.tx(t.tail), k.UW - 12) : [];
+  const h = 8 + (lines.length + tail.length) * 8;
+  doc.setFillColor(245, 248, 252); doc.setDrawColor(201, 214, 232); doc.roundedRect(k.M, y - 2, k.UW, h, 2, 2, 'FD');
+  k.font('bold', 7, k.navy); lines.forEach((l, i) => doc.text(l, k.M + 6, y + 6 + i * 8));
+  k.font('normal', 6.5, k.gray); tail.forEach((l, i) => doc.text(l, k.M + 6, y + 6 + (lines.length + i) * 8));
+  return y + h + 6;
 }
 
 function srCrossoverHtml(cross, opts, meta) {
@@ -10353,7 +10435,7 @@ function srCrossoverHtml(cross, opts, meta) {
       <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Staff Who Worked at More Than One House${meta.house ? ' — ' + esc(meta.house) : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
-    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.</div>
+    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}${otByLocationOn() ? `Overtime is counted at each house on its own: a person qualifies for overtime only after ${PAY_CONFIG.otThreshold} hours at one house in the pay period. Hours at other houses are listed and paid, but not added together for overtime.` : 'Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.'}</div>
     ${cross.length ? `<table class="sr-table">
       <thead><tr><th>Staff</th><th>House worked</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${opts.showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
       <tbody>${rowsHtml}</tbody></table>` : '<div class="sr-dim" style="margin-top:14px;font-size:11px">Nobody worked away from their home house in these dates.</div>'}
@@ -10805,6 +10887,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
       <tbody>${body}</tbody>
     </table>
     <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out and ADP punch records' : ''}. +1 = shift ended the next day.</div>
+    ${srOtherHousesHtml(r)}
     ${opts.showNotes ? srNotesHtml(r) : ''}
     <div class="sr-end">
     ${srSignHtml(r, meta, opts)}
@@ -10884,10 +10967,12 @@ function srFullSheetHtml(r, opts, meta, n, total) {
     <div class="sr-tiles">
       ${tile('Hours worked', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''} · ${T.days} day${T.days !== 1 ? 's' : ''}`)}
       ${tile('Regular hours', srHrs(T.reg), '')}
-      ${tile('Overtime hours', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`)}
+      ${tile('Overtime hours', srHrs(T.ot), otRuleText(true))}
       ${tile('Approved time off', srHrs(r.leaveHours), 'hours')}
       ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
     </div>
+
+    ${srOtherHousesHtml(r)}
 
     <div class="sr-facts">
       ${fact('Average shift', srHrs(S.avgShift) + ' hrs')}
@@ -10909,9 +10994,10 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       <div>
         <div class="sr-h">Hours by house</div>
         ${r.houses.length ? `<table class="sr-table sr-mini">
-          <thead><tr><th>House</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
-          <tbody>${r.houses.map(h => `<tr><td>${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ''}</td><td class="sr-num">${h.shifts}</td><td class="sr-num">${srHrs(h.hours)}</td>${showPay ? `<td class="sr-num">${h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies'}</td><td class="sr-num">${$fmt(h.pay)}</td>` : ''}</tr>`).join('')}</tbody>
+          <thead><tr><th>House</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
+          <tbody>${r.houses.map(h => `<tr><td>${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ''}</td><td class="sr-num">${h.shifts}</td><td class="sr-num">${srHrs(h.hours)}</td><td class="sr-num">${srHrs(h.reg)}</td><td class="sr-num">${h.ot > 0 ? '<b>' + srHrs(h.ot) + '</b>' : srHrs(0)}</td>${showPay ? `<td class="sr-num">${h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies'}</td><td class="sr-num">${$fmt(h.pay)}</td>` : ''}</tr>`).join('')}</tbody>
         </table>` : '<div class="sr-dim">No hours worked.</div>'}
+        ${otByLocationOn() && r.houses.length ? `<div class="sr-dim" style="margin-top:4px">Overtime is counted at each house on its own: ${PAY_CONFIG.otThreshold} hrs at one house in the pay period.</div>` : ''}
       </div>
       <div>
         <div class="sr-h">Time off in these dates</div>
@@ -10989,15 +11075,15 @@ function srExportCSV() {
   csv += line(['Range', `${formatDateDisplay(meta.range.from)} - ${formatDateDisplay(meta.range.to)}`]);
   csv += line(['Status', meta.status.text]);
   csv += line(['Generated', meta.generatedAt + (meta.generatedBy ? ' by ' + meta.generatedBy : '')]);
-  csv += line(['Overtime rule', `After ${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day pay period`]) + '\n';
+  csv += line(['Overtime rule', `After ${otRuleText()}`]) + '\n';
 
   csv += line(['SUMMARY']);
-  csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'Status', 'Days worked', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs', 'Approved time off hrs'].concat(opts.showPay ? ['Regular pay', 'OT pay', 'Gross pay'] : []).concat(['Items to settle', 'Items to check']));
+  csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'Status', 'Days worked', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs', 'Approved time off hrs'].concat(opts.showPay ? ['Regular pay', 'OT pay', 'Gross pay'] : []).concat(['Items to settle', 'Items to check', 'Hours at other houses']));
   reports.forEach(r => {
     const pay = opts.showPay && r.payType === 'hourly';
     csv += line([r.staff.id, r.staff.last, r.staff.first, r.staff.loc || '', r.staff.status, r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
       .concat(opts.showPay ? (pay ? [r.totals.regPay.toFixed(2), r.totals.otPay.toFixed(2), r.totals.gross.toFixed(2)] : ['', '', '']) : [])
-      .concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]));
+      .concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length, (t => t ? t.items.join('; ') : '')(srOtherHousesText(r))]));
   });
 
   const hd = srBuildHouseDays(reports, meta.onlyHouse || (opts.layout === 'house' ? meta.house : ''));
@@ -11206,6 +11292,7 @@ function srDownloadPDF() {
       font('bold', 15, navy); doc.text(fit(name, UW / 2 - 24), M + 12, y + 26); doc.text(rangeTxt, M + UW / 2, y + 26);
       font('normal', 7.5, gray); doc.text(tx(`Staff ID ${st.id}  |  Home house: ${st.loc || '-'}${showPay ? '  |  Pay rate: ' + srRateText(r) : ''}`), M + 12, y + 38);
       y += 58;
+      y = srPdfOtherHouses(doc, r, y, { M, UW, font, tx, navy, gray });
     } else {
       letterhead(r.onlyHouse ? `Staff Timesheet Report - ${r.onlyHouse} hours only` : 'Staff Timesheet Report', `${rangeWord} ${rangeTxt}`);
       // ── Employee ──
@@ -11220,7 +11307,7 @@ function srDownloadPDF() {
       });
       y += 34;
       // ── Summary tiles ──
-      const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+      const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), otRuleText(true)], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
       if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
       const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
       tiles.forEach((t, i) => {
@@ -11231,6 +11318,7 @@ function srDownloadPDF() {
         font('normal', 6.5, gray); if (t[2]) doc.text(fit(t[2], tw - 12), bx + 8, y + 35);
       });
       y += 46;
+      y = srPdfOtherHouses(doc, r, y, { M, UW, font, tx, navy, gray });
       // ── At a glance ──
       const facts = [['AVERAGE SHIFT', srHrs(S.avgShift) + ' hrs'], ['LONGEST SHIFT', srHrs(T.longest) + ' hrs'], ['WEEKEND DAYS', S.weekendDays], ['OVERNIGHT SHIFTS', S.overnight], ['HOUSES WORKED', S.houses], ['DAYS IN A ROW', r.streak.len], ['YEAR TO DATE', srHrs(r.ytd.hours) + ' hrs | ' + srHrs(r.ytd.ot) + ' OT' + (showPay ? ' | ' + $fmt(r.ytd.gross) : '')]];
       let fx = M;
@@ -11312,6 +11400,7 @@ function srDownloadPDF() {
           doc.text(fit(h.name + (h.home ? ' (home)' : ''), 190), M, y);
           doc.text(`${h.shifts} shift${h.shifts !== 1 ? 's' : ''}`, M + 250, y, { align: 'right' });
           doc.text(`${srHrs(h.hours)} hrs`, M + 330, y, { align: 'right' });
+          doc.text(`${srHrs(h.reg)} reg${h.ot > 0 ? ' / ' + srHrs(h.ot) + ' OT' : ''}`, M + 345, y);
           if (showPay) { doc.text(h.rates.length === 1 ? $fmt(h.rates[0]) + '/hr' : 'rate varies', M + 420, y, { align: 'right' }); doc.text($fmt(h.pay), R, y, { align: 'right' }); }
           y += 11;
         });
@@ -12758,7 +12847,7 @@ function adpReportHtml(b) {
       <div class="sr-key">From this one file only. Early and late are measured against the time on the timesheet. Time actually worked is paid even when it was not approved; the habit is handled as a supervision matter.</div>` : '<div class="sr-dim">Nothing stands out in this file.</div>'}
 
     <div class="sr-h" style="margin-top:14px">8. Decisions that belong to management</div>
-    <div class="sr-key" style="font-size:9.5px;line-height:1.6">• Which record is the record of time worked when ADP and the time log sheet disagree, written as policy and applied the same way every time. • Whether ADP punch errors and missed punches require a signed correction form. • The overtime rule: ADP calculates weekly overtime; this system pays overtime after ${PAY_CONFIG.otThreshold} hours in ${PAY_CONFIG.periodDays} days. • That hours billed match the corrected record. These are wage-and-hour and billing questions for the payroll provider or an employment attorney; this report does not settle them.</div>
+    <div class="sr-key" style="font-size:9.5px;line-height:1.6">• Which record is the record of time worked when ADP and the time log sheet disagree, written as policy and applied the same way every time. • Whether ADP punch errors and missed punches require a signed correction form. • The overtime rule: ADP calculates weekly overtime; this system pays overtime after ${otRuleText()}. • That hours billed match the corrected record. These are wage-and-hour and billing questions for the payroll provider or an employment attorney; this report does not settle them.</div>
 
     <div class="sr-end">
       <div class="sr-sign"><div class="sr-sign-row">

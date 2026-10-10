@@ -28,7 +28,7 @@ function extractFunctions(names) {
 eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
-  'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay',
+  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText',
   'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
 
@@ -65,7 +65,8 @@ check('calendarDayDiff counts whole days across a clock change', calendarDayDiff
 // ───────────────────────── Staff Timesheet Report ─────────────────────────
 console.log('\nStaff Timesheet Report builder:\n');
 
-global.PAY_CONFIG = { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, mealBreakThresholdHours: 5 };
+// These checks cover the 'all houses combined' setting; the per-house rule (the default) is checked at the end.
+global.PAY_CONFIG = { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, otByLocation: false, mealBreakThresholdHours: 5 };
 global.LOCATIONS = [
   { name: 'Gabriella House', rate: 14, mult: 1.5 },
   { name: 'William House', rate: 13.5, mult: 1.5 }
@@ -200,6 +201,30 @@ check('staff and visitors are counted per house (William: 2 staff, 1 from anothe
 check('all houses together add up to all staff timesheets together', near(hd.reduce((a, h) => a + h.totals.hours, 0), fullDJ.totals.hours + homeOnly.totals.hours) && near(hd.reduce((a, h) => a + h.totals.ot, 0), fullDJ.totals.ot + homeOnly.totals.ot));
 check('choosing one house returns just that house', srBuildHouseDays([fullDJ, homeOnly], 'William House').length === 1 && near(srBuildHouseDays([fullDJ, homeOnly], 'William House')[0].totals.hours, 16));
 check('no shifts gives no houses, not an error', srBuildHouseDays([r5]).length === 0 && srBuildHouseDays([]).length === 0);
+
+// ───────────────────────── Overtime counted per house (the default rule) ─────────────────────────
+console.log('\nOvertime counted per house (80 hrs at one house):\n');
+global.PAY_CONFIG = { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, mealBreakThresholdHours: 5 }; // otByLocation not set = per house
+check('per house is the default when the setting is missing', otByLocationOn() === true);
+const ph = computeShiftsWithOT();
+const pFull = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph);
+const pGab = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph, 'Gabriella House');
+const pWil = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph, 'William House');
+check('total hours do not change (96.5)', near(pFull.totals.hours, 96.5));
+check('only hours past 80 at ONE house are overtime: Gabriella 88.5 hrs -> 8.5 OT', near(pFull.houses.find(h => h.name === 'Gabriella House').ot, 8.5) && near(pFull.houses.find(h => h.name === 'Gabriella House').reg, 80));
+check('the 8 hrs at William House are all regular and do not push Gabriella into more overtime', near(pFull.houses.find(h => h.name === 'William House').ot, 0) && near(pFull.houses.find(h => h.name === 'William House').reg, 8));
+check('sheet totals: 88 regular + 8.5 overtime', near(pFull.totals.reg, 88) && near(pFull.totals.ot, 8.5));
+check('gross pay by hand: 80 x $14 + 8.5 x $21 + 8 x $14 = $1,410.50', near(pFull.totals.gross, 1410.5));
+check('what all houses combined would give is kept for the cross-check (16.5), not paid', near(pFull.totals.otCombined, 16.5));
+const pTxt = pFull.notes.map(x => x.text).join('\n');
+check('the review list states the per-house rule against the combined figure', /Per-house overtime: 96\.50 hrs were worked across 2 houses.*8\.50 overtime hrs are paid.*16\.50 overtime hrs/.test(pTxt));
+check('William-only sheet: 8 hrs, no overtime', near(pWil.totals.hours, 8) && near(pWil.totals.ot, 0));
+check('William-only sheet states the 88.5 hrs at Gabriella (the other house), with its 8.5 OT', pWil.otherHouses.length === 1 && pWil.otherHouses[0].name === 'Gabriella House' && near(pWil.otherHouses[0].hours, 88.5) && near(pWil.otherHouses[0].ot, 8.5));
+check('Gabriella-only sheet states the 8 hrs at William House and says they do not count toward overtime there', (t => t && /William House: 8\.00 hrs \(1 shift\)/.test(t.items.join()) && /do not count toward overtime at Gabriella House/.test(t.tail))(srOtherHousesText(pGab)));
+check('the full sheet states the hours at the other house (not the home house)', (t => t && t.items.length === 1 && /^William House: 8\.00/.test(t.items[0]))(srOtherHousesText(pFull)));
+check('someone who worked at one house only gets no other-houses line', srOtherHousesText(srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', ph)) === null);
+check('the rule text on the tiles says "at one house"', otRuleText(true) === 'after 80 hrs at one house');
+check('report totals still equal the payroll engine for the same shifts', near(pFull.totals.gross, ph.filter(s => s.staff === 'S003' && s.date <= '2026-10-09').reduce((a, s) => a + s.shiftPay, 0)));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

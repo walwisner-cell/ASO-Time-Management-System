@@ -54,7 +54,9 @@ I get to it two ways:
 - **Only hours worked at [house]** — appears once a house is picked. With it ticked, each sheet shows only the shifts worked at that house, and says so at the top. With it off, each sheet is the person's full timesheet across all houses.
 - **List staff who worked at other houses (for Payroll)** — on by default. It adds a page called "Staff Who Worked at More Than One House". For each person who worked somewhere other than their home house, it lists every house they worked at with shifts, hours, regular, overtime and pay, the other houses highlighted, and a total. It prints with the report, is in the PDF, and is in the CSV.
 
-Overtime on these pages is the overtime payroll worked out on the person's total hours for the pay period. It is not recalculated per house.
+Overtime is counted at each house on its own. A staff member qualifies for overtime only after working 80 hours at one house in the pay period. Hours worked at other houses are paid and listed, but they are not added to that house's hours for overtime. (I can switch this back to "all houses combined" in Pay Period Setup.)
+
+Under the summary boxes, each sheet now states the hours worked at other houses. On a full sheet it lists every house other than the home house, with hours and shifts. On an "only hours worked at [house]" sheet it says the person also worked at other houses in these dates, how many hours, and that those hours do not count toward overtime at this house. The times-only copy, the PDF and the CSV carry the same line.
 
 ## Time by house and date
 In **Layout** I pick **By house — each house, each date, who worked**. I get one sheet per house:
@@ -82,6 +84,8 @@ Admin, Supervisor and Viewer, the same as the other reports. A custom role needs
 3. **A brand-new database could not be logged into.** The first admin password from `SEED_ADMIN_PASSWORD` was being scrambled twice, so it never matched. This did not affect my existing database, only a fresh install. The automated tests had also been broken by this; they run again.
 
 ## What this does not decide for me
+When someone worked at more than one house and the houses added together would have given more overtime, the review list shows both numbers ("Per-house overtime: ... paid ... With all houses added together it would be ..."). It changes no pay; it keeps the difference visible.
+
 The overtime cross-check only *shows* the difference between "over 40 in a week" and "over 80 in two weeks". It does not change anyone's pay. Which rule ASO must follow is a wage-and-hour question for my payroll provider or an employment attorney, not something the software should settle.
 
 ## How I check it still works
