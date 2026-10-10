@@ -28,7 +28,7 @@ function extractFunctions(names) {
 eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
-  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText',
+  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile',
   'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
 
@@ -225,6 +225,10 @@ check('the full sheet states the hours at the other house (not the home house)',
 check('someone who worked at one house only gets no other-houses line', srOtherHousesText(srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', ph)) === null);
 check('the rule text on the tiles says "at one house"', otRuleText(true) === 'after 80 hrs at one house');
 check('report totals still equal the payroll engine for the same shifts', near(pFull.totals.gross, ph.filter(s => s.staff === 'S003' && s.date <= '2026-10-09').reduce((a, s) => a + s.shiftPay, 0)));
+
+check('Total hours box on a full sheet is every shift at every house (96.5, 9 shifts)', srHoursTile(pFull).value === '96.50' && /9 shifts · 9 days · all houses/.test(srHoursTile(pFull).sub));
+check('Total hours box on a one-house sheet is still every shift (96.5), split here + other houses', srHoursTile(pWil).value === '96.50' && srHoursTile(pWil).sub === '8.00 here + 88.50 other' && pWil.allHouses.shifts === 9 && pWil.allHouses.days === 9);
+check('one house only, nobody elsewhere: total box equals the sheet', srHoursTile(srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', ph)).value === '8.00');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

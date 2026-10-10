@@ -10301,6 +10301,12 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
       if (!otherMap[k]) otherMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, dates: new Set(), home: k === st.loc };
       const h = otherMap[k]; h.dates.add(s.date); h.shifts++; h.hours += s.hours; h.reg += s.regHrs; h.ot += s.otHrs; h.pay += s.shiftPay;
     });
+  const otherHoursTotal = Object.values(otherMap).reduce((a, h) => a + h.hours, 0);
+  const allDates = new Set(counted.map(r => r.date));
+  Object.values(otherMap).forEach(h => h.dates.forEach(d => allDates.add(d)));
+  // Hours worked on EVERY shift in these dates, at every house — the
+  // "Hours worked" box always shows this, even on a one-house sheet.
+  const allHouses = { hours: totals.hours + otherHoursTotal, shifts: totals.shifts + Object.values(otherMap).reduce((a, h) => a + h.shifts, 0), days: allDates.size, here: totals.hours, other: otherHoursTotal };
   const otherHouses = Object.values(otherMap).sort((a, b) => b.hours - a.hours)
     .map(h => ({ name: h.name, shifts: h.shifts, days: h.dates.size, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home }));
 
@@ -10375,7 +10381,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const ytdRows = allComputed.filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.date >= yStart && s.date <= toISO);
   const ytd = { hours: ytdRows.reduce((a, s) => a + s.hours, 0), ot: ytdRows.reduce((a, s) => a + s.otHrs, 0), gross: ytdRows.reduce((a, s) => a + s.shiftPay, 0) };
 
-  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, houses, otherHouses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
+  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, allHouses, houses, otherHouses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
 }
 
 // For Payroll: everyone who worked somewhere other than their home house,
@@ -10395,6 +10401,13 @@ function srHouseCrossover(fullReports) {
 // overtime rule, the tiles count one house; the hours worked at any other
 // house are stated here, one box per house, styled like the summary boxes,
 // with the house name in bold.
+// "Hours worked" box: the total of all shifts at every house.
+function srHoursTile(r) {
+  const A = r.allHouses || { hours: r.totals.hours, shifts: r.totals.shifts, days: r.totals.days, here: r.totals.hours, other: 0 };
+  const count = `${A.shifts} shift${A.shifts !== 1 ? 's' : ''} · ${A.days} day${A.days !== 1 ? 's' : ''}`;
+  const sub = r.onlyHouse && A.other > 0 ? `${srHrs(A.here)} here + ${srHrs(A.other)} other` : (r.houses.length > 1 ? count + ' · all houses' : count);
+  return { label: 'Total hours worked', value: srHrs(A.hours), sub };
+}
 function srOtherHousesText(r) {
   const list = r.onlyHouse ? (r.otherHouses || []) : r.houses.filter(h => !h.home && r.houses.length > 1);
   if (!list.length) return null;
@@ -10402,7 +10415,7 @@ function srOtherHousesText(r) {
   const sub = h => `${h.shifts} shift${h.shifts !== 1 ? 's' : ''} · ${h.days || 0} day${h.days !== 1 ? 's' : ''}${h.ot > 0 ? ' · ' + srHrs(h.ot) + ' OT' : ''}`;
   const tiles = list.map(h => ({ name: h.name + (h.home ? ' (home)' : ''), hours: srHrs(h.hours), sub: sub(h) }));
   const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
-  const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, not on this sheet` : `Hours at other houses — ${srHrs(total)} hrs`;
+  const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, in the total above, not listed on this sheet` : `Hours at other houses — ${srHrs(total)} hrs, included in the total above`;
   const tail = otByLocationOn() ? (r.onlyHouse ? `These hours do not count toward overtime at ${r.onlyHouse}; each house is counted on its own.` : `Each house is counted on its own toward overtime (${PAY_CONFIG.otThreshold} hrs at one house).`) : '';
   return { head, items, tiles, tail };
 }
@@ -10986,7 +10999,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
     </div>
 
     <div class="sr-tiles">
-      ${tile('Hours worked', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''} · ${T.days} day${T.days !== 1 ? 's' : ''}`)}
+      ${(h => tile(h.label, h.value, h.sub))(srHoursTile(r))}
       ${tile('Regular hours', srHrs(T.reg), '')}
       ${tile('Overtime hours', srHrs(T.ot), otRuleText(true))}
       ${tile('Approved time off', srHrs(r.leaveHours), 'hours')}
@@ -11328,7 +11341,7 @@ function srDownloadPDF() {
       });
       y += 34;
       // ── Summary tiles ──
-      const tiles = [['HOURS WORKED', srHrs(T.hours), `${T.shifts} shift${T.shifts !== 1 ? 's' : ''}, ${T.days} day${T.days !== 1 ? 's' : ''}`], ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), otRuleText(true)], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+      const tiles = [(h => [h.label.toUpperCase(), h.value, h.sub])(srHoursTile(r)), ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), otRuleText(true)], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
       if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
       const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
       tiles.forEach((t, i) => {

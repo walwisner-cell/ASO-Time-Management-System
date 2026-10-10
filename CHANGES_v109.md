@@ -14,6 +14,9 @@ Example (the case I sent): 80.00 hrs at Benjamin House and 27.60 hrs at William 
 - **Staff Who Worked at More Than One House** page — its note now explains the per-house rule.
 - **Items to review** — when the houses added together would have given more overtime, I see both numbers, for example: "Each house is counted on its own, so 0.00 overtime hrs are paid. With all houses added together it would be 27.60 overtime hrs." This changes no pay.
 
+## Total hours worked
+The first box on each sheet is now called **Total hours worked** and is always the total of every shift at every house in these dates. On a full sheet it says "all houses" under the number. On an "only hours worked at [house]" sheet it still shows the total of all shifts, with "80.00 here + 27.60 other" underneath; the Regular, Overtime and Pay boxes on that sheet are for that house.
+
 ## Also removed
 The Staff Timesheet Report no longer marks shifts "Edited" or lists "shift was edited after it was first entered" under Items to review. Corrections made from ADP punches are still noted, with the time the time log sheet originally said. Every edit is still recorded in the Audit Trail.
 
