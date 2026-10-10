@@ -25,7 +25,7 @@ I get to it two ways:
 - Supervisor overrides
 - Shifts of 16 hours or more, and 7 or more days worked in a row
 - More than 24 hours in one day (approved exceptions)
-- Shifts edited after entry
+- Shifts corrected to an ADP punch, with the time the time log sheet said (ordinary edits are not listed)
 - Pending time-off requests
 - Inactive staff with hours
 - **Overtime cross-check** — when hours beyond 40 in a workweek are more than the overtime the system is paying under the 80-hours-per-14-days rule

@@ -10234,7 +10234,6 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     else {
       if (missingMeal) flags.push('No meal break');
       if (s.approvedEx) flags.push('Over-24h approved');
-      if (s._corrected) flags.push('Edited');
       if (s.hours >= 16) flags.push('Long shift');
     }
     return {
@@ -10282,11 +10281,11 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const houseMap = {};
   counted.forEach(r => {
     const k = r.location || '—';
-    if (!houseMap[k]) houseMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, rates: new Set(), home: k === st.loc };
-    houseMap[k].shifts++; houseMap[k].hours += r.hours; houseMap[k].reg += r.reg; houseMap[k].ot += r.ot; houseMap[k].pay += r.pay; houseMap[k].rates.add(r.rate);
+    if (!houseMap[k]) houseMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, rates: new Set(), dates: new Set(), home: k === st.loc };
+    houseMap[k].dates.add(r.date); houseMap[k].shifts++; houseMap[k].hours += r.hours; houseMap[k].reg += r.reg; houseMap[k].ot += r.ot; houseMap[k].pay += r.pay; houseMap[k].rates.add(r.rate);
   });
   const houses = Object.values(houseMap).sort((a, b) => b.hours - a.hours)
-    .map(h => ({ name: h.name, shifts: h.shifts, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
+    .map(h => ({ name: h.name, shifts: h.shifts, days: h.dates.size, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home, rates: [...h.rates].sort((a, b) => a - b) }));
   const rates = [...new Set(counted.map(r => r.rate))].sort((a, b) => a - b);
 
   // ── Hours at other houses ──
@@ -10299,10 +10298,11 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     .filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.location !== onlyHouse && s.date >= fromISO && s.date <= toISO)
     .forEach(s => {
       const k = s.location || '—';
-      if (!otherMap[k]) otherMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, home: k === st.loc };
-      const h = otherMap[k]; h.shifts++; h.hours += s.hours; h.reg += s.regHrs; h.ot += s.otHrs; h.pay += s.shiftPay;
+      if (!otherMap[k]) otherMap[k] = { name: k, shifts: 0, hours: 0, reg: 0, ot: 0, pay: 0, dates: new Set(), home: k === st.loc };
+      const h = otherMap[k]; h.dates.add(s.date); h.shifts++; h.hours += s.hours; h.reg += s.regHrs; h.ot += s.otHrs; h.pay += s.shiftPay;
     });
-  const otherHouses = Object.values(otherMap).sort((a, b) => b.hours - a.hours);
+  const otherHouses = Object.values(otherMap).sort((a, b) => b.hours - a.hours)
+    .map(h => ({ name: h.name, shifts: h.shifts, days: h.dates.size, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home }));
 
   // ── Time off that touches this date range (denied requests left out) ──
   const leave = (LEAVE_REQUESTS || [])
@@ -10334,7 +10334,10 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   counted.filter(r => r.missingMeal).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — ${srHrs(r.hours)} hr clocked shift with no meal break recorded.` }));
   counted.filter(r => r.source === 'clock_in_override').forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — clocked in or out by a supervisor on the employee’s behalf.` }));
   counted.filter(r => r.approvedEx).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — more than 24 hours entered for one day, approved as an exception.` }));
-  counted.filter(r => r.corrected).forEach(r => notes.push({ level: 'info', text: r.adpWas ? `${fd(r.date)} — times corrected to the ADP punch (the time log sheet said ${r.adpWas.split('-').map(srTime).join(' – ')}).` : `${fd(r.date)} — shift was edited after it was first entered.` }));
+  // Ordinary edits are not listed (the owner does not need them on the
+  // timesheet). A correction to an ADP punch is still noted, with the time
+  // the time log sheet originally said.
+  counted.filter(r => r.corrected && r.adpWas).forEach(r => notes.push({ level: 'info', text: `${fd(r.date)} — times corrected to the ADP punch (the time log sheet said ${r.adpWas.split('-').map(srTime).join(' – ')}).` }));
   counted.filter(r => r.hours >= 16).forEach(r => notes.push({ level: 'check', text: `${fd(r.date)} — single shift of ${srHrs(r.hours)} hours.` }));
   if (best.len >= 7) notes.push({ level: 'check', text: `Worked ${best.len} days in a row (${fd(best.start)} – ${fd(best.end)}).` });
   // Overtime cross-check. The system pays overtime after PAY_CONFIG.otThreshold
@@ -10388,35 +10391,53 @@ function srHouseCrossover(fullReports) {
   }).filter(Boolean).sort((a, b) => (a.staff.last + a.staff.first).localeCompare(b.staff.last + b.staff.first));
 }
 
-// "Hours at other houses" line under the summary tiles. With the per-house
+// "Hours at other houses" under the summary tiles. With the per-house
 // overtime rule, the tiles count one house; the hours worked at any other
-// house are stated here, with their own regular and overtime.
+// house are stated here, one box per house, styled like the summary boxes,
+// with the house name in bold.
 function srOtherHousesText(r) {
   const list = r.onlyHouse ? (r.otherHouses || []) : r.houses.filter(h => !h.home && r.houses.length > 1);
   if (!list.length) return null;
   const total = list.reduce((a, h) => a + h.hours, 0);
+  const sub = h => `${h.shifts} shift${h.shifts !== 1 ? 's' : ''} · ${h.days || 0} day${h.days !== 1 ? 's' : ''}${h.ot > 0 ? ' · ' + srHrs(h.ot) + ' OT' : ''}`;
+  const tiles = list.map(h => ({ name: h.name + (h.home ? ' (home)' : ''), hours: srHrs(h.hours), sub: sub(h) }));
   const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
-  const head = r.onlyHouse ? `Also worked at other houses in these dates — ${srHrs(total)} hrs, not on this sheet` : `Hours at other houses — ${srHrs(total)} hrs`;
+  const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, not on this sheet` : `Hours at other houses — ${srHrs(total)} hrs`;
   const tail = otByLocationOn() ? (r.onlyHouse ? `These hours do not count toward overtime at ${r.onlyHouse}; each house is counted on its own.` : `Each house is counted on its own toward overtime (${PAY_CONFIG.otThreshold} hrs at one house).`) : '';
-  return { head, items, tail };
+  return { head, items, tiles, tail };
 }
-function srOtherHousesHtml(r) {
+function srOtherHousesHtml(r, cols) {
   const t = srOtherHousesText(r);
   if (!t) return '';
-  return `<div class="sr-key" style="margin:6px 0 8px;padding:6px 8px;border:1px solid #c9d6e8;border-radius:4px;background:#f5f8fc;font-size:10px;color:#1f3864"><b>${esc(t.head)}:</b> ${t.items.map(esc).join(' · ')}${t.tail ? '<br><span style="color:#555">' + esc(t.tail) + '</span>' : ''}</div>`;
+  const n = cols || 4;
+  const w = `calc((100% - ${(n - 1) * 8}px) / ${n})`;
+  return `<div class="sr-other">
+    <div class="sr-tile-l" style="margin-top:8px">${esc(t.head)}</div>
+    <div class="sr-tiles" style="flex-wrap:wrap;margin-top:4px">${t.tiles.map(x => `<div class="sr-tile" style="flex:0 0 ${w}">
+      <div class="sr-tile-l" style="font-weight:700;color:#16283c">${esc(x.name)}</div>
+      <div class="sr-tile-v">${x.hours}</div>
+      <div class="sr-tile-s">${esc(x.sub)}</div></div>`).join('')}</div>
+    ${t.tail ? `<div class="sr-tile-s" style="margin-top:3px;white-space:normal">${esc(t.tail)}</div>` : ''}
+  </div>`;
 }
 
-// PDF version of the "hours at other houses" line. Returns the new y.
+// PDF version: same boxes as the summary tiles. Returns the new y.
 function srPdfOtherHouses(doc, r, y, k) {
   const t = srOtherHousesText(r);
   if (!t) return y;
-  const lines = doc.splitTextToSize(k.tx(t.head + ': ' + t.items.join(' | ')), k.UW - 12);
-  const tail = t.tail ? doc.splitTextToSize(k.tx(t.tail), k.UW - 12) : [];
-  const h = 8 + (lines.length + tail.length) * 8;
-  doc.setFillColor(245, 248, 252); doc.setDrawColor(201, 214, 232); doc.roundedRect(k.M, y - 2, k.UW, h, 2, 2, 'FD');
-  k.font('bold', 7, k.navy); lines.forEach((l, i) => doc.text(l, k.M + 6, y + 6 + i * 8));
-  k.font('normal', 6.5, k.gray); tail.forEach((l, i) => doc.text(l, k.M + 6, y + 6 + (lines.length + i) * 8));
-  return y + h + 6;
+  const n = k.cols || 4, gap = 8, tw = (k.UW - gap * (n - 1)) / n;
+  k.font('normal', 6.5, k.gray); doc.text(k.tx(t.head).toUpperCase(), k.M, y + 4); y += 9;
+  t.tiles.forEach((x, i) => {
+    const col = i % n; if (i && !col) y += 46;
+    const bx = k.M + col * (tw + gap);
+    doc.setFillColor(238, 243, 249); doc.roundedRect(bx, y, tw, 40, 3, 3, 'F');
+    k.font('bold', 6.5, k.navy); doc.text(k.tx(x.name).toUpperCase().slice(0, 40), bx + 8, y + 12);
+    k.font('bold', 14, k.navy); doc.text(x.hours, bx + 8, y + 26);
+    k.font('normal', 6.5, k.gray); doc.text(k.tx(x.sub), bx + 8, y + 35);
+  });
+  y += 46;
+  if (t.tail) { k.font('normal', 6.5, k.gray); doc.text(k.tx(t.tail), k.M, y); y += 10; }
+  return y + 2;
 }
 
 function srCrossoverHtml(cross, opts, meta) {
@@ -10972,7 +10993,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
     </div>
 
-    ${srOtherHousesHtml(r)}
+    ${srOtherHousesHtml(r, showPay ? 5 : 4)}
 
     <div class="sr-facts">
       ${fact('Average shift', srHrs(S.avgShift) + ' hrs')}
@@ -11318,7 +11339,7 @@ function srDownloadPDF() {
         font('normal', 6.5, gray); if (t[2]) doc.text(fit(t[2], tw - 12), bx + 8, y + 35);
       });
       y += 46;
-      y = srPdfOtherHouses(doc, r, y, { M, UW, font, tx, navy, gray });
+      y = srPdfOtherHouses(doc, r, y, { M, UW, font, tx, navy, gray, cols: tiles.length });
       // ── At a glance ──
       const facts = [['AVERAGE SHIFT', srHrs(S.avgShift) + ' hrs'], ['LONGEST SHIFT', srHrs(T.longest) + ' hrs'], ['WEEKEND DAYS', S.weekendDays], ['OVERNIGHT SHIFTS', S.overnight], ['HOUSES WORKED', S.houses], ['DAYS IN A ROW', r.streak.len], ['YEAR TO DATE', srHrs(r.ytd.hours) + ' hrs | ' + srHrs(r.ytd.ot) + ' OT' + (showPay ? ' | ' + $fmt(r.ytd.gross) : '')]];
       let fx = M;

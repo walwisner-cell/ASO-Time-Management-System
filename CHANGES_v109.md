@@ -10,9 +10,12 @@ Example (the case I sent): 80.00 hrs at Benjamin House and 27.60 hrs at William 
 
 ## Where it shows
 - **Payroll, Timesheet Log, Pay Period Report, pay stubs** — all use the same overtime engine, so they all follow the per-house rule. The running-hours column now says "Running Hrs at This House".
-- **Staff Timesheet Report** — the Overtime box says "after 80 hrs at one house". Right under the boxes there is a line stating the hours at other houses. On an "only hours worked at [house]" sheet it says how many hours the person also worked elsewhere and that those hours do not count toward overtime at this house. Hours by house now shows Regular and OT for each house. The times-only copy, the PDF and the CSV ("Hours at other houses" column) carry the same information.
+- **Staff Timesheet Report** — the Overtime box says "after 80 hrs at one house". Right under the boxes, the hours at other houses show as their own row of boxes, styled like the summary boxes: the house name in bold, the hours in large type, and the shifts and days underneath. On an "only hours worked at [house]" sheet it says how many hours the person also worked elsewhere and that those hours do not count toward overtime at this house. Hours by house now shows Regular and OT for each house. The times-only copy, the PDF and the CSV ("Hours at other houses" column) carry the same information.
 - **Staff Who Worked at More Than One House** page — its note now explains the per-house rule.
 - **Items to review** — when the houses added together would have given more overtime, I see both numbers, for example: "Each house is counted on its own, so 0.00 overtime hrs are paid. With all houses added together it would be 27.60 overtime hrs." This changes no pay.
+
+## Also removed
+The Staff Timesheet Report no longer marks shifts "Edited" or lists "shift was edited after it was first entered" under Items to review. Corrections made from ADP punches are still noted, with the time the time log sheet originally said. Every edit is still recorded in the Audit Trail.
 
 ## The setting
 Pay Period Setup → **Overtime Counted**: "At each house separately" (now the default) or "All houses combined" (the old way). Only an admin can change it, the same as the OT threshold. It is saved in the database (new column `pay_config.ot_by_location`, added automatically on start).
