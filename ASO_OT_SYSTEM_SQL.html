@@ -10408,11 +10408,29 @@ function srHoursTile(r) {
   const sub = r.onlyHouse && A.other > 0 ? `${srHrs(A.here)} here + ${srHrs(A.other)} other` : (r.houses.length > 1 ? count + ' · all houses' : count);
   return { label: 'Total hours worked', value: srHrs(A.hours), sub };
 }
+// The person's main house on a full sheet: the home house if they worked
+// there, otherwise the house with the most hours. Null when there is only
+// one house (or on a one-house sheet), so nothing is split.
+function srMainHouse(r) {
+  if (r.onlyHouse || !r.houses || r.houses.length < 2) return null;
+  return r.houses.find(h => h.home) || r.houses[0];
+}
+// Regular and Overtime boxes. When someone worked at more than one house,
+// these show the main house only; every other house has its own box below,
+// so Regular + Overtime + other houses = Total hours worked.
+function srRegOtTiles(r) {
+  const T = r.totals, main = srMainHouse(r);
+  if (!main) return { reg: srHrs(T.reg), regSub: '', ot: srHrs(T.ot), otSub: otRuleText(true) };
+  const otherOt = T.ot - main.ot;
+  return { reg: srHrs(main.reg), regSub: 'at ' + main.name, ot: srHrs(main.ot),
+    otSub: otherOt > 0.005 ? `at ${main.name} (+${srHrs(otherOt)} at other houses)` : otRuleText(true) };
+}
 function srOtherHousesText(r) {
-  const list = r.onlyHouse ? (r.otherHouses || []) : r.houses.filter(h => !h.home && r.houses.length > 1);
+  const main = srMainHouse(r);
+  const list = r.onlyHouse ? (r.otherHouses || []) : (main ? r.houses.filter(h => h !== main) : []);
   if (!list.length) return null;
   const total = list.reduce((a, h) => a + h.hours, 0);
-  const sub = h => `${h.shifts} shift${h.shifts !== 1 ? 's' : ''} · ${h.days || 0} day${h.days !== 1 ? 's' : ''}${h.ot > 0 ? ' · ' + srHrs(h.ot) + ' OT' : ''}`;
+  const sub = h => `${h.shifts} shift${h.shifts !== 1 ? 's' : ''} · ${h.days || 0} day${h.days !== 1 ? 's' : ''}${h.ot > 0 ? ' · ' + srHrs(h.reg) + ' reg + ' + srHrs(h.ot) + ' OT' : ''}`;
   const tiles = list.map(h => ({ name: h.name + (h.home ? ' (home)' : ''), hours: srHrs(h.hours), sub: sub(h) }));
   const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
   const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, in the total above, not listed on this sheet` : `Hours at other houses — ${srHrs(total)} hrs, included in the total above`;
@@ -11000,8 +11018,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
 
     <div class="sr-tiles">
       ${(h => tile(h.label, h.value, h.sub))(srHoursTile(r))}
-      ${tile('Regular hours', srHrs(T.reg), '')}
-      ${tile('Overtime hours', srHrs(T.ot), otRuleText(true))}
+      ${(x => tile('Regular hours', x.reg, x.regSub) + tile('Overtime hours', x.ot, x.otSub))(srRegOtTiles(r))}
       ${tile('Approved time off', srHrs(r.leaveHours), 'hours')}
       ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
     </div>
@@ -11341,7 +11358,7 @@ function srDownloadPDF() {
       });
       y += 34;
       // ── Summary tiles ──
-      const tiles = [(h => [h.label.toUpperCase(), h.value, h.sub])(srHoursTile(r)), ['REGULAR HOURS', srHrs(T.reg), ''], ['OVERTIME HOURS', srHrs(T.ot), otRuleText(true)], ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+      const tiles = [(h => [h.label.toUpperCase(), h.value, h.sub])(srHoursTile(r)), ...(x => [['REGULAR HOURS', x.reg, x.regSub], ['OVERTIME HOURS', x.ot, x.otSub]])(srRegOtTiles(r)), ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
       if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
       const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
       tiles.forEach((t, i) => {

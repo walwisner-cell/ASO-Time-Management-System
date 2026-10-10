@@ -28,7 +28,7 @@ function extractFunctions(names) {
 eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
-  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile',
+  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile', 'srMainHouse', 'srRegOtTiles',
   'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
 
@@ -229,6 +229,10 @@ check('report totals still equal the payroll engine for the same shifts', near(p
 check('Total hours box on a full sheet is every shift at every house (96.5, 9 shifts)', srHoursTile(pFull).value === '96.50' && /9 shifts · 9 days · all houses/.test(srHoursTile(pFull).sub));
 check('Total hours box on a one-house sheet is still every shift (96.5), split here + other houses', srHoursTile(pWil).value === '96.50' && srHoursTile(pWil).sub === '8.00 here + 88.50 other' && pWil.allHouses.shifts === 9 && pWil.allHouses.days === 9);
 check('one house only, nobody elsewhere: total box equals the sheet', srHoursTile(srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', ph)).value === '8.00');
+
+check('Regular box shows the main house only (Gabriella 80.00), not 88', (x => x.reg === '80.00' && x.regSub === 'at Gabriella House' && x.ot === '8.50')(srRegOtTiles(pFull)));
+check('Regular + Overtime + other-house boxes add up to Total hours worked', near(80 + 8.5 + pFull.houses.find(h => h.name === 'William House').hours, pFull.allHouses.hours));
+check('a one-house sheet is not split', srRegOtTiles(pWil).reg === '8.00' && srRegOtTiles(pWil).regSub === '');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
