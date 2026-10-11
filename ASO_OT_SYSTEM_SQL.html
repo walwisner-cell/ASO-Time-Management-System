@@ -2377,7 +2377,7 @@
         </div>
         <div class="card" style="margin-bottom:20px;border-color:rgba(46,138,232,0.3);background:rgba(46,138,232,0.04)">
           <div class="card-title" style="margin-bottom:14px">🔍 Filter Time Log</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:end;flex-wrap:wrap">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:end">
             <div class="form-field">
               <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">📅 Pay Period</label>
               <select id="ts-filter-period" onchange="onTsFilterChange()" style="width:100%;font-size:13px;padding:10px 12px;border:1px solid var(--accent);color:var(--accent2);font-family:var(--mono);font-weight:600;background:var(--surface2);border-radius:8px">
@@ -2394,6 +2394,12 @@
               <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">👤 Staff Member</label>
               <select id="ts-filter-staff" onchange="onTsFilterChange()" style="width:100%;font-size:13px;padding:10px 12px;border:1px solid var(--border2);color:var(--text);font-family:var(--sans);background:var(--surface2);border-radius:8px">
                 <option value="">All Staff</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--mono);margin-bottom:8px">📆 Date</label>
+              <select id="ts-filter-date" onchange="onTsFilterChange()" style="width:100%;font-size:13px;padding:10px 12px;border:1px solid var(--border2);color:var(--text);font-family:var(--sans);background:var(--surface2);border-radius:8px">
+                <option value="">— All Dates —</option>
               </select>
             </div>
           </div>
@@ -6776,6 +6782,7 @@ function clearTsFilters() {
   document.getElementById('ts-filter-period').value = '';
   document.getElementById('ts-filter-staff').value = '';
   if (document.getElementById('ts-filter-house')) document.getElementById('ts-filter-house').value = '';
+  if (document.getElementById('ts-filter-date')) document.getElementById('ts-filter-date').value = '';
   renderTimesheetTable();
 }
 
@@ -6915,6 +6922,31 @@ function renderTimesheetTable() {
     data = data.filter(s => s.location === fh);
   }
   if (fs) data = data.filter(s => s.staff === fs);
+
+  // Date filter: every date in the chosen pay period (or, with all periods,
+  // every date that has a shift), with how many shifts match the other
+  // filters on that date. A date outside the chosen period is cleared.
+  const fdEl = document.getElementById('ts-filter-date');
+  let fd = fdEl ? fdEl.value : '';
+  if (fdEl) {
+    let dates;
+    const pShift = fp ? all.find(s => s.period === fp) : null;
+    if (pShift) {
+      const { start: ps, end: pe } = getPeriodForDate(pShift.date);
+      const startISO = ps.toISOString().split('T')[0], endISO = pe.toISOString().split('T')[0];
+      dates = [];
+      for (let d = startISO, g = 0; d <= endISO && g < 62; d = srAddDays(d, 1), g++) dates.push(d);
+      dates.reverse();
+    } else {
+      dates = [...new Set(data.map(s => s.date))].sort().reverse();
+    }
+    if (fd && !dates.includes(fd)) fd = '';
+    const count = {}; data.forEach(s => { count[s.date] = (count[s.date] || 0) + 1; });
+    fdEl.innerHTML = '<option value="">— All Dates —</option>' + dates.map(d =>
+      `<option value="${d}"${d === fd ? ' selected' : ''}>${srDayName(d)} ${formatDateDisplay(d)}${count[d] ? ' (' + count[d] + ')' : ' — none'}</option>`).join('');
+    fdEl.value = fd;
+  }
+  if (fd) data = data.filter(s => s.date === fd);
   data = data.sort((a,b) => b.date.localeCompare(a.date));
 
   // If house filter is on, update staff dropdown to show staff who worked at OR are assigned to that house
@@ -6949,6 +6981,9 @@ function renderTimesheetTable() {
     if (fs) {
       const st = STAFF.find(x => x.id === fs);
       parts.push(`Staff: <b style="color:var(--text)">${st ? st.last+', '+st.first : fs}</b>`);
+    }
+    if (fd) {
+      parts.push(`Date: <b style="color:var(--accent2)">${srDayName(fd)} ${formatDateDisplay(fd)}</b>`);
     }
     if (parts.length) {
       summaryEl.innerHTML = `🔍 Showing ${data.length} shift${data.length!==1?'s':''} · ${parts.join(' · ')}`;
@@ -10531,7 +10566,8 @@ function srOpenFromTimesheet() {
   _srPrefill = {
     periodStart: p ? p.start : null,
     staffId: document.getElementById('ts-filter-staff') ? document.getElementById('ts-filter-staff').value : '',
-    house: document.getElementById('ts-filter-house') ? document.getElementById('ts-filter-house').value : ''
+    house: document.getElementById('ts-filter-house') ? document.getElementById('ts-filter-house').value : '',
+    date: document.getElementById('ts-filter-date') ? document.getElementById('ts-filter-date').value : ''
   };
   nav('staffreport', document.querySelector('[data-page="staffreport"]'));
 }
@@ -10549,6 +10585,7 @@ function renderStaffReportPage() {
   }).join('');
   if ([...perSel.options].some(o => o.value === prevPeriod)) perSel.value = prevPeriod;
   if (pre && pre.periodStart) document.getElementById('sr-mode').value = 'period';
+  if (pre && pre.date) { document.getElementById('sr-mode').value = 'day'; document.getElementById('sr-day').value = pre.date; }
 
   const prevHouse = pre ? (pre.house || '') : houseSel.value;
   houseSel.innerHTML = '<option value="">All houses</option>' + LOCATIONS.map(l => `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join('');

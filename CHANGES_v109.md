@@ -25,6 +25,9 @@ Staff ID and hire date are no longer printed on the Staff Timesheet Report (the 
 
 The Staff Timesheet Report no longer marks shifts "Edited" or lists "shift was edited after it was first entered" under Items to review. Corrections made from ADP punches are still noted, with the time the time log sheet originally said. Every edit is still recorded in the Audit Trail.
 
+## Date filter on the Timesheet Log
+The Filter Time Log box now has a fourth filter, **Date**, next to Pay Period, House / Location and Staff Member. With a pay period picked, it lists every date in that period, newest first, with how many shifts match the other filters on that date ("none" when there are none). With All Pay Periods, it lists every date that has shifts. Picking a date shows only that day's shifts and adds "Date: ..." to the line under the filters. It works together with the house and staff filters, Clear Filters resets it, and changing to a period that does not contain the date clears it. The Staff Report button carries the date over and opens the report for that single date.
+
 ## The setting
 Pay Period Setup → **Overtime Counted**: "At each house separately" (now the default) or "All houses combined" (the old way). Only an admin can change it, the same as the OT threshold. It is saved in the database (new column `pay_config.ot_by_location`, added automatically on start).
 
