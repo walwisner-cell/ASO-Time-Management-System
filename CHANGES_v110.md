@@ -14,7 +14,7 @@ Every shift now has a shift type:
 | Normal Hours | 9:00 AM – 5:00 PM (Office, Day Program) |
 
 ## Entering a shift
-Add Shift and Edit Shift have a new **Shift Type** dropdown before Shift Start. When I pick a type, the start and end times fill in by themselves and the hours update. If I change the times by hand, the dropdown moves to the matching type, or to "Custom times" when they match none. New shifts start on 1st Shift (6 AM – 2 PM) instead of 8 AM – 4 PM.
+Add Shift and Edit Shift have a new **Shift Type** dropdown before Shift Start. The menu lists only the names (1st Shift, 2nd Shift, 3rd Shift, Double (1st + 2nd), Double (2nd + 3rd), Double (3rd + 1st), Normal Working Hours), not the times, so it is not confusing to whoever is entering data. When I pick a type, the start and end times fill in by themselves and the hours update. If I change the times by hand, the dropdown moves to the matching type, or to "Custom times" when they match none. New shifts start on 1st Shift (6 AM – 2 PM) instead of 8 AM – 4 PM.
 
 ## How a shift gets its type
 The type is worked out from the shift's times every time it is shown, so shifts I entered before this update, edited shifts and ADP-corrected shifts are all labelled. Nothing new is stored.

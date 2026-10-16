@@ -4516,13 +4516,13 @@ function setTimeParts(prefix, hhmm) {
 // back-to-back shifts by the same person count as one double.
 // ──────────────────────────────────────────────────────────
 const SHIFT_TYPES = [
-  { code: 'first',    start: '06:00', end: '14:00', label: '1st Shift',    short: '1st',    menu: '1st Shift — 6:00 AM to 2:00 PM' },
-  { code: 'second',   start: '14:00', end: '22:00', label: '2nd Shift',    short: '2nd',    menu: '2nd Shift — 2:00 PM to 10:00 PM' },
-  { code: 'third',    start: '22:00', end: '06:00', label: '3rd Shift',    short: '3rd',    menu: '3rd Shift — 10:00 PM to 6:00 AM' },
-  { code: 'double12', start: '06:00', end: '22:00', label: 'Double Shift', short: 'Double', menu: 'Double — 6:00 AM to 10:00 PM (1st + 2nd)', detail: '1st + 2nd' },
-  { code: 'double23', start: '14:00', end: '06:00', label: 'Double Shift', short: 'Double', menu: 'Double — 2:00 PM to 6:00 AM (2nd + 3rd)', detail: '2nd + 3rd' },
-  { code: 'double31', start: '22:00', end: '14:00', label: 'Double Shift', short: 'Double', menu: 'Double — 10:00 PM to 2:00 PM (3rd + 1st)', detail: '3rd + 1st' },
-  { code: 'normal',   start: '09:00', end: '17:00', label: 'Normal Hours', short: 'Normal', menu: 'Normal Working Hours — 9:00 AM to 5:00 PM' }
+  { code: 'first',    start: '06:00', end: '14:00', label: '1st Shift',    short: '1st',    menu: '1st Shift' },
+  { code: 'second',   start: '14:00', end: '22:00', label: '2nd Shift',    short: '2nd',    menu: '2nd Shift' },
+  { code: 'third',    start: '22:00', end: '06:00', label: '3rd Shift',    short: '3rd',    menu: '3rd Shift' },
+  { code: 'double12', start: '06:00', end: '22:00', label: 'Double Shift', short: 'Double', menu: 'Double (1st + 2nd)', detail: '1st + 2nd' },
+  { code: 'double23', start: '14:00', end: '06:00', label: 'Double Shift', short: 'Double', menu: 'Double (2nd + 3rd)', detail: '2nd + 3rd' },
+  { code: 'double31', start: '22:00', end: '14:00', label: 'Double Shift', short: 'Double', menu: 'Double (3rd + 1st)', detail: '3rd + 1st' },
+  { code: 'normal',   start: '09:00', end: '17:00', label: 'Normal Hours', short: 'Normal', menu: 'Normal Working Hours' }
 ];
 const SHIFT_OTHER = { code: 'other', label: 'Other hours', short: 'Other' };
 function stMin(t) { const [h, m] = String(t || '0:0').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); }
