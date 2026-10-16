@@ -31,6 +31,11 @@ Owner: "incorporate the type of shift — first shift, second shift or a double 
 - Shown: Timesheet Log and My Shifts (badge under the time), staff report rows (`row.type`, new Shift column in full + times-only HTML and PDF; `r.shiftTypes` counts in the facts line), by-house sheets (after the name), CSV Shift columns.
 - Tests: `test-staff-report.js` loads `SHIFT_TYPES` from the live file via `extractShiftTypeConsts()`; 11 new checks (95 total).
 
+### v110 also: shift entry checks
+- `shiftAbs(date,start,end)` → absolute minutes; `shiftEntryProblems(e, excludeId)` → `{blocks, warns}` (duplicate / same-times-other-house / overlap across midnight, rejected = warn only, PENDING_APPROVALS, open or pending CLOCK_ENTRIES without shiftId, start==end; warns: future date, before hire date, inactive, >16 h, >16 h continuous run, house maxStaff). `confirmShiftEntry` (alert for blocks, confirm for warnings) replaces the same-day `findOverlappingShift` call in `addShift` and `saveEditShift` (ADP paths still use `findOverlappingShift`). `approveShift` (pending >24 h) runs blocks first.
+- server.js `/api/clock-entries/:id/review` approve: 409 if the staff has a non-rejected shift overlapping (date ±1 day, abs minutes).
+- Tests: `test-shift-checks.js` (20), test.js +2 (119).
+
 ## PREVIOUS — v109: overtime counted per house
 
 Owner: "in order to get overtime you have to work 80 hrs and more at a particular location to qualify, so just state the hours from the other locations."

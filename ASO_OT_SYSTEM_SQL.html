@@ -4611,6 +4611,103 @@ function shiftTypeBadge(t) {
 }
 
 // ──────────────────────────────────────────────────────────
+// SHIFT ENTRY CHECKS — run before a shift is added or saved after an edit.
+// Returns { blocks, warns }. A block stops the save; a warning is shown and
+// the person entering it must confirm. Works on real clock times across
+// midnight, so a 3rd shift (10 PM – 6 AM) is compared with the next
+// morning's shifts too, not only shifts on the same date.
+//   e = { date, staff, location, start, end, hours }, excludeId = shift being edited
+// ──────────────────────────────────────────────────────────
+function shiftAbs(date, start, end) {
+  const [y, m, d] = String(date).split('-').map(Number);
+  const day = Math.round(Date.UTC(y, m - 1, d) / 86400000);
+  const s = day * 1440 + stMin(start);
+  const len = ((stMin(end) - stMin(start) + 1440) % 1440) || 1440;
+  return { s, e: s + len };
+}
+function shiftEntryProblems(e, excludeId) {
+  const blocks = [], warns = [];
+  const fmtT = t => (typeof fmtTime === 'function' ? fmtTime(t) : t);
+  const fmtD = d => (typeof formatDateDisplay === 'function' ? formatDateDisplay(d) : d);
+  const st = (STAFF || []).find(x => x.id === e.staff);
+  const who = st ? `${st.first} ${st.last}` : e.staff;
+  const me = shiftAbs(e.date, e.start, e.end);
+  const overlaps = (a, b) => a.s < b.e && b.s < a.e;
+  const desc = s => `${fmtD(s.date)} ${fmtT(s.start)} – ${fmtT(s.end)} at ${s.location}`;
+
+  if (e.start === e.end) blocks.push('Start and end time are the same. That would be a 24-hour shift. Please check the times on the time log sheet.');
+
+  // 1. The same person, at any house, at the same time (including overnight).
+  const mine = (SHIFTS || []).filter(s => s.staff === e.staff && s.id !== excludeId && s.start && s.end);
+  mine.forEach(s => {
+    const o = shiftAbs(s.date, s.start, s.end);
+    if (!overlaps(me, o)) return;
+    const same = s.date === e.date && s.start === e.start && s.end === e.end;
+    if (s.shiftStatus === 'rejected') {
+      warns.push(`${who} has a REJECTED shift at this time (${desc(s)}${s.rejectedReason ? ' — rejected: ' + s.rejectedReason : ''}). Only add this if it replaces the rejected one.`);
+    } else if (same && s.location === e.location) {
+      blocks.push(`This shift is already entered: ${who}, ${desc(s)}. It would be counted twice.`);
+    } else if (same) {
+      blocks.push(`${who} is already entered for these exact times at ${s.location} (${desc(s)}). One person cannot work two houses at once — edit the existing shift if the house is wrong.`);
+    } else {
+      blocks.push(`${who} already has a shift that overlaps these times: ${desc(s)}. Fix the times or edit the existing shift.`);
+    }
+  });
+
+  // 2. Already waiting for approval (over 24 hours) for the same time.
+  (PENDING_APPROVALS || []).filter(p => p.staffId === e.staff).forEach(p => {
+    if (p.start && p.end && overlaps(me, shiftAbs(p.date, p.start, p.end)))
+      blocks.push(`A shift for ${who} at this time is already waiting for approval (${fmtD(p.date)} ${fmtT(p.start)} – ${fmtT(p.end)} at ${p.location}). Approve or deny it on the Approvals page instead of entering it again.`);
+  });
+
+  // 3. Clock in/out entries not yet turned into a shift.
+  (typeof CLOCK_ENTRIES !== 'undefined' ? CLOCK_ENTRIES || [] : []).filter(c => c.staffId === e.staff && (c.status === 'pending' || c.status === 'open') && !c.shiftId).forEach(c => {
+    const inT = String(c.clockInTime || '').slice(0, 5);
+    if (!c.clockInDate || !inT) return;
+    const s = shiftAbs(c.clockInDate, inT, inT).s;
+    const outT = String(c.clockOutTime || '').slice(0, 5);
+    const end = c.status === 'open' || !outT ? s + 16 * 60 : shiftAbs(c.clockOutDate || c.clockInDate, outT, outT).s;
+    if (!overlaps(me, { s, e: Math.max(end, s + 1) })) return;
+    blocks.push(c.status === 'open'
+      ? `${who} is clocked in right now (since ${fmtD(c.clockInDate)} ${fmtT(inT)}). Clock them out and approve the entry instead of typing the shift in — otherwise the hours are counted twice.`
+      : `${who} clocked in and out for this time (${fmtD(c.clockInDate)} ${fmtT(inT)} – ${fmtT(outT)}), waiting for approval. Approve it on the Approvals page instead — otherwise the hours are counted twice.`);
+  });
+
+  // 4. Dates that do not make sense.
+  const today = typeof todayLocalISO === 'function' ? todayLocalISO() : new Date().toISOString().slice(0, 10);
+  if (e.date > today) warns.push(`The date (${fmtD(e.date)}) is in the future. Time log sheets record time already worked.`);
+  if (st && st.start && e.date < st.start) warns.push(`${who}'s hire date is ${fmtD(st.start)}, after this shift (${fmtD(e.date)}).`);
+  if (st && st.status && st.status !== 'Active') warns.push(`${who} is marked ${st.status}. Payroll will hold these hours until they are approved.`);
+
+  // 5. Long stretches.
+  if (e.hours > 16 && e.hours <= 24 && e.start !== e.end) warns.push(`This is a ${numFmtSafe(e.hours)}-hour shift — longer than a double (16 hours). Please confirm it against the time log sheet.`);
+  const active = mine.filter(s => s.shiftStatus !== 'rejected').map(s => shiftAbs(s.date, s.start, s.end));
+  let lo = me.s, hi = me.e, grew = true;
+  while (grew) { grew = false; active.forEach(o => { if (o.e >= lo - 30 && o.s <= hi + 30 && (o.s < lo || o.e > hi)) { lo = Math.min(lo, o.s); hi = Math.max(hi, o.e); grew = true; } }); }
+  const run = (hi - lo) / 60;
+  if (run > 16.01 && run > e.hours + 0.01) warns.push(`With the shifts next to it, ${who} would work ${numFmtSafe(run)} hours in a row — more than a double shift.`);
+
+  // 6. House staffing limit (when one is set).
+  const loc = (LOCATIONS || []).find(l => l.name === e.location);
+  if (loc && Number(loc.maxStaff) > 0) {
+    const others = new Set((SHIFTS || []).filter(s => s.location === e.location && s.staff !== e.staff && s.id !== excludeId && s.shiftStatus !== 'rejected' && s.start && s.end && overlaps(me, shiftAbs(s.date, s.start, s.end))).map(s => s.staff));
+    if (others.size >= Number(loc.maxStaff)) warns.push(`${e.location} already has ${others.size} staff entered for this time, and its limit is ${loc.maxStaff}.`);
+  }
+  return { blocks, warns };
+}
+function numFmtSafe(n) { return typeof numFmt === 'function' ? numFmt(n) : Number(n).toFixed(2); }
+// Shows the result. Returns true when it is OK to go ahead.
+function confirmShiftEntry(e, excludeId) {
+  const r = shiftEntryProblems(e, excludeId);
+  if (r.blocks.length) {
+    alert('This shift cannot be saved:\n\n• ' + r.blocks.join('\n\n• '));
+    return false;
+  }
+  if (r.warns.length) return confirm('Please check before saving:\n\n• ' + r.warns.join('\n\n• ') + '\n\nSave this shift anyway?');
+  return true;
+}
+
+// ──────────────────────────────────────────────────────────
 // OT CALCULATION ENGINE
 // ──────────────────────────────────────────────────────────
 // Overtime is counted per house: a staff member qualifies for overtime only
@@ -6768,6 +6865,12 @@ function approveShift(pendingId) {
   const idx = PENDING_APPROVALS.findIndex(p => p.id === pendingId);
   if (idx < 0) return;
   const p = PENDING_APPROVALS[idx];
+  // Same duplicate/overlap checks as Add Shift (the shift may have been
+  // entered another way while it waited). The over-24-hour part is what is
+  // being approved here, so only blocks stop it.
+  const chk = shiftEntryProblems({ date: p.date, staff: p.staffId, location: p.location, start: p.start, end: p.end, hours: p.hours }, null);
+  const realBlocks = chk.blocks.filter(b => !/waiting for approval/.test(b));
+  if (realBlocks.length) { alert('This shift cannot be approved:\n\n• ' + realBlocks.join('\n\n• ')); return; }
   // Add the shift
   const newShift = { id: genId(), date: p.date, staff: p.staffId, location: p.location, start: p.start, end: p.end, hours: p.hours, source: 'manual', _new: true };
   SHIFTS.unshift(newShift);
@@ -7202,12 +7305,9 @@ function addShift() {
   // Check for daily 24hr violation
   const check = checkDailyHoursViolation(staff, date, hours, null);
 
-  // Block genuinely overlapping shift times for the same staff member on the same day
-  const overlap = findOverlappingShift(staff, date, start, end, null);
-  if (overlap) {
-    showToast(`⚠ This overlaps with an existing shift for this staff member: ${overlap.location} ${fmtTime(overlap.start)} – ${fmtTime(overlap.end)} on ${date}. Fix the times or edit the existing shift instead.`, 'danger');
-    return;
-  }
+  // Duplicate / overlap / clock-in / approval / date / staffing checks.
+  // Blocks stop here; warnings need a confirm.
+  if (!confirmShiftEntry({ date, staff, location, start, end, hours }, null)) return;
 
   if (check.exceeds) {
     // Show modal warning
@@ -7513,11 +7613,7 @@ function saveEditShift() {
   const idx = SHIFTS.findIndex(s => s.id === _editShiftId);
   if (idx < 0) { showToast('Shift not found', 'danger'); return; }
 
-  const overlap = findOverlappingShift(staff, date, start, end, _editShiftId);
-  if (overlap) {
-    showToast(`⚠ This overlaps with another shift for this staff member: ${overlap.location} ${fmtTime(overlap.start)} – ${fmtTime(overlap.end)} on ${date}.`, 'danger');
-    return;
-  }
+  if (!confirmShiftEntry({ date, staff, location, start, end, hours }, _editShiftId)) return;
 
   const lockRec = isPeriodLockedForDate(SHIFTS[idx].date) || isPeriodLockedForDate(date);
   if (lockRec) {

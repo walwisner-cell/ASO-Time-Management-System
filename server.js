@@ -2052,6 +2052,23 @@ async function main() {
       const shiftError = validateShifts([newShift], staffIds);
       if (shiftError) return res.status(400).json({ error: `Cannot approve — ${shiftError}` });
 
+      // Duplicate guard: if the same person already has a (not rejected)
+      // shift at this time — for example someone also typed it in from the
+      // time log sheet — approving would count the hours twice. Real clock
+      // times are compared across midnight (the day before and after too).
+      const absOf = (date, start, end) => {
+        const [y, m, d] = String(date).split('-').map(Number);
+        const toMin = t => { const [h, mi] = String(t).slice(0, 5).split(':').map(Number); return h * 60 + mi; };
+        const s0 = Math.round(Date.UTC(y, m - 1, d) / 86400000) * 1440 + toMin(start);
+        return { s: s0, e: s0 + (((toMin(end) - toMin(start) + 1440) % 1440) || 1440) };
+      };
+      const mine = absOf(newShift.date, newShift.start, newShift.end);
+      const dayShift = (iso, k) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + k)).toISOString().slice(0, 10); };
+      const clash = all(`SELECT date, time_in, time_out, loc FROM shifts WHERE staff_id = ? AND date BETWEEN ? AND ? AND COALESCE(shift_status,'active') != 'rejected'`,
+        [newShift.staff, dayShift(newShift.date, -1), dayShift(newShift.date, 1)])
+        .find(r => { if (!r.time_in || !r.time_out) return false; const o = absOf(r.date, r.time_in, r.time_out); return mine.s < o.e && o.s < mine.e; });
+      if (clash) return res.status(409).json({ error: `Cannot approve — ${staff ? staff.first + ' ' + staff.last : entry.staff_id} already has a shift at this time (${clash.date} ${clash.time_in}–${clash.time_out} at ${clash.loc}). Approving would count the hours twice. Deny this clock entry, or fix the existing shift first.` });
+
       run(`INSERT INTO shifts (id,staff_id,date,time_in,time_out,loc,hours,reg_hours,ot_hours,approved,period_start,period_end,extra_data,source)
            VALUES (?,?,?,?,?,?,?,0,0,1,'','','{}',?)`,
         [newShift.id, newShift.staff, newShift.date, newShift.start, newShift.end, newShift.location, newShift.hours, shiftSource]);

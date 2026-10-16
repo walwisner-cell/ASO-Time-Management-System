@@ -658,6 +658,20 @@ async function main() {
     const createdShift = afterClockApprove.body.SHIFTS.find(s => s.id === clockApprove.body.shiftId);
     check('approved clock entry created a real shift with correct data', createdShift && createdShift.staff === 'S920' && createdShift.date === '2026-05-10' && createdShift.start === '08:00' && createdShift.end === '16:00');
 
+    // Duplicate guard: the same hours already typed in from the time log
+    // sheet must not be added a second time by approving the clock entry.
+    await request('POST', '/api/clock/admin-in', { cookie: adminCookie, body: { staffId: 'S920', location: 'Cap Test House', date: '2026-05-12', time: '22:00', reason: 'Duplicate guard test' } });
+    await request('POST', '/api/clock/admin-out', { cookie: adminCookie, body: { staffId: 'S920', date: '2026-05-13', time: '06:00', reason: 'Duplicate guard test' } });
+    const dupLoad = await request('GET', '/api/db/load', { cookie: adminCookie });
+    const dupData = { ...dupLoad.body, SHIFTS: [...dupLoad.body.SHIFTS, { id: 'TYPEDDUP', staff: 'S920', date: '2026-05-13', start: '02:00', end: '10:00', location: 'Cap Test House', hours: 8, source: 'manual' }] };
+    await request('POST', '/api/db/save', { body: dupData, cookie: adminCookie });
+    const dupList = await request('GET', '/api/clock-entries', { cookie: adminCookie });
+    const dupEntry = dupList.body.clockEntries.find(c => c.staffId === 'S920' && c.status === 'pending' && c.clockInDate === '2026-05-12');
+    const dupApprove = dupEntry ? await request('POST', `/api/clock-entries/${dupEntry.id}/review`, { cookie: adminCookie, body: { action: 'approve' } }) : { status: 0, body: {} };
+    check('approving a clock entry is refused when an overlapping shift was already typed in (checked across midnight)', dupApprove.status === 409 && /count the hours twice/.test(dupApprove.body.error || ''));
+    const dupDeny = dupEntry ? await request('POST', `/api/clock-entries/${dupEntry.id}/review`, { cookie: adminCookie, body: { action: 'deny' } }) : { status: 0 };
+    check('the duplicate clock entry can still be denied', dupDeny.status === 200);
+
     console.log('\nPTO balance adjustments:');
     const ptoGrant = await request('POST', '/api/staff/S900/pto-adjust', { cookie: adminCookie, body: { delta: 40, reason: 'Annual grant' } });
     check('admin can grant PTO hours', ptoGrant.status === 200 && ptoGrant.body.newBalance === 40);
