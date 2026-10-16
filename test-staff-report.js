@@ -24,11 +24,19 @@ function extractFunctions(names) {
   }
   return chunks.join('\n\n');
 }
+// The shift-type table (SHIFT_TYPES / SHIFT_OTHER), also taken from the live file.
+function extractShiftTypeConsts() {
+  const html = fs.readFileSync(path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html'), 'utf8');
+  const a = html.indexOf('const SHIFT_TYPES = ['), b = html.indexOf('\n', html.indexOf('const SHIFT_OTHER ='));
+  if (a < 0 || b < 0) throw new Error('SHIFT_TYPES not found in the live HTML file');
+  return html.slice(a, b).replace('const SHIFT_TYPES', 'global.SHIFT_TYPES').replace('const SHIFT_OTHER', 'global.SHIFT_OTHER');
+}
+eval(extractShiftTypeConsts());
 
 eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
-  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile', 'srMainHouse', 'srRegOtTiles',
+  'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile', 'srMainHouse', 'srRegOtTiles', 'stMin', 'shiftTypeOf', 'shiftTypeMap', 'shiftTypeText',
   'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
 
@@ -233,6 +241,30 @@ check('one house only, nobody elsewhere: total box equals the sheet', srHoursTil
 check('Regular box shows the main house only (Gabriella 80.00), not 88', (x => x.reg === '80.00' && x.regSub === 'at Gabriella House' && x.ot === '8.50')(srRegOtTiles(pFull)));
 check('Regular + Overtime + other-house boxes add up to Total hours worked', near(80 + 8.5 + pFull.houses.find(h => h.name === 'William House').hours, pFull.allHouses.hours));
 check('a one-house sheet is not split', srRegOtTiles(pWil).reg === '8.00' && srRegOtTiles(pWil).regSub === '');
+
+// ───────────────────────── Shift types ─────────────────────────
+console.log('\nShift types (1st, 2nd, 3rd, double, normal hours):\n');
+const T_ = (a, b) => shiftTypeOf(a, b).code;
+check('6 AM–2 PM is 1st shift, 2 PM–10 PM 2nd, 10 PM–6 AM 3rd', T_('06:00', '14:00') === 'first' && T_('14:00', '22:00') === 'second' && T_('22:00', '06:00') === 'third');
+check('the three doubles: 6 AM–10 PM, 2 PM–6 AM, 10 PM–2 PM', T_('06:00', '22:00') === 'double12' && T_('14:00', '06:00') === 'double23' && T_('22:00', '14:00') === 'double31');
+check('normal working hours 9 AM–5 PM, and 8:30 AM–4:30 PM is normal too', T_('09:00', '17:00') === 'normal' && T_('08:30', '16:30') === 'normal');
+check('a late or early punch still counts (6:20 AM–2:05 PM is 1st; 1:50 PM–10:10 PM is 2nd)', T_('06:20', '14:05') === 'first' && T_('13:50', '22:10') === 'second');
+check('hours that fit no shift are "Other" (12 PM–4 PM; 3 AM–9 AM)', T_('12:00', '16:00') === 'other' && T_('03:00', '09:00') === 'other');
+const pairs = [
+  { id: 'a', staff: 'X', date: '2026-10-12', start: '06:00', end: '14:00' },
+  { id: 'b', staff: 'X', date: '2026-10-12', start: '14:00', end: '22:00' },
+  { id: 'c', staff: 'X', date: '2026-10-13', start: '22:00', end: '06:00' },
+  { id: 'd', staff: 'Y', date: '2026-10-12', start: '14:00', end: '22:00' },
+  { id: 'e', staff: 'Y', date: '2026-10-12', start: '22:00', end: '06:00', shiftStatus: 'rejected' }
+];
+const pm = shiftTypeMap(pairs);
+check('two back-to-back shifts by the same person (1st then 2nd) are one double', pm.get('a').code === 'double' && pm.get('b').code === 'double' && pm.get('a').detail === '1st + 2nd');
+check('a later shift on its own stays its own type (3rd)', pm.get('c').code === 'third');
+check('a rejected shift is never joined into a double', pm.get('d').code === 'second' && pm.get('e').code === 'third');
+check('labels read "Double Shift (1st + 2nd)" and "1st Shift"', shiftTypeText(pm.get('a'), true) === 'Double Shift (1st + 2nd)' && shiftTypeText(shiftTypeOf('06:00', '14:00'), true) === '1st Shift');
+const typed = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph);
+check('report rows carry their shift type (Sep 26 7 AM–7 PM, 12 hrs: Other; Oct 2 7 AM–3 PM: 1st)', typed.rows.find(x => x.date === '2026-09-26').type.code === 'other' && typed.rows.find(x => x.date === '2026-10-02').type.code === 'first');
+check('report counts shifts by type', typed.shiftTypes.reduce((a, t) => a + t.count, 0) === typed.totals.shifts);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

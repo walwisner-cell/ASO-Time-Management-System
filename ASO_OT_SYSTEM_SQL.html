@@ -2349,6 +2349,9 @@
               <select id="sf-location" onchange="onLocationChange()"></select>
               <div id="sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
             </div>
+<div class="form-field"><label>Shift Type</label>
+              <select id="sf-type" onchange="applyShiftType('sf')"></select>
+            </div>
             <div class="form-field"><label>Shift Start</label><div class="time-parts">
               <select id="sf-start-h" onchange="updateShiftPreview()"></select>:<select id="sf-start-m" onchange="updateShiftPreview()"></select>
               <select id="sf-start-p" onchange="updateShiftPreview()"></select>
@@ -3778,7 +3781,10 @@
         <select id="edit-sf-location" onchange="onEditLocationChange()"></select>
         <div id="edit-sf-loc-warn" style="display:none;margin-top:5px;font-size:11px;color:#F0C165;font-family:var(--mono);background:rgba(198,138,30,0.15);border:1px solid rgba(198,138,30,0.3);border-radius:6px;padding:4px 8px;">⚠ Different from assigned location</div>
       </div>
-      <div class="form-field"><label>Shift Start</label><div class="time-parts">
+<div class="form-field"><label>Shift Type</label>
+              <select id="edit-sf-type" onchange="applyShiftType('edit-sf')"></select>
+            </div>
+            <div class="form-field"><label>Shift Start</label><div class="time-parts">
         <select id="edit-sf-start-h" onchange="updateEditPreview()"></select>:<select id="edit-sf-start-m" onchange="updateEditPreview()"></select>
         <select id="edit-sf-start-p" onchange="updateEditPreview()"></select>
       </div></div>
@@ -4499,6 +4505,109 @@ function setTimeParts(prefix, hhmm) {
   document.getElementById(prefix + '-h').innerHTML = buildHourOptions(h12);
   document.getElementById(prefix + '-m').innerHTML = buildMinuteOptions(min);
   document.getElementById(prefix + '-p').innerHTML = buildAmPmOptions(period);
+}
+
+// ──────────────────────────────────────────────────────────
+// SHIFT TYPES — ASO's three 8-hour shifts, the doubles made from them, and
+// normal working hours (Office / Day Program). 1st 6 AM–2 PM, 2nd 2 PM–10 PM,
+// 3rd 10 PM–6 AM, Normal 9 AM–5 PM. A shift's type is worked out from its
+// times every time it is shown (so shifts entered before this existed,
+// edited shifts and ADP-corrected shifts are all labelled), and two
+// back-to-back shifts by the same person count as one double.
+// ──────────────────────────────────────────────────────────
+const SHIFT_TYPES = [
+  { code: 'first',    start: '06:00', end: '14:00', label: '1st Shift',    short: '1st',    menu: '1st Shift — 6:00 AM to 2:00 PM' },
+  { code: 'second',   start: '14:00', end: '22:00', label: '2nd Shift',    short: '2nd',    menu: '2nd Shift — 2:00 PM to 10:00 PM' },
+  { code: 'third',    start: '22:00', end: '06:00', label: '3rd Shift',    short: '3rd',    menu: '3rd Shift — 10:00 PM to 6:00 AM' },
+  { code: 'double12', start: '06:00', end: '22:00', label: 'Double Shift', short: 'Double', menu: 'Double — 6:00 AM to 10:00 PM (1st + 2nd)', detail: '1st + 2nd' },
+  { code: 'double23', start: '14:00', end: '06:00', label: 'Double Shift', short: 'Double', menu: 'Double — 2:00 PM to 6:00 AM (2nd + 3rd)', detail: '2nd + 3rd' },
+  { code: 'double31', start: '22:00', end: '14:00', label: 'Double Shift', short: 'Double', menu: 'Double — 10:00 PM to 2:00 PM (3rd + 1st)', detail: '3rd + 1st' },
+  { code: 'normal',   start: '09:00', end: '17:00', label: 'Normal Hours', short: 'Normal', menu: 'Normal Working Hours — 9:00 AM to 5:00 PM' }
+];
+const SHIFT_OTHER = { code: 'other', label: 'Other hours', short: 'Other' };
+function stMin(t) { const [h, m] = String(t || '0:0').slice(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); }
+// Type from the times alone. Exact times match first. Otherwise a start
+// within 90 minutes of 6 AM / 2 PM / 10 PM counts (late punches, ADP
+// corrections): 6.5–9.5 hours is that shift, 14.5–17.5 hours a double.
+// A start from 8:00 to 10:00 AM lasting 6.5–9.5 hours is normal hours.
+// Anything else is "Other hours".
+function shiftTypeOf(start, end) {
+  if (!start || !end) return SHIFT_OTHER;
+  const a = stMin(start), b = stMin(end);
+  const exact = SHIFT_TYPES.find(t => stMin(t.start) === a && stMin(t.end) === b);
+  if (exact) return exact;
+  const dur = ((b - a + 1440) % 1440) || 1440;
+  const single = dur >= 390 && dur <= 570, dbl = dur >= 870 && dur <= 1050;
+  if (single && a >= 480 && a <= 600) return SHIFT_TYPES[6];
+  const starts = [360, 840, 1320];
+  const near = starts.map((m, i) => ({ i, d: Math.min(Math.abs(a - m), 1440 - Math.abs(a - m)) })).sort((x, y) => x.d - y.d)[0];
+  if (near.d > 90) return SHIFT_OTHER;
+  if (single) return SHIFT_TYPES[near.i];
+  if (dbl) return SHIFT_TYPES[3 + near.i];
+  return SHIFT_OTHER;
+}
+// Types for a list of shifts, joining back-to-back 1st/2nd/3rd shifts by the
+// same person (one ends within 30 minutes of the next starting) into a
+// double. Rejected shifts are never joined. Returns Map id → type.
+function shiftTypeMap(shifts) {
+  const dayNo = iso => { const [y, m, d] = String(iso).split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
+  const map = new Map();
+  const byStaff = {};
+  (shifts || []).forEach(s => {
+    map.set(s.id, shiftTypeOf(s.start, s.end));
+    if (s.shiftStatus === 'rejected' || !s.start || !s.end) return;
+    const st = dayNo(s.date) * 1440 + stMin(s.start);
+    const len = ((stMin(s.end) - stMin(s.start) + 1440) % 1440) || 1440;
+    (byStaff[s.staff] = byStaff[s.staff] || []).push({ s, st, en: st + len });
+  });
+  const single = t => ['first', 'second', 'third'].includes(t.code);
+  Object.values(byStaff).forEach(list => {
+    list.sort((x, y) => x.st - y.st);
+    for (let i = 0; i + 1 < list.length; i++) {
+      const A = list[i], B = list[i + 1], tA = map.get(A.s.id), tB = map.get(B.s.id);
+      if (single(tA) && single(tB) && Math.abs(B.st - A.en) <= 30) {
+        const detail = tA.short + ' + ' + tB.short;
+        map.set(A.s.id, { code: 'double', label: 'Double Shift', short: 'Double', detail, part: 1 });
+        map.set(B.s.id, { code: 'double', label: 'Double Shift', short: 'Double', detail, part: 2 });
+        i++;
+      }
+    }
+  });
+  return map;
+}
+function shiftTypeText(t, long) {
+  if (!t) return '';
+  return (long ? t.label : t.short) + (t.detail ? ` (${t.detail})` : '');
+}
+// The Shift Type dropdown on Add Shift / Edit Shift. Picking a type fills in
+// the start and end times; changing the times by hand moves the dropdown to
+// the matching type, or "Custom times".
+function fillShiftTypeOptions(prefix) {
+  const el = document.getElementById(prefix + '-type');
+  if (!el || el.options.length) return;
+  el.innerHTML = '<option value="">Custom times</option>' + SHIFT_TYPES.map(t => `<option value="${t.code}">${esc(t.menu)}</option>`).join('');
+}
+function applyShiftType(prefix) {
+  const el = document.getElementById(prefix + '-type');
+  const t = SHIFT_TYPES.find(x => x.code === el.value);
+  if (!t) return;
+  setTimeParts(prefix + '-start', t.start);
+  setTimeParts(prefix + '-end', t.end);
+  if (prefix === 'sf') updateShiftPreview(); else if (prefix === 'edit-sf') updateEditPreview();
+}
+function syncShiftTypeSelect(prefix) {
+  fillShiftTypeOptions(prefix);
+  const el = document.getElementById(prefix + '-type');
+  if (!el) return;
+  const a = getTimeParts(prefix + '-start'), b = getTimeParts(prefix + '-end');
+  const t = SHIFT_TYPES.find(x => x.start === a && x.end === b);
+  el.value = t ? t.code : '';
+}
+// Small coloured label used under shift times on screen.
+function shiftTypeBadge(t) {
+  if (!t) return '';
+  const color = t.code === 'other' ? 'var(--text3)' : t.short === 'Double' ? 'var(--warn)' : t.code === 'normal' ? 'var(--success)' : 'var(--accent2)';
+  return `<div style="font-size:10px;margin-top:2px;color:${color};font-family:var(--sans);font-weight:600">${esc(shiftTypeText(t, true))}</div>`;
 }
 
 // ──────────────────────────────────────────────────────────
@@ -5841,6 +5950,7 @@ function renderMyPortal() {
   animateStatsIn('#mp-summary');
 
   const sorted = allMyShifts.slice().sort((a,b) => b.date.localeCompare(a.date));
+  const myTypes = shiftTypeMap(allMyShifts);
   let html = '<table><thead><tr><th>Date</th><th>Location</th><th>Time</th><th>Hours</th><th>OT</th><th>Status</th></tr></thead><tbody>';
   if (!sorted.length) html += '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No shifts recorded yet.</td></tr>';
   sorted.slice(0, 60).forEach(s => {
@@ -5848,7 +5958,7 @@ function renderMyPortal() {
     html += `<tr style="${isRejected?'opacity:0.6':''}">
       <td class="mono">${esc(formatDateDisplay(s.date))}</td>
       <td>${esc(s.location)}</td>
-      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}</td>
+      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}${shiftTypeBadge(myTypes.get(s.id))}</td>
       <td class="mono">${numFmt(s.regHrs+s.otHrs)}</td>
       <td class="mono" style="color:${s.otHrs>0?'var(--warn)':'var(--text3)'}">${s.otHrs>0?numFmt(s.otHrs):'\u2014'}</td>
       <td>${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected${s.rejectedReason ? ': '+esc(s.rejectedReason) : ''}</span>` : '<span class="badge badge-success" style="font-size:10px">✓ Active</span>'}</td>
@@ -6799,8 +6909,9 @@ function renderTimesheet() {
   staffSel.innerHTML = STAFF.filter(s=>s.status==='Active').map(s=>`<option value="${s.id}">${s.last}, ${s.first} (${s.id})</option>`).join('');
   const locSel = document.getElementById('sf-location');
   locSel.innerHTML = LOCATIONS.map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
-  setTimeParts('sf-start', '08:00');
-  setTimeParts('sf-end', '16:00');
+  setTimeParts('sf-start', '06:00');   // 1st shift by default
+  setTimeParts('sf-end', '14:00');
+  syncShiftTypeSelect('sf');
   // Auto-fill location for the initially selected staff member
   onStaffSelect();
 
@@ -6875,7 +6986,7 @@ function updateHoursPreview(startPrefix, endPrefix, previewId) {
     document.getElementById(previewId).textContent = `= ${numFmt(hrs)} hrs`;
   }
 }
-function updateShiftPreview() { updateHoursPreview('sf-start', 'sf-end', 'shift-calc-preview'); }
+function updateShiftPreview() { updateHoursPreview('sf-start', 'sf-end', 'shift-calc-preview'); syncShiftTypeSelect('sf'); }
 
 function onStaffSelect() {
   const staffId = document.getElementById('sf-staff').value;
@@ -7006,6 +7117,7 @@ function renderTimesheetTable() {
       <th>${otByLocationOn() ? 'House Period Hrs' : 'Period Hrs'}</th><th>Info</th><th></th>
     </tr></thead><tbody>`;
 
+  const tsTypes = shiftTypeMap(all);
   data.forEach((s, i) => {
     const st = STAFF.find(x=>x.id===s.staff);
     const name = st ? `${esc(st.last)}, ${esc(st.first)}` : esc(s.staff);
@@ -7017,7 +7129,7 @@ function renderTimesheetTable() {
       <td class="mono">${esc(formatDateDisplay(s.date))}</td>
       <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}<div style="font-size:10px;color:var(--text3);font-weight:400">${esc(s.staff)}</div></td>
       <td style="color:var(--text2)">${esc(s.location)}</td>
-      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}</td>
+      <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}${shiftTypeBadge(tsTypes.get(s.id))}</td>
       <td class="mono" style="color:var(--accent2);font-weight:600">${numFmt(s.hours)}</td>
       <td class="mono">${$fmt(s.locRate)}</td>
       <td class="mono">${$fmt(s.regPay)}</td>
@@ -7314,6 +7426,7 @@ function editShift(id) {
 
   setTimeParts('edit-sf-start', raw.start);
   setTimeParts('edit-sf-end', raw.end);
+  syncShiftTypeSelect('edit-sf');
 
   document.getElementById('edit-sf-date').value = raw.date;
   document.getElementById('edit-modal-who').textContent = `Editing shift for ${name}`;
@@ -7332,7 +7445,7 @@ function editShift(id) {
   updateEditPreview();
   document.getElementById('modal-edit-shift').classList.remove('hidden');
 }
-function updateEditPreview() { updateHoursPreview('edit-sf-start', 'edit-sf-end', 'edit-shift-preview'); }
+function updateEditPreview() { updateHoursPreview('edit-sf-start', 'edit-sf-end', 'edit-shift-preview'); syncShiftTypeSelect('edit-sf'); }
 
 function onEditDateChange() {
   const dateEl = document.getElementById('edit-sf-date');
@@ -10249,6 +10362,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     .filter(s => s.staff === st.id && (!onlyHouse || s.location === onlyHouse) && s.date >= fromISO && s.date <= toISO)
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.start || '').localeCompare(String(b.start || '')));
 
+  const typeMap = shiftTypeMap(allComputed.filter(s => s.staff === st.id));
   const rows = mine.map(s => {
     const rejected = s.shiftStatus === 'rejected';
     const entry = (CLOCK_ENTRIES || []).find(c => c.shiftId === s.id);
@@ -10273,7 +10387,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     }
     return {
       id: s.id, date: s.date, day: srDayName(s.date), weekStart: srWeekStart(s.date),
-      location: s.location || '', start: s.start, end: s.end,
+      location: s.location || '', start: s.start, end: s.end, type: typeMap.get(s.id) || shiftTypeOf(s.start, s.end),
       overnight: !!(s.start && s.end && String(s.end).slice(0, 5) <= String(s.start).slice(0, 5)),
       mealMin, rejected, rejectedReason: s.rejectedReason || '', rejectedBy: s.rejectedBy || '',
       // A rejected shift is listed (so nothing silently disappears) but counts for nothing.
@@ -10416,7 +10530,13 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   const ytdRows = allComputed.filter(s => s.staff === st.id && s.shiftStatus !== 'rejected' && s.date >= yStart && s.date <= toISO);
   const ytd = { hours: ytdRows.reduce((a, s) => a + s.hours, 0), ot: ytdRows.reduce((a, s) => a + s.otHrs, 0), gross: ytdRows.reduce((a, s) => a + s.shiftPay, 0) };
 
-  return { staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, allHouses, houses, otherHouses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
+  // Shifts by type (a double entered as two back-to-back shifts counts once).
+  const typeCounts = {};
+  counted.forEach(r => { if (r.type.part === 2) return; const k = r.type.label; typeCounts[k] = (typeCounts[k] || 0) + 1; });
+  const typeOrder = ['1st Shift', '2nd Shift', '3rd Shift', 'Double Shift', 'Normal Hours', 'Other hours'];
+  const shiftTypes = typeOrder.filter(k => typeCounts[k]).map(k => ({ label: k, count: typeCounts[k] }));
+
+  return { shiftTypes, staff: st, from: fromISO, to: toISO, payType, onlyHouse: onlyHouse || '', rows, weeks, totals, allHouses, houses, otherHouses, rates, leave, leaveHours, streak: best, stats, ytd, notes };
 }
 
 // For Payroll: everyone who worked somewhere other than their home house,
@@ -10867,7 +10987,7 @@ function srHouseSheetHtml(h, opts, meta, n, total) {
     d.lines.forEach(l => {
       const x = l.x, pay = opts.showPay && l.payType === 'hourly';
       body += `<tr class="${x.rejected ? 'sr-rej' : l.home ? '' : 'sr-away'}">
-        <td><b>${esc(l.staff.last)}, ${esc(l.staff.first)}</b>${l.home ? '' : ` <span class="sr-flag">from ${esc(l.staff.loc || 'no home house')}</span>`}</td>
+        <td><b>${esc(l.staff.last)}, ${esc(l.staff.first)}</b>${l.home ? '' : ` <span class="sr-flag">from ${esc(l.staff.loc || 'no home house')}</span>`}${x.type ? ` <span class="sr-dim">· ${esc(shiftTypeText(x.type, true))}</span>` : ''}</td>
         <td class="sr-nw">${esc(srTime(x.start))}</td>
         <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
         <td class="sr-num"><b>${x.rejected ? '<s>' + srHrs(x.enteredHours) + '</s>' : srHrs(x.hours)}</b></td>
@@ -10933,7 +11053,7 @@ function srSheetHtml(r, opts, meta, n, total) {
 function srSignSheetHtml(r, opts, meta, n, total) {
   const st = r.staff, T = r.totals;
   const showPay = opts.showPay && r.payType === 'hourly';
-  const cols = showPay ? 6 : 5;
+  const cols = showPay ? 7 : 6;
   let body = '';
   r.weeks.forEach((w, wi) => {
     if (r.weeks.length > 1) body += `<tr class="sr-wk"><td colspan="${cols}">Week ${wi + 1} · ${srDayName(w.start)} ${esc(formatDateDisplay(w.start))} – ${srDayName(w.end)} ${esc(formatDateDisplay(w.end))}</td></tr>`;
@@ -10944,6 +11064,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
       const x = ln.x;
       body += `<tr class="${x.rejected ? 'sr-rej' : ''}">
         <td class="sr-nw"><b>${x.day}</b> ${esc(formatDateDisplay(x.date))}</td>
+        <td class="sr-nw">${esc(shiftTypeText(x.type, true))}</td>
         <td>${esc(x.location)}${x.rejected ? ' <span class="sr-flag">— not counted' + (x.rejectedReason ? ': ' + esc(x.rejectedReason) : '') + '</span>' : ''}</td>
         <td class="sr-nw">${esc(srTime(x.start))}</td>
         <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
@@ -10951,9 +11072,9 @@ function srSignSheetHtml(r, opts, meta, n, total) {
         ${showPay ? `<td class="sr-num">${x.rejected ? '' : $fmt(x.pay)}</td>` : ''}
       </tr>`;
     });
-    if (r.weeks.length > 1) body += `<tr class="sr-sub"><td colspan="4">Week ${wi + 1} total</td><td class="sr-num">${srHrs(w.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(w.pay)}</td>` : ''}</tr>`;
+    if (r.weeks.length > 1) body += `<tr class="sr-sub"><td colspan="5">Week ${wi + 1} total</td><td class="sr-num">${srHrs(w.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(w.pay)}</td>` : ''}</tr>`;
   });
-  body += `<tr class="sr-tot"><td colspan="4">TOTAL HOURS · ${T.days} day${T.days !== 1 ? 's' : ''} worked · Regular ${srHrs(T.reg)} · Overtime ${srHrs(T.ot)}</td><td class="sr-num">${srHrs(T.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}</tr>`;
+  body += `<tr class="sr-tot"><td colspan="5">TOTAL HOURS · ${T.days} day${T.days !== 1 ? 's' : ''} worked · Regular ${srHrs(T.reg)} · Overtime ${srHrs(T.ot)}</td><td class="sr-num">${srHrs(T.hours)}</td>${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}</tr>`;
 
   return `<section class="sr-sheet sr-signcopy" id="sr-sheet-${esc(st.id)}">
     <div class="sr-head">
@@ -10971,7 +11092,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
       ${showPay ? `<div class="sr-who-s"><span>Pay rate</span>${esc(srRateText(r))}</div>` : ''}
     </div>
     <table class="sr-table sr-table-lg">
-      <thead><tr><th>Date</th><th>House worked</th><th>Time in</th><th>Time out</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}</tr></thead>
+      <thead><tr><th>Date</th><th>Shift</th><th>House worked</th><th>Time in</th><th>Time out</th><th class="sr-num">Hours</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}</tr></thead>
       <tbody>${body}</tbody>
     </table>
     <div class="sr-key">Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out and ADP punch records' : ''}. +1 = shift ended the next day.</div>
@@ -10988,7 +11109,7 @@ function srSignSheetHtml(r, opts, meta, n, total) {
 function srFullSheetHtml(r, opts, meta, n, total) {
   const st = r.staff, T = r.totals, S = r.stats;
   const showPay = opts.showPay && r.payType === 'hourly';
-  const cols = showPay ? 10 : 9;
+  const cols = showPay ? 11 : 10;
 
   let body = '';
   r.weeks.forEach((w, wi) => {
@@ -11000,6 +11121,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       const x = ln.x;
       body += `<tr class="${x.rejected ? 'sr-rej' : ''}">
         <td class="sr-nw"><b>${x.day}</b> ${esc(formatDateDisplay(x.date))}</td>
+        <td class="sr-nw">${esc(shiftTypeText(x.type))}</td>
         <td class="sr-nw">${esc(x.location)}${x.location && st.loc && x.location !== st.loc ? ' <span class="sr-dim" title="Not this staff member’s home house">•</span>' : ''}</td>
         <td class="sr-nw">${esc(srTime(x.start))}</td>
         <td class="sr-nw">${esc(srTime(x.end))}${x.overnight ? '<span class="sr-dim"> +1</span>' : ''}</td>
@@ -11012,13 +11134,13 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       </tr>`;
     });
     body += `<tr class="sr-sub">
-      <td colspan="5">Week ${wi + 1} total · ${w.days} day${w.days !== 1 ? 's' : ''} worked</td>
+      <td colspan="6">Week ${wi + 1} total · ${w.days} day${w.days !== 1 ? 's' : ''} worked</td>
       <td class="sr-num">${srHrs(w.hours)}</td><td class="sr-num">${srHrs(w.reg)}</td><td class="sr-num">${srHrs(w.ot)}</td>
       ${showPay ? `<td class="sr-num">${$fmt(w.pay)}</td>` : ''}<td></td>
     </tr>`;
   });
   body += `<tr class="sr-tot">
-    <td colspan="5">TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : meta.range.mode === 'day' ? 'DATE' : 'DATE RANGE'}</td>
+    <td colspan="6">TOTAL FOR ${meta.range.isPeriod ? 'PAY PERIOD' : meta.range.mode === 'day' ? 'DATE' : 'DATE RANGE'}</td>
     <td class="sr-num">${srHrs(T.hours)}</td><td class="sr-num">${srHrs(T.reg)}</td><td class="sr-num">${srHrs(T.ot)}</td>
     ${showPay ? `<td class="sr-num">${$fmt(T.gross)}</td>` : ''}<td></td>
   </tr>`;
@@ -11065,12 +11187,13 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       ${fact('Weekend days', S.weekendDays)}
       ${fact('Overnight shifts', S.overnight)}
       ${fact('Houses worked', S.houses)}
+      ${r.shiftTypes.length ? fact('Shifts by type', r.shiftTypes.map(t => t.label.replace(' Shift', '').replace(' Hours', '') + ' ' + t.count).join(' · ')) : ''}
       ${fact('Days in a row', r.streak.len)}
       ${fact('Year to date', srHrs(r.ytd.hours) + ' hrs · ' + srHrs(r.ytd.ot) + ' OT' + (showPay ? ' · ' + $fmt(r.ytd.gross) : ''))}
     </div>
 
     <table class="sr-table">
-      <thead><tr><th>Date</th><th>House worked</th><th>In</th><th>Out</th><th class="sr-num">Meal</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}<th>Entry / notes</th></tr></thead>
+      <thead><tr><th>Date</th><th>Shift</th><th>House worked</th><th>In</th><th>Out</th><th class="sr-num">Meal</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}<th>Entry / notes</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
     <div class="sr-key">Meal = unpaid meal break on a clocked shift, already taken out of Hours. +1 = shift ended the next day. • = worked away from home house. Entry: Time log = from the employee’s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.</div>
@@ -11173,9 +11296,9 @@ function srExportCSV() {
 
   const hd = srBuildHouseDays(reports, meta.onlyHouse || (opts.layout === 'house' ? meta.house : ''));
   csv += '\n' + line(['TIME BY HOUSE AND DATE']);
-  csv += line(['House', 'Date', 'Day', 'Staff ID', 'Last name', 'First name', 'Home house', 'Home or other', 'In', 'Out', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
+  csv += line(['House', 'Date', 'Day', 'Staff ID', 'Last name', 'First name', 'Home house', 'Home or other', 'Shift', 'In', 'Out', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
   hd.forEach(h => h.days.forEach(d => d.lines.forEach(l => { const x = l.x, pay = opts.showPay && l.payType === 'hourly' && !x.rejected;
-    csv += line([h.house, formatDateDisplay(d.date), d.day, l.staff.id, l.staff.last, l.staff.first, l.staff.loc || '', l.home ? 'Home' : 'Other house', srTime(x.start), srTime(x.end) + (x.overnight ? ' (+1 day)' : ''), srHrs(x.rejected ? x.enteredHours : x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : srHrs(x.ot)].concat(opts.showPay ? (pay ? [Number(x.rate).toFixed(2), x.pay.toFixed(2)] : ['', '']) : []).concat([srSourceLabel(x.source), x.rejected ? 'No - rejected' : 'Yes', x.flags.join('; ')])); })));
+    csv += line([h.house, formatDateDisplay(d.date), d.day, l.staff.id, l.staff.last, l.staff.first, l.staff.loc || '', l.home ? 'Home' : 'Other house', shiftTypeText(x.type, true), srTime(x.start), srTime(x.end) + (x.overnight ? ' (+1 day)' : ''), srHrs(x.rejected ? x.enteredHours : x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : srHrs(x.ot)].concat(opts.showPay ? (pay ? [Number(x.rate).toFixed(2), x.pay.toFixed(2)] : ['', '']) : []).concat([srSourceLabel(x.source), x.rejected ? 'No - rejected' : 'Yes', x.flags.join('; ')])); })));
   const crossCsv = (_srLast.cross || []);
   if (opts.cross) {
     csv += '\n' + line(['STAFF WHO WORKED AT MORE THAN ONE HOUSE (FOR PAYROLL)']);
@@ -11184,11 +11307,11 @@ function srExportCSV() {
     if (!crossCsv.length) csv += line(['Nobody']);
   }
   csv += '\n' + line(['SHIFT DETAIL']);
-  csv += line(['Staff ID', 'Last name', 'First name', 'Date', 'Day', 'Workweek starting', 'House worked', 'In', 'Out', 'Meal break min', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
+  csv += line(['Staff ID', 'Last name', 'First name', 'Date', 'Day', 'Workweek starting', 'Shift', 'House worked', 'In', 'Out', 'Meal break min', 'Hours', 'Regular hrs', 'OT hrs'].concat(opts.showPay ? ['Rate', 'Pay'] : []).concat(['Entry', 'Counted', 'Notes']));
   reports.forEach(r => {
     const pay = opts.showPay && r.payType === 'hourly';
     r.rows.forEach(x => {
-      csv += line([r.staff.id, r.staff.last, r.staff.first, formatDateDisplay(x.date), x.day, formatDateDisplay(x.weekStart), x.location, srTime(x.start), srTime(x.end) + (x.overnight ? ' (+1 day)' : ''), x.mealMin === null ? '' : x.mealMin, srHrs(x.rejected ? x.enteredHours : x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : srHrs(x.ot)]
+      csv += line([r.staff.id, r.staff.last, r.staff.first, formatDateDisplay(x.date), x.day, formatDateDisplay(x.weekStart), shiftTypeText(x.type, true), x.location, srTime(x.start), srTime(x.end) + (x.overnight ? ' (+1 day)' : ''), x.mealMin === null ? '' : x.mealMin, srHrs(x.rejected ? x.enteredHours : x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : srHrs(x.ot)]
         .concat(opts.showPay ? (pay && !x.rejected ? [Number(x.rate).toFixed(2), x.pay.toFixed(2)] : ['', '']) : [])
         .concat([srSourceLabel(x.source), x.rejected ? 'No - rejected' : 'Yes', x.flags.join('; ')]));
     });
@@ -11340,8 +11463,8 @@ function srDownloadPDF() {
     pageOwner.push(idx);
 
     const cols = sign
-      ? [{ h: 'Date', w: 96 }, { h: 'House worked', w: 0, grow: true }, { h: 'Time in', w: 76 }, { h: 'Time out', w: 86 }, { h: 'Hours', w: 56, num: true }].concat(showPay ? [{ h: 'Pay', w: 66, num: true }] : [])
-      : [{ h: 'Date', w: 66 }, { h: 'House worked', w: showPay ? 88 : 104 }, { h: 'In', w: 44 }, { h: 'Out', w: 54 }, { h: 'Meal', w: 28, num: true }, { h: 'Hours', w: 36, num: true }, { h: 'Regular', w: 40, num: true }, { h: 'OT', w: 32, num: true }]
+      ? [{ h: 'Date', w: 96 }, { h: 'Shift', w: 92 }, { h: 'House worked', w: 0, grow: true }, { h: 'Time in', w: 76 }, { h: 'Time out', w: 86 }, { h: 'Hours', w: 56, num: true }].concat(showPay ? [{ h: 'Pay', w: 66, num: true }] : [])
+      : [{ h: 'Date', w: 62 }, { h: 'Shift', w: 52 }, { h: 'House worked', w: showPay ? 72 : 88 }, { h: 'In', w: 44 }, { h: 'Out', w: 54 }, { h: 'Meal', w: 28, num: true }, { h: 'Hours', w: 36, num: true }, { h: 'Regular', w: 40, num: true }, { h: 'OT', w: 32, num: true }]
           .concat(showPay ? [{ h: 'Pay', w: 50, num: true }] : []).concat([{ h: 'Entry / notes', w: 0, grow: true, pad: true }]);
     cols.find(c => c.grow).w = UW - cols.reduce((a, c) => a + c.w, 0);
     let cx = M; cols.forEach(c => { c.x = cx; cx += c.w; });
@@ -11432,16 +11555,16 @@ function srDownloadPDF() {
         ensure(RH, true);
         if (ln.kind === 'off') {
           font('normal', FS, gray);
-          cell(cols[0], `${ln.day} ${formatDateDisplay(ln.date)}`, y + BL); doc.text(tx(ln.text), cols[1].x + 3, y + BL);
+          cell(cols[0], `${ln.day} ${formatDateDisplay(ln.date)}`, y + BL); doc.text(tx(ln.text), cols[2].x + 3, y + BL);
         } else {
           const x = ln.x;
           font('normal', FS, x.rejected ? gray : navy);
           let vals;
           if (sign) {
-            vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.rejected ? ' - not counted' + (x.rejectedReason ? ': ' + x.rejectedReason : '') : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''), x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours)];
+            vals = [`${x.day} ${formatDateDisplay(x.date)}`, shiftTypeText(x.type, true), x.location + (x.rejected ? ' - not counted' + (x.rejectedReason ? ': ' + x.rejectedReason : '') : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''), x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours)];
             if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
           } else {
-            vals = [`${x.day} ${formatDateDisplay(x.date)}`, x.location + (x.location && st.loc && x.location !== st.loc ? ' *' : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''),
+            vals = [`${x.day} ${formatDateDisplay(x.date)}`, shiftTypeText(x.type), x.location + (x.location && st.loc && x.location !== st.loc ? ' *' : ''), srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''),
               x.mealMin === null ? '-' : x.mealMin + 'm', x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')];
             if (showPay) vals.push(x.rejected ? '' : $fmt(x.pay));
             vals.push(srSourceLabel(x.source) + (x.flags.length ? ' | ' + (x.rejected && opts.showNotes ? 'Rejected' : x.flags.join('; ')) : ''));
@@ -11576,7 +11699,7 @@ function srDownloadPDF() {
         const x = l.x, pay = opts.showPay && l.payType === 'hourly';
         if (!l.home && !x.rejected) { doc.setFillColor(255, 247, 230); doc.rect(M, y, UW, RH, 'F'); }
         font('normal', 8, x.rejected ? gray : navy);
-        const v = [`${l.staff.last}, ${l.staff.first}${l.home ? '' : '  (from ' + (l.staff.loc || 'no home house') + ')'}`, srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''), x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')].concat(opts.showPay ? [x.rejected || !pay ? '' : $fmt(x.pay)] : []).concat([srSourceLabel(x.source) + (x.flags.length ? ' | ' + x.flags.join('; ') : '')]);
+        const v = [`${l.staff.last}, ${l.staff.first}${l.home ? '' : '  (from ' + (l.staff.loc || 'no home house') + ')'}${x.type ? ' | ' + shiftTypeText(x.type) : ''}`, srTime(x.start), srTime(x.end) + (x.overnight ? ' +1' : ''), x.rejected ? '(' + srHrs(x.enteredHours) + ')' : srHrs(x.hours), x.rejected ? '' : srHrs(x.reg), x.rejected ? '' : (x.ot > 0 ? srHrs(x.ot) : '-')].concat(opts.showPay ? [x.rejected || !pay ? '' : $fmt(x.pay)] : []).concat([srSourceLabel(x.source) + (x.flags.length ? ' | ' + x.flags.join('; ') : '')]);
         cols.forEach((c, i) => cell(c, String(v[i]), y + 9.5));
         doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + RH, R, y + RH); y += RH;
       });

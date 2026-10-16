@@ -23,7 +23,15 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## THIS SESSION (latest) — v109: overtime counted per house
+## THIS SESSION (latest) — v110: shift types
+
+Owner: "incorporate the type of shift — first shift, second shift or a double shift; shifts are 6am–2pm, 2pm–10pm and 10pm–6am", then "what if it's normal working hours".
+- `SHIFT_TYPES` (first/second/third/double12/double23/double31/normal 09:00–17:00) + `SHIFT_OTHER`; `shiftTypeOf(start,end)` (exact match, else start within 90 min of 6/14/22 and 6.5–9.5 h single or 14.5–17.5 h double; start 8–10 AM and 6.5–9.5 h = normal); `shiftTypeMap(shifts)` joins back-to-back 1st/2nd/3rd shifts of one staff (gap ≤ 30 min, rejected excluded) into `{code:'double', detail:'1st + 2nd', part:1|2}`; `shiftTypeText`, `shiftTypeBadge`.
+- Derived, never stored. Add/Edit Shift: `#sf-type` / `#edit-sf-type` (`applyShiftType`, `syncShiftTypeSelect`, called from the preview updaters and on Edit open). Add Shift default is now 06:00–14:00.
+- Shown: Timesheet Log and My Shifts (badge under the time), staff report rows (`row.type`, new Shift column in full + times-only HTML and PDF; `r.shiftTypes` counts in the facts line), by-house sheets (after the name), CSV Shift columns.
+- Tests: `test-staff-report.js` loads `SHIFT_TYPES` from the live file via `extractShiftTypeConsts()`; 11 new checks (95 total).
+
+## PREVIOUS — v109: overtime counted per house
 
 Owner: "in order to get overtime you have to work 80 hrs and more at a particular location to qualify, so just state the hours from the other locations."
 - `computeShiftsWithOT()` keys the running total by staff + period + **location** when `otByLocationOn()` (i.e. `PAY_CONFIG.otByLocation !== false`; default true). It also returns `otHrsCombined` per shift (overtime if all houses were added together) — display only, never paid.

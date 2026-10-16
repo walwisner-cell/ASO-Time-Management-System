@@ -11,7 +11,7 @@ I get to it two ways:
 1. **Header** — the pay period, and whether this is a **Draft** (period still open or payroll not confirmed) or **Final** (payroll confirmed, with who and when).
 2. **Employee block** — name, position, employment type, home house, status, pay rate. (Staff ID and hire date are not printed on the report; the CSV still has the staff ID.)
 3. **Summary** — hours worked, regular hours, overtime hours, approved time off, gross pay.
-4. **Every shift, grouped by workweek** — date, house worked, in, out, recorded meal break, hours, regular, overtime, pay, and how the shift was entered (clocked, typed in, or supervisor override). Each week has its own subtotal, then a period total.
+4. **Every shift, grouped by workweek** — date, shift type (1st, 2nd, 3rd, Double, Normal or Other), house worked, in, out, recorded meal break, hours, regular, overtime, pay, and how the shift was entered (clocked, typed in, or supervisor override). Each week has its own subtotal, then a period total.
 5. **Hours by house** — so I can see when someone covered another house.
 6. **Time off** — approved and pending requests that touch the period, plus the PTO balance on file.
 7. **Items to review before signing** — a plain list, sorted into "Settle first", "Check" and "Note".
