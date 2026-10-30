@@ -35,7 +35,7 @@ eval(extractShiftTypeConsts());
 
 eval(extractFunctions([
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
-  'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult',
+  'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult', 'shiftPayRate',
   'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile', 'srMainHouse', 'srRegOtTiles', 'stMin', 'shiftTypeOf', 'shiftTypeMap', 'shiftTypeText',
   'srAddDays', 'srDayName', 'srShortDate', 'srTime', 'srHrs', 'srWeekStart', 'srBuildStaffReport', 'srLeaveLabel', 'srWeekLines', 'srSourceLabel', 'srHouseCrossover', 'srBuildHouseDays'
 ]));
@@ -119,7 +119,7 @@ check('lists every shift in the range, including the rejected one, and nothing o
 check('total hours leave the rejected shift out (96.5, not 104.5)', near(T.hours, 96.5));
 check('regular + overtime hours add back up to total hours', near(T.reg + T.ot, T.hours));
 check('regular is capped at the 80-hour threshold and the rest is overtime', near(T.reg, 80) && near(T.ot, 16.5));
-check('gross pay matches a hand calculation (80 x $14 + 16.5 x $21 = $1,466.50)', near(T.gross, 1466.5) && near(T.regPay, 1120) && near(T.otPay, 346.5));
+check('gross pay matches a hand calculation (72 x $14 + 8 x $13.50 at William House + 16.5 x $21 = $1,462.50)', near(T.gross, 1462.5) && near(T.regPay, 1116) && near(T.otPay, 346.5));
 check('report totals equal the payroll engine’s own totals for the same shifts',
   near(T.gross, all.filter(s => s.staff === 'S003' && s.date <= '2026-10-09').reduce((a, s) => a + s.shiftPay, 0)));
 check('counts 9 paid shifts on 9 days and 1 rejected', T.shifts === 9 && T.days === 9 && T.rejected === 1);
@@ -162,7 +162,7 @@ console.log('\nSignature copy, single date, every-day list:\n');
 check('at-a-glance figures: average shift 96.5 / 9, 4 weekend days, 1 overnight shift, 2 houses',
   near(r.stats.avgShift, 96.5 / 9) && r.stats.weekendDays === 4 && r.stats.overnight === 1 && r.stats.houses === 2);
 check('year to date runs Jan 1 through the last report date and leaves out rejected shifts and later periods',
-  near(r.ytd.hours, 96.5) && near(r.ytd.ot, 16.5) && near(r.ytd.gross, 1466.5));
+  near(r.ytd.hours, 96.5) && near(r.ytd.ot, 16.5) && near(r.ytd.gross, 1462.5));
 check('shifts typed in by the office are labelled as coming from the time log sheet', srSourceLabel('manual') === 'Time log' && srSourceLabel(undefined) === 'Time log' && srSourceLabel('clock_in') === 'Clock');
 const wl = srWeekLines(r, r.weeks[1], true);
 check('"List every day" gives all 7 days of week 2: 3 shifts and 4 days with nothing worked', wl.length === 7 && wl.filter(l => l.kind === 'shift').length === 3 && wl.filter(l => l.kind === 'off').length === 4);
@@ -211,27 +211,56 @@ check('choosing one house returns just that house', srBuildHouseDays([fullDJ, ho
 check('no shifts gives no houses, not an error', srBuildHouseDays([r5]).length === 0 && srBuildHouseDays([]).length === 0);
 
 // ───────────────────────── Overtime counted per house (the default rule) ─────────────────────────
-console.log('\nOvertime counted per house (80 hrs at one house):\n');
+console.log('\nOvertime: assigned house first (80 hrs at the home house, then any house):\n');
 global.PAY_CONFIG = { anchorDate: '2026-05-09', periodDays: 14, otThreshold: 80, mealBreakThresholdHours: 5 }; // otByLocation not set = per house
-check('per house is the default when the setting is missing', otByLocationOn() === true);
+check('assigned-house-first is the default when the setting is missing', otByLocationOn() === true);
 const ph = computeShiftsWithOT();
 const pFull = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph);
 const pGab = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph, 'Gabriella House');
 const pWil = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph, 'William House');
 check('total hours do not change (96.5)', near(pFull.totals.hours, 96.5));
-check('only hours past 80 at ONE house are overtime: Gabriella 88.5 hrs -> 8.5 OT', near(pFull.houses.find(h => h.name === 'Gabriella House').ot, 8.5) && near(pFull.houses.find(h => h.name === 'Gabriella House').reg, 80));
-check('the 8 hrs at William House are all regular and do not push Gabriella into more overtime', near(pFull.houses.find(h => h.name === 'William House').ot, 0) && near(pFull.houses.find(h => h.name === 'William House').reg, 8));
+check('only hours at the home house count toward 80: Gabriella 88.5 hrs -> 8.5 OT', near(pFull.houses.find(h => h.name === 'Gabriella House').ot, 8.5) && near(pFull.houses.find(h => h.name === 'Gabriella House').reg, 80));
+check('the 8 hrs at William House (before 80 was reached at home) are regular and do not count toward the 80', near(pFull.houses.find(h => h.name === 'William House').ot, 0) && near(pFull.houses.find(h => h.name === 'William House').reg, 8));
 check('sheet totals: 88 regular + 8.5 overtime', near(pFull.totals.reg, 88) && near(pFull.totals.ot, 8.5));
-check('gross pay by hand: 80 x $14 + 8.5 x $21 + 8 x $14 = $1,410.50', near(pFull.totals.gross, 1410.5));
+check('gross pay by hand: 80 x $14 + 8.5 x $21 + 8 x $13.50 (William House rate) = $1,406.50', near(pFull.totals.gross, 1406.5));
 check('what all houses combined would give is kept for the cross-check (16.5), not paid', near(pFull.totals.otCombined, 16.5));
 const pTxt = pFull.notes.map(x => x.text).join('\n');
-check('the review list states the per-house rule against the combined figure', /Per-house overtime: 96\.50 hrs were worked across 2 houses.*8\.50 overtime hrs are paid.*16\.50 overtime hrs/.test(pTxt));
+check('the review list states the per-house rule against the combined figure', /Assigned-house overtime: 96\.50 hrs were worked across 2 houses.*8\.50 overtime hrs are paid.*16\.50 overtime hrs/.test(pTxt));
 check('William-only sheet: 8 hrs, no overtime', near(pWil.totals.hours, 8) && near(pWil.totals.ot, 0));
 check('William-only sheet states the 88.5 hrs at Gabriella (the other house), with its 8.5 OT', pWil.otherHouses.length === 1 && pWil.otherHouses[0].name === 'Gabriella House' && near(pWil.otherHouses[0].hours, 88.5) && near(pWil.otherHouses[0].ot, 8.5));
-check('Gabriella-only sheet states the 8 hrs at William House and says they do not count toward overtime there', (t => t && /William House: 8\.00 hrs \(1 shift\)/.test(t.items.join()) && /do not count toward overtime at Gabriella House/.test(t.tail))(srOtherHousesText(pGab)));
+check('Gabriella-only sheet states the 8 hrs at William House and the assigned-house rule', (t => t && /William House: 8\.00 hrs \(1 shift\)/.test(t.items.join()) && /only after 80 hrs at the assigned house/.test(t.tail))(srOtherHousesText(pGab)));
 check('the full sheet states the hours at the other house (not the home house)', (t => t && t.items.length === 1 && /^William House: 8\.00/.test(t.items[0]))(srOtherHousesText(pFull)));
 check('someone who worked at one house only gets no other-houses line', srOtherHousesText(srBuildStaffReport(STAFF[1], '2026-09-26', '2026-10-09', ph)) === null);
-check('the rule text on the tiles says "at one house"', otRuleText(true) === 'after 80 hrs at one house');
+check('the rule text on the tiles says "at home house"', otRuleText(true) === 'after 80 hrs at home house');
+{
+  // Home first, then anywhere: once 80 hrs are reached at the home house,
+  // later hours at another house are overtime, at that house's rate x its multiplier.
+  const save = global.SHIFTS;
+  n = 500;
+  global.SHIFTS = [
+    sh('S003', '2026-10-10', 'Gabriella House', '06:00', '22:00'),   // 16
+    sh('S003', '2026-10-11', 'Gabriella House', '06:00', '22:00'),   // 32
+    sh('S003', '2026-10-12', 'William House',   '06:00', '14:00'),   // 8 away, before 80 -> regular at $13.50
+    sh('S003', '2026-10-13', 'Gabriella House', '06:00', '22:00'),   // 48
+    sh('S003', '2026-10-14', 'Gabriella House', '06:00', '22:00'),   // 64
+    sh('S003', '2026-10-15', 'Gabriella House', '06:00', '22:00'),   // 80 exactly
+    sh('S003', '2026-10-16', 'William House',   '06:00', '14:00'),   // 8 away, after 80 -> all overtime
+    sh('S003', '2026-10-17', 'Gabriella House', '06:00', '10:00')    // 4 at home after 80 -> overtime
+  ];
+  const hf = computeShiftsWithOT().filter(x => x.staff === 'S003');
+  const byDate = d => hf.find(x => x.date === d);
+  check('away shift before 80 at home: regular, paid at the other house rate ($13.50)', near(byDate('2026-10-12').otHrs, 0) && near(byDate('2026-10-12').locRate, 13.5) && near(byDate('2026-10-12').shiftPay, 108));
+  check('the shift that reaches exactly 80 at home has no overtime', near(byDate('2026-10-15').otHrs, 0));
+  check('away shift after 80 at home: all 8 hrs overtime at $13.50 x 1.5 = $162', near(byDate('2026-10-16').otHrs, 8) && near(byDate('2026-10-16').regHrs, 0) && near(byDate('2026-10-16').shiftPay, 162));
+  check('home shift after 80: overtime at own rate $14 x 1.5 (4 hrs = $84)', near(byDate('2026-10-17').otHrs, 4) && near(byDate('2026-10-17').shiftPay, 84));
+  check('away hours do not count toward the 80 (home running total stays 80 after the away shift)', near(byDate('2026-10-16').runningHrs, 80) && byDate('2026-10-16').countsTowardOT === false);
+  const noHome = Object.assign({}, dj, { loc: '' });
+  global.STAFF = [noHome, STAFF[1]];
+  const nh = computeShiftsWithOT().filter(x => x.staff === 'S003');
+  check('a staff member with no assigned house has every house counted (100 hrs -> 20 OT)', near(nh.reduce((a, x) => a + x.otHrs, 0), 20));
+  global.STAFF = [dj, STAFF[1]];
+  global.SHIFTS = save;
+}
 check('report totals still equal the payroll engine for the same shifts', near(pFull.totals.gross, ph.filter(s => s.staff === 'S003' && s.date <= '2026-10-09').reduce((a, s) => a + s.shiftPay, 0)));
 
 check('Total hours box on a full sheet is every shift at every house (96.5, 9 shifts)', srHoursTile(pFull).value === '96.50' && /9 shifts · 9 days · all houses/.test(srHoursTile(pFull).sub));

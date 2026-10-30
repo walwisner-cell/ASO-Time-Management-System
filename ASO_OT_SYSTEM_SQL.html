@@ -2682,10 +2682,10 @@
                 <div class="form-field">
                   <label>Overtime Counted</label>
                   <select id="cfg-ot-by-location">
-                    <option value="1">At each house separately</option>
+                    <option value="1">Assigned house first (80 hrs at home house, then any house)</option>
                     <option value="0">All houses combined</option>
                   </select>
-                  <div style="font-size:11px;color:var(--text3);margin-top:4px">At each house separately: staff qualify for overtime only after the threshold at one house. Hours at other houses are paid and listed on reports, but not added together for overtime.</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px">Assigned house first: staff qualify for overtime only after the threshold at their assigned (home) house on the Staff Register. Once they have, every further hour in the pay period is overtime, at any house. Work at another house is always paid at that house&#39;s rate.</div>
                 </div>
                 <div class="form-field">
                   <label>Meal Break Warning Threshold (hrs)</label>
@@ -4711,19 +4711,36 @@ function confirmShiftEntry(e, excludeId) {
 // OT CALCULATION ENGINE
 // ──────────────────────────────────────────────────────────
 // Overtime is counted per house: a staff member qualifies for overtime only
-// after working PAY_CONFIG.otThreshold hours at ONE house in the pay period.
-// Hours at other houses are kept and paid, but each house is counted on its
-// own. Turned off (otByLocation === false) it counts every house together.
+// after working PAY_CONFIG.otThreshold hours at their ASSIGNED house in the pay period.
+// After that, every further hour at any house is overtime. Turned off
+// (otByLocation === false) it counts every house together.
 function otByLocationOn() { return !PAY_CONFIG || PAY_CONFIG.otByLocation !== false; }
 function otRuleText(short) {
   const one = otByLocationOn();
-  if (short) return one ? `after ${PAY_CONFIG.otThreshold} hrs at one house` : `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`;
-  return `${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period${one ? ', counted at each house separately' : ', all houses combined'}`;
+  if (short) return one ? `after ${PAY_CONFIG.otThreshold} hrs at home house` : `after ${PAY_CONFIG.otThreshold} hrs / ${PAY_CONFIG.periodDays} days`;
+  return `${PAY_CONFIG.otThreshold} hrs per ${PAY_CONFIG.periodDays}-day period${one ? ' at the assigned house first, then any house' : ', all houses combined'}`;
+}
+// Pay rate for one shift. At the staff member's assigned (home) house: their
+// own rate from the Staff Register (the house rate if they have none). At any
+// other house: that house's rate (their own rate if the house has none).
+function shiftPayRate(staffMember, location, date) {
+  const own = (staffMember && staffMember.rate > 0) ? staffMember.rate : null;
+  const home = staffMember && staffMember.loc;
+  if (home && location && location !== home) {
+    const houseRate = getLocRate(location, date);
+    if (houseRate > 0) return houseRate;
+  }
+  return own !== null ? own : getLocRate(location, date);
 }
 
 function computeShiftsWithOT() {
+  // Overtime rule (PAY_CONFIG.otByLocation, default on): "assigned house
+  // first". Hours count toward the threshold only at the staff member's
+  // assigned (home) house. Once they reach it, every further hour in the pay
+  // period is overtime at any house. Off: all houses added together.
+  // A staff member with no assigned house has every house counted.
   const threshold = PAY_CONFIG.otThreshold;
-  const perHouse = otByLocationOn();
+  const homeFirst = otByLocationOn();
   const sorted = [...SHIFTS].sort((a,b) => {
     const d = a.date.localeCompare(b.date);
     if (d !== 0) return d;
@@ -4731,7 +4748,8 @@ function computeShiftsWithOT() {
     if (s !== 0) return s;
     return a.id.localeCompare(b.id);
   });
-  const periodHrs = {};
+  const countedHrs = {};   // hours that count toward the threshold
+  const reached = {};      // threshold reached (home-first rule)
   // Running total with every house added together — only used to show, on
   // reports, what overtime would be if the houses were combined. Never paid.
   const combinedHrs = {};
@@ -4739,9 +4757,11 @@ function computeShiftsWithOT() {
     const { start: ps, end: pe } = getPeriodForDate(sh.date);
     const period = fmtPeriod(ps, pe);
     const staffPeriodKey = sh.staff + '|' + ps.toISOString().split('T')[0];
-    const periodKey = perHouse ? staffPeriodKey + '|' + (sh.location || '') : staffPeriodKey;
-    if (!periodHrs[periodKey]) periodHrs[periodKey] = 0;
+    if (!countedHrs[staffPeriodKey]) countedHrs[staffPeriodKey] = 0;
     if (!combinedHrs[staffPeriodKey]) combinedHrs[staffPeriodKey] = 0;
+    const staffMember = STAFF.find(x => x.id === sh.staff);
+    const home = staffMember && staffMember.loc;
+    const counts = !homeFirst || !home || sh.location === home;
 
     // A rejected shift stays fully visible (the whole point is the employee
     // can see it happened and why it doesn't count) but contributes nothing
@@ -4751,39 +4771,33 @@ function computeShiftsWithOT() {
       const approvedEx = APPROVED_EXCEPTIONS.find(a => a.shiftId === sh.id);
       return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate: 0, otRate: 0,
                regHrs: 0, otHrs: 0, regPay: 0, otPay: 0, shiftPay: 0, otHrsCombined: 0,
-               runningHrs: periodHrs[periodKey], approvedEx: approvedEx || null };
+               runningHrs: countedHrs[staffPeriodKey], countsTowardOT: counts, approvedEx: approvedEx || null };
     }
     const combinedBefore = combinedHrs[staffPeriodKey];
     combinedHrs[staffPeriodKey] = combinedBefore + sh.hours;
     const otHrsCombined = Math.max(0, combinedHrs[staffPeriodKey] - Math.max(threshold, combinedBefore));
 
-    const runningBefore = periodHrs[periodKey];
     const hrs = sh.hours;
-    const runningAfter = runningBefore + hrs;
-    // Use the staff member's individual pay rate if set; otherwise fall back to the location rate
-    const staffMember = STAFF.find(x => x.id === sh.staff);
-    const staffRate = (staffMember && staffMember.rate > 0) ? staffMember.rate : null;
-    const locRate = staffRate !== null ? staffRate : getLocRate(sh.location, sh.date);
-    // OT multiplier always comes from the location
+    const locRate = shiftPayRate(staffMember, sh.location, sh.date);
+    // OT multiplier always comes from the location worked
     const locOTMult = getLocOTMult(sh.location, sh.date);
     const otRate = locRate * locOTMult;
-    let otHrs = 0, otPay = 0, regHrs = hrs, regPay = 0;
-    if (runningAfter > threshold) {
-      if (runningBefore >= threshold) {
-        regHrs = 0; otHrs = hrs;
-      } else {
-        regHrs = threshold - runningBefore;
-        otHrs = hrs - regHrs;
-      }
-      regPay = regHrs * locRate;
-      otPay = otHrs * otRate;
-    } else {
-      regPay = hrs * locRate;
+    let otHrs = 0, regHrs = hrs;
+    const before = countedHrs[staffPeriodKey];
+    if (counts) {
+      const after = before + hrs;
+      otHrs = Math.max(0, after - Math.max(threshold, before));
+      regHrs = hrs - otHrs;
+      countedHrs[staffPeriodKey] = after;
+    } else if (before >= threshold) {
+      // Threshold already reached at the home house: all of it is overtime.
+      otHrs = hrs; regHrs = 0;
     }
-    periodHrs[periodKey] = runningAfter;
+    const regPay = regHrs * locRate;
+    const otPay = otHrs * otRate;
     // mark if approved exception
     const approvedEx = APPROVED_EXCEPTIONS.find(a => a.shiftId === sh.id);
-    return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate, otRate, regHrs, otHrs, regPay, otPay, shiftPay: regPay + otPay, runningHrs: runningAfter, otHrsCombined, approvedEx: approvedEx || null };
+    return { ...sh, period, periodKey: ps.toISOString().split('T')[0], locRate, otRate, regHrs, otHrs, regPay, otPay, shiftPay: regPay + otPay, runningHrs: countedHrs[staffPeriodKey], countsTowardOT: counts, otHrsCombined, approvedEx: approvedEx || null };
   });
 }
 
@@ -7217,7 +7231,7 @@ function renderTimesheetTable() {
       <th>#</th><th>Date</th><th>Staff</th><th>Location</th>
       <th>Time</th><th>Hrs</th><th>Rate</th>
       <th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th>Shift Pay</th>
-      <th>${otByLocationOn() ? 'House Period Hrs' : 'Period Hrs'}</th><th>Info</th><th></th>
+      <th>${otByLocationOn() ? 'Home House Hrs' : 'Period Hrs'}</th><th>Info</th><th></th>
     </tr></thead><tbody>`;
 
   const tsTypes = shiftTypeMap(all);
@@ -10048,7 +10062,7 @@ function rbBuildIndividualReport(staffArr, allComputed, fromDate, toDate, otThre
       ${shifts.length === 0 ? '<div style="color:var(--text3);font-size:13px;padding:12px 0">No shifts found for this staff member in the selected date range.</div>' : `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Reg Hrs</th><th>OT Hrs</th><th>Rate</th><th>OT Rate</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>${otByLocationOn() ? 'Running Hrs at This House' : 'Period Running Hrs'}</th></tr></thead>
+          <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Reg Hrs</th><th>OT Hrs</th><th>Rate</th><th>OT Rate</th><th>Reg Pay</th><th>OT Pay</th><th>Shift Pay</th><th>${otByLocationOn() ? 'Running Hrs at Home House' : 'Period Running Hrs'}</th></tr></thead>
           <tbody>
             ${shifts.map(s => `<tr>
               <td class="mono">${formatDateDisplay(s.date)}</td>
@@ -10184,7 +10198,7 @@ function rbBuildOvertimeReport(allComputed, fromDate, toDate, staffIds) {
         <span class="badge ${lvl}" style="margin-left:10px">${lbl}</span>
       </div>
       <div class="table-wrap"><table style="font-size:12px">
-        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>OT Hrs</th><th>OT Pay</th><th>${otByLocationOn() ? 'Running Hrs at This House' : 'Period Running Hrs'}</th></tr></thead>
+        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>OT Hrs</th><th>OT Pay</th><th>${otByLocationOn() ? 'Running Hrs at Home House' : 'Period Running Hrs'}</th></tr></thead>
         <tbody>
           ${d.shifts.sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr>
             <td class="mono">${formatDateDisplay(s.date)}</td>
@@ -10605,7 +10619,7 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
   // Per-house overtime cross-check: what overtime would be with every house
   // added together. Shown so the difference is visible; changes no pay.
   if (payType === 'hourly' && otByLocationOn() && !onlyHouse && totals.otCombined > totals.ot + 0.005) {
-    notes.push({ level: 'check', text: `Per-house overtime: ${srHrs(totals.hours)} hrs were worked across ${houses.length} houses. Each house is counted on its own, so ${srHrs(totals.ot)} overtime hrs are paid. With all houses added together it would be ${srHrs(totals.otCombined)} overtime hrs.` });
+    notes.push({ level: 'check', text: `Assigned-house overtime: ${srHrs(totals.hours)} hrs were worked across ${houses.length} houses. Only hours at the assigned house count toward the first ${PAY_CONFIG.otThreshold}, so ${srHrs(totals.ot)} overtime hrs are paid. With all houses added together it would be ${srHrs(totals.otCombined)} overtime hrs.` });
   }
   leave.filter(l => l.status === 'pending').forEach(l => notes.push({ level: 'action', text: `Time-off request still pending: ${l.type}, ${fd(l.startDate)}${l.endDate !== l.startDate ? ' – ' + fd(l.endDate) : ''}, ${srHrs(l.hours)} hrs.` }));
   if (st.status !== 'Active' && totals.hours > 0) notes.push({ level: 'action', text: 'Staff member is marked Inactive but has hours in this range — payroll holds these until approved on the Approvals page.' });
@@ -10685,7 +10699,7 @@ function srOtherHousesText(r) {
   const tiles = list.map(h => ({ name: h.name + (h.home ? ' (home)' : ''), hours: srHrs(h.hours), sub: sub(h) }));
   const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
   const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, in the total above, not listed on this sheet` : `Hours at other houses — ${srHrs(total)} hrs, included in the total above`;
-  const tail = otByLocationOn() ? (r.onlyHouse ? `These hours do not count toward overtime at ${r.onlyHouse}; each house is counted on its own.` : `Each house is counted on its own toward overtime (${PAY_CONFIG.otThreshold} hrs at one house).`) : '';
+  const tail = otByLocationOn() ? `Overtime starts only after ${PAY_CONFIG.otThreshold} hrs at the assigned house; after that, hours at any house are overtime. Work at another house is paid at that house’s rate.` : '';
   return { head, items, tiles, tail };
 }
 function srOtherHousesHtml(r, cols) {
@@ -10738,7 +10752,7 @@ function srCrossoverHtml(cross, opts, meta) {
       <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Staff Who Worked at More Than One House${meta.house ? ' — ' + esc(meta.house) : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
-    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}${otByLocationOn() ? `Overtime is counted at each house on its own: a person qualifies for overtime only after ${PAY_CONFIG.otThreshold} hours at one house in the pay period. Hours at other houses are listed and paid, but not added together for overtime.` : 'Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.'}</div>
+    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}${otByLocationOn() ? `Overtime: a person qualifies only after ${PAY_CONFIG.otThreshold} hours at their assigned house in the pay period; after that, every further hour at any house is overtime. Work at another house is paid at that house’s rate.` : 'Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.'}</div>
     ${cross.length ? `<table class="sr-table">
       <thead><tr><th>Staff</th><th>House worked</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${opts.showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
       <tbody>${rowsHtml}</tbody></table>` : '<div class="sr-dim" style="margin-top:14px;font-size:11px">Nobody worked away from their home house in these dates.</div>'}
@@ -11301,7 +11315,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
           <thead><tr><th>House</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
           <tbody>${r.houses.map(h => `<tr><td>${esc(h.name)}${h.home ? ' <span class="sr-dim">(home)</span>' : ''}</td><td class="sr-num">${h.shifts}</td><td class="sr-num">${srHrs(h.hours)}</td><td class="sr-num">${srHrs(h.reg)}</td><td class="sr-num">${h.ot > 0 ? '<b>' + srHrs(h.ot) + '</b>' : srHrs(0)}</td>${showPay ? `<td class="sr-num">${h.rates.length === 1 ? $fmt(h.rates[0]) : 'varies'}</td><td class="sr-num">${$fmt(h.pay)}</td>` : ''}</tr>`).join('')}</tbody>
         </table>` : '<div class="sr-dim">No hours worked.</div>'}
-        ${otByLocationOn() && r.houses.length ? `<div class="sr-dim" style="margin-top:4px">Overtime is counted at each house on its own: ${PAY_CONFIG.otThreshold} hrs at one house in the pay period.</div>` : ''}
+        ${otByLocationOn() && r.houses.length ? `<div class="sr-dim" style="margin-top:4px">Overtime: ${PAY_CONFIG.otThreshold} hrs at the assigned house first, then any house.</div>` : ''}
       </div>
       <div>
         <div class="sr-h">Time off in these dates</div>
