@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>American Safety Options — Staff Overtime Management System v7.4.2</title>
+<title>ASO Time System — Internal Tool (ASO Staff Use Only)</title>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Favicon: custom ASO shield icon — multiple formats for cross-browser local-file support -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g' cx='50%25' cy='35%25' r='65%25'%3E%3Cstop offset='0%25' stop-color='%231a3a6e'/%3E%3Cstop offset='100%25' stop-color='%230b0f1a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath d='M32 2 L58 14 L58 36 C58 50 46 60 32 62 C18 60 6 50 6 36 L6 14 Z' fill='url(%23g)' stroke='%233b82f6' stroke-width='2.5'/%3E%3Cpath d='M32 9 L52 19 L52 36 C52 47 43 55 32 57 C21 55 12 47 12 36 L12 19 Z' fill='none' stroke='%233b82f6' stroke-width='1' opacity='0.5'/%3E%3Ctext x='32' y='37' font-family='Georgia,serif' font-size='18' font-weight='bold' fill='%233b82f6' text-anchor='middle'%3EASO%3C/text%3E%3Ctext x='32' y='48' font-family='Georgia,serif' font-size='6' fill='%2360a5fa' text-anchor='middle' letter-spacing='2'%3ESAFETY%3C/text%3E%3C/svg%3E">
@@ -121,6 +121,20 @@
     font-weight:700;
     color:var(--text);
     margin-bottom:8px;
+  }
+  .login-internal {
+    display:flex; gap:10px; align-items:flex-start; text-align:left;
+    background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.55); border-left:4px solid #d97706;
+    border-radius:10px; padding:12px 14px; margin:0 0 22px;
+  }
+  .login-internal-icon { font-size:18px; line-height:1.2; }
+  .login-internal-title { font-size:13px; font-weight:800; letter-spacing:.6px; color:#f59e0b; text-transform:uppercase; }
+  .login-internal-text { font-size:12px; color:var(--text2); line-height:1.5; margin-top:3px; }
+  .login-internal-text b { color:var(--text); }
+  .login-about-badge {
+    display:inline-block; font-size:11px; font-weight:800; letter-spacing:.8px; text-transform:uppercase;
+    color:#f59e0b; border:1px solid rgba(217,119,6,0.6); background:rgba(217,119,6,0.12);
+    border-radius:20px; padding:4px 12px; margin-bottom:12px;
   }
   .login-about-sub {
     font-size:13px;
@@ -1697,19 +1711,20 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-about">
-    <div class="login-about-title">Staff Overtime &amp; Payroll System</div>
-    <div class="login-about-sub">The system American Safety Options uses to track staff shifts, calculate overtime, run payroll, and manage time off — for admins, supervisors, and staff alike.</div>
+    <div class="login-about-badge">🔒 Internal tool · ASO staff use only</div>
+    <div class="login-about-title">ASO Time System</div>
+    <div class="login-about-sub">An <b>internal tool</b> of American Safety Options, Inc., for ASO staff only. It is used to calculate the signed time log sheets and match them against ADP. <b>Official and final payroll is run using ADP.</b></div>
     <div class="login-feature">
       <div class="login-feature-icon">📋</div>
       <div class="login-feature-text"><b>Timesheets &amp; Overtime</b> — log shifts by house and staff member; overtime is calculated automatically against your configured threshold, with built-in protection against overlapping or 24+ hour entries.</div>
     </div>
     <div class="login-feature">
       <div class="login-feature-icon">🧾</div>
-      <div class="login-feature-text"><b>Payroll &amp; Pay Stubs</b> — set your standard taxes and benefits once, then run a full pay period in one step — gross pay, net pay, and printable stubs per employee.</div>
+      <div class="login-feature-text"><b>ADP Timecard Match</b> — compare every shift on the time log sheets with the ADP Timecard Report, correct differences to the actual time, and sign off each house.</div>
     </div>
     <div class="login-feature">
       <div class="login-feature-icon">👤</div>
-      <div class="login-feature-text"><b>Employee Self-Service</b> — staff can log in to see their own shifts, pull their own pay stubs, and request time off — never anyone else's data.</div>
+      <div class="login-feature-text"><b>Employee Self-Service</b> — staff can log in to see their own shifts, clock in and out, and request time off — never anyone else's data.</div>
     </div>
     <div class="login-feature">
       <div class="login-feature-icon">🌴</div>
@@ -1788,7 +1803,14 @@
       <div class="aso-login-name">American Safety Options<br><span>INC.</span></div>
       <div class="aso-login-tag">Staff Overtime Management System</div>
     </div>
-    <div class="login-sub" style="margin-top:-16px;margin-bottom:24px">// secure staff portal</div>
+    <div class="login-sub" style="margin-top:-16px;margin-bottom:16px">// secure staff portal</div>
+    <div class="login-internal" role="note">
+      <div class="login-internal-icon">🔒</div>
+      <div>
+        <div class="login-internal-title">Internal tool · ASO staff use only</div>
+        <div class="login-internal-text">For authorized American Safety Options staff only. Used to calculate the signed time log sheets and match them against ADP. <b>Official and final payroll is run using ADP.</b></div>
+      </div>
+    </div>
     <div class="login-error" id="login-error">Invalid username or password.</div>
     <div class="form-group">
       <label>Username</label>
