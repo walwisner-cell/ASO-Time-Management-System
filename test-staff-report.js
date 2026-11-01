@@ -234,7 +234,7 @@ check('someone who worked at one house only gets no other-houses line', srOtherH
 check('the rule text on the tiles says "at home house"', otRuleText(true) === 'after 80 hrs at home house');
 {
   // Home first, then anywhere: once 80 hrs are reached at the home house,
-  // later hours at another house are overtime, at that house's rate x its multiplier.
+  // later hours at another house are overtime, paid at the HOME house rate x its multiplier.
   const save = global.SHIFTS;
   n = 500;
   global.SHIFTS = [
@@ -251,9 +251,15 @@ check('the rule text on the tiles says "at home house"', otRuleText(true) === 'a
   const byDate = d => hf.find(x => x.date === d);
   check('away shift before 80 at home: regular, paid at the other house rate ($13.50)', near(byDate('2026-10-12').otHrs, 0) && near(byDate('2026-10-12').locRate, 13.5) && near(byDate('2026-10-12').shiftPay, 108));
   check('the shift that reaches exactly 80 at home has no overtime', near(byDate('2026-10-15').otHrs, 0));
-  check('away shift after 80 at home: all 8 hrs overtime at $13.50 x 1.5 = $162', near(byDate('2026-10-16').otHrs, 8) && near(byDate('2026-10-16').regHrs, 0) && near(byDate('2026-10-16').shiftPay, 162));
+  check('away shift after 80 at home: all 8 hrs overtime at the HOME house rate $14 x 1.5 = $168 (not William\'s $13.50)', near(byDate('2026-10-16').otHrs, 8) && near(byDate('2026-10-16').regHrs, 0) && near(byDate('2026-10-16').otRate, 21) && near(byDate('2026-10-16').shiftPay, 168));
   check('home shift after 80: overtime at own rate $14 x 1.5 (4 hrs = $84)', near(byDate('2026-10-17').otHrs, 4) && near(byDate('2026-10-17').shiftPay, 84));
   check('away hours do not count toward the 80 (home running total stays 80 after the away shift)', near(byDate('2026-10-16').runningHrs, 80) && byDate('2026-10-16').countsTowardOT === false);
+  global.STAFF = [Object.assign({}, dj, { rate: 15 }), STAFF[1]];
+  const hr = computeShiftsWithOT().filter(x => x.staff === 'S003');
+  const hd = d => hr.find(x => x.date === d);
+  check('own rate $15, home house rate $14: home overtime uses own rate ($22.50), away overtime uses the home HOUSE rate ($21), away regular uses that house rate ($13.50)',
+    near(hd('2026-10-17').otRate, 22.5) && near(hd('2026-10-16').otRate, 21) && near(hd('2026-10-12').locRate, 13.5));
+  global.STAFF = [dj, STAFF[1]];
   const noHome = Object.assign({}, dj, { loc: '' });
   global.STAFF = [noHome, STAFF[1]];
   const nh = computeShiftsWithOT().filter(x => x.staff === 'S003');

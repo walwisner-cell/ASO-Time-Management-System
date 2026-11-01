@@ -2707,7 +2707,7 @@
                     <option value="1">Assigned house first (80 hrs at home house, then any house)</option>
                     <option value="0">All houses combined</option>
                   </select>
-                  <div style="font-size:11px;color:var(--text3);margin-top:4px">Assigned house first: staff qualify for overtime only after the threshold at their assigned (home) house on the Staff Register. Once they have, every further hour in the pay period is overtime, at any house. Work at another house is always paid at that house&#39;s rate.</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px">Assigned house first: staff qualify for overtime only after the threshold at their assigned (home) house on the Staff Register. Once they have, every further hour in the pay period is overtime, at any house. Regular hours at another house are paid at that house&#39;s rate; overtime hours at another house are paid at the home house&#39;s rate.</div>
                 </div>
                 <div class="form-field">
                   <label>Meal Break Warning Threshold (hrs)</label>
@@ -4801,9 +4801,16 @@ function computeShiftsWithOT() {
 
     const hrs = sh.hours;
     const locRate = shiftPayRate(staffMember, sh.location, sh.date);
-    // OT multiplier always comes from the location worked
-    const locOTMult = getLocOTMult(sh.location, sh.date);
-    const otRate = locRate * locOTMult;
+    // Overtime rate. At the home house (or with no home house): the shift's
+    // rate x that house's OT multiplier. At ANY OTHER house: the HOME house's
+    // rate and multiplier from the Locations page — overtime is always paid
+    // at the assigned house rate. Falls back to the shift's own rate/house if
+    // the home house has no rate set.
+    const away = !!(home && sh.location && sh.location !== home);
+    const homeLocRate = away ? getLocRate(home, sh.date) : 0;
+    const otRate = (away && homeLocRate > 0)
+      ? homeLocRate * getLocOTMult(home, sh.date)
+      : locRate * getLocOTMult(sh.location, sh.date);
     let otHrs = 0, regHrs = hrs;
     const before = countedHrs[staffPeriodKey];
     if (counts) {
@@ -10721,7 +10728,7 @@ function srOtherHousesText(r) {
   const tiles = list.map(h => ({ name: h.name + (h.home ? ' (home)' : ''), hours: srHrs(h.hours), sub: sub(h) }));
   const items = list.map(h => `${h.name}${h.home ? ' (home)' : ''}: ${srHrs(h.hours)} hrs (${h.shifts} shift${h.shifts !== 1 ? 's' : ''}${h.ot > 0 ? ', ' + srHrs(h.ot) + ' OT' : ''})`);
   const head = r.onlyHouse ? `Also worked at other houses — ${srHrs(total)} hrs, in the total above, not listed on this sheet` : `Hours at other houses — ${srHrs(total)} hrs, included in the total above`;
-  const tail = otByLocationOn() ? `Overtime starts only after ${PAY_CONFIG.otThreshold} hrs at the assigned house; after that, hours at any house are overtime. Work at another house is paid at that house’s rate.` : '';
+  const tail = otByLocationOn() ? `Overtime starts only after ${PAY_CONFIG.otThreshold} hrs at the assigned house; after that, hours at any house are overtime. Regular hours at another house are paid at that house’s rate; overtime hours there are paid at the home house rate.` : '';
   return { head, items, tiles, tail };
 }
 function srOtherHousesHtml(r, cols) {
@@ -10774,7 +10781,7 @@ function srCrossoverHtml(cross, opts, meta) {
       <div class="sr-brand"><img class="sr-logo" src="${ASO_LOGO}" alt=""><div><div class="sr-org">American Safety Options, Inc.</div><div class="sr-doc">Staff Who Worked at More Than One House${meta.house ? ' — ' + esc(meta.house) : ''}</div></div></div>
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
-    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}${otByLocationOn() ? `Overtime: a person qualifies only after ${PAY_CONFIG.otThreshold} hours at their assigned house in the pay period; after that, every further hour at any house is overtime. Work at another house is paid at that house’s rate.` : 'Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.'}</div>
+    <div class="sr-key" style="margin-top:8px;font-size:10px">For Payroll. ${cross.length} staff member${cross.length !== 1 ? 's' : ''} worked at a house other than their home house in these dates, for ${srHrs(away)} hours in total. Each person’s hours are split by the house where the shift was worked. ${meta.house ? 'Listed: staff assigned to ' + esc(meta.house) + ' who worked elsewhere, and staff from other houses who worked at ' + esc(meta.house) + '. ' : ''}${otByLocationOn() ? `Overtime: a person qualifies only after ${PAY_CONFIG.otThreshold} hours at their assigned house in the pay period; after that, every further hour at any house is overtime. Regular hours at another house are paid at that house’s rate; overtime hours there are paid at the home house rate.` : 'Overtime is worked out on the person’s total hours for the pay period, then shown against the shift it fell on.'}</div>
     ${cross.length ? `<table class="sr-table">
       <thead><tr><th>Staff</th><th>House worked</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${opts.showPay ? '<th class="sr-num">Rate</th><th class="sr-num">Pay</th>' : ''}</tr></thead>
       <tbody>${rowsHtml}</tbody></table>` : '<div class="sr-dim" style="margin-top:14px;font-size:11px">Nobody worked away from their home house in these dates.</div>'}
