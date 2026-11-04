@@ -15,7 +15,7 @@ I get to it two ways:
 5. **Hours by house** — so I can see when someone covered another house.
 6. **Time off** — approved and pending requests that touch the period, plus the PTO balance on file.
 7. **Items to review before signing** — a plain list, sorted into "Settle first", "Check" and "Note".
-8. **Approval line** — Program Manager / Supervisor signature, printed name and date, with a one-line note that the employee's signature is on the original time log sheet.
+8. **Approval line** — Payroll Officer / Supervisor approval. The printed name is filled in with the person signed in who printed the report, and the date is the print date; the signature is left blank to sign by hand. The wording states that the times were verified and signed by the Program Manager / House Supervisor on the time log sheet(s) before they were entered. A one-line note says the employee's signature is on the original time log sheet.
 
 ## What gets flagged
 - Clock in/out entries still waiting for approval (those hours are *not* on the sheet yet)
@@ -42,7 +42,7 @@ I get to it two ways:
 
 **Tick boxes** — each one can be changed on either layout:
 - **Include pay amounts** — on for the full report, off for the times-only copy.
-- **Supervisor approval line** — on by default.
+- **Payroll Officer / Supervisor approval line** — on by default.
 - **Employee signature line** — off by default, because the employee already signed the time log sheet. If I ever need one, ticking it adds a line with their name printed in.
 - **Items to review**
 - **List every day (show days off)** — shows every date in the range, with "Off" or "Time off" on days with no shift.

@@ -301,5 +301,24 @@ const typed = srBuildStaffReport(dj, '2026-09-26', '2026-10-09', ph);
 check('report rows carry their shift type (Sep 26 7 AM–7 PM, 12 hrs: Other; Oct 2 7 AM–3 PM: 1st)', typed.rows.find(x => x.date === '2026-09-26').type.code === 'other' && typed.rows.find(x => x.date === '2026-10-02').type.code === 'first');
 check('report counts shifts by type', typed.shiftTypes.reduce((a, t) => a + t.count, 0) === typed.totals.shifts);
 
+// ───────────────────── Payroll Officer / Supervisor approval ─────────────────────
+console.log('\nApproval line on the printed report:\n');
+{
+  const html = fs.readFileSync(path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html'), 'utf8');
+  const consts = html.split('\n').filter(l => /^const SR_(APPROVER_TITLE|APPROVE_STAFF|APPROVE_HOUSE) = /.test(l)).map(l => l.replace(/^const /, 'global.')).join('\n');
+  eval(consts);
+  eval(extractFunctions(['esc', 'srSignHtml']));
+  const r = { staff: { first: 'Samuel', last: 'Baz' } };
+  const meta = { rangeWord: 'Pay period', rangeText: '10/24/2026 – 11/06/2026', generatedBy: 'Walter Cecil Wisner', printDate: '11/04/2026' };
+  const out = srSignHtml(r, meta, { showSign: true, showEmpSign: false });
+  check('approval is titled Payroll Officer / Supervisor', out.includes('Payroll Officer / Supervisor approval') && !out.includes('Program Manager / Supervisor approval'));
+  check('states the Program Manager / House Supervisor verified and signed the time before entry', /verified and signed by the Program Manager \/ House Supervisor/.test(out) && /before they were entered/.test(out));
+  check('printed name is filled in with the person who printed the report', out.includes('<b class="sr-fill">Walter Cecil Wisner</b><i></i>Printed name'));
+  check('date is filled in with the print date', out.includes('<b class="sr-fill">11/04/2026</b><i></i>Date'));
+  check('signature line is left blank to sign by hand', out.includes('<b class="sr-fill"></b><i></i>Signature'));
+  check('employee signature still shown as on file', out.includes('Employee signature: on file — Samuel Baz'));
+  check('house approval wording also names the Program Manager / House Supervisor', /verified and signed by the Program Manager \/ House Supervisor/.test(SR_APPROVE_HOUSE));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

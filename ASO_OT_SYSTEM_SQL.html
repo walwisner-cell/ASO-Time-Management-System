@@ -2322,7 +2322,7 @@
           </div>
           <div class="sr-opts">
             <label id="sr-opt-pay-wrap"><input type="checkbox" id="sr-opt-pay" checked onchange="srGenerate()"> Include pay amounts</label>
-            <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Supervisor approval line</label>
+            <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Payroll Officer / Supervisor approval line</label>
             <label><input type="checkbox" id="sr-opt-empsign" onchange="srGenerate()"> Employee signature line</label>
             <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Items to review</label>
             <label><input type="checkbox" id="sr-opt-days" onchange="srGenerate()"> List every day (show days off)</label>
@@ -3001,6 +3001,7 @@
               <option value="EDIT_LOCATION">✏️ Location Edited</option>
               <option value="DELETE_LOCATION">🗑️ Location Deleted</option>
               <option value="ADD_USER">🔐 User Added</option>
+              <option value="RENAME_USER">✏️ User Renamed</option>
               <option value="DELETE_USER">🗑️ User Deleted</option>
               <option value="CHANGE_PASSWORD">🔑 Password Changed</option>
               <option value="PAY_CONFIG">⚙️ Pay Config Changed</option>
@@ -9705,6 +9706,7 @@ function renderUserList() {
         <div class="user-name">${u.name}</div>
         <div class="user-meta">@${u.username} &nbsp;·&nbsp; <span style="color:${roleColor}">${roleIcon} ${u.role}</span>${linkNote}</div>
       </div>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" title="Change the full name printed on reports" onclick="renameUser('${u.id}')">Edit name</button>
       ${USERS.length > 1 ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteUser('${u.id}')">✕</button>` : ''}
     </div>`;
   });
@@ -9743,6 +9745,22 @@ function addUser() {
   auditLog('ADD_USER', `User created: ${name} (@${username})`, `Role: ${role}`);
   dbSave();
   showToast(`User ${esc(name)} (@${esc(username)}) created ✅`);
+  renderUserList();
+  renderChangePasswordDropdown();
+}
+
+// The user's Name is what prints as "Printed name" on the Payroll Officer /
+// Supervisor approval line, so it should be the person's full name.
+function renameUser(id) {
+  const u = USERS.find(x => x.id === id);
+  if (!u) return;
+  const next = (prompt(`Full name for @${u.username} (printed on the approval line of reports):`, u.name) || '').trim();
+  if (!next || next === u.name) return;
+  auditLog('RENAME_USER', `User renamed: ${u.name} → ${next} (@${u.username})`, `Role: ${u.role}`);
+  u.name = next;
+  if (_currentUser && _currentUser.id === id) _currentUser.name = next;
+  dbSave();
+  showToast(`Name changed to ${esc(next)} ✅`);
   renderUserList();
   renderChangePasswordDropdown();
 }
@@ -10963,7 +10981,10 @@ function srGenerate() {
   const meta = {
     range, house, status: srRangeStatus(range.from, range.to),
     generatedBy: _currentUser ? (_currentUser.name || _currentUser.username || '') : '',
-    generatedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' })
+    generatedAt: new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit' }),
+    // Pre-printed on the approval line: the signed-in user who printed the
+    // report, and the date it was printed.
+    printDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
   };
   // How the dates are worded everywhere on the sheet.
   meta.rangeText = range.mode === 'day' ? `${srDayName(range.from)} ${formatDateDisplay(range.from)}` : `${formatDateDisplay(range.from)} – ${formatDateDisplay(range.to)}`;
@@ -11050,6 +11071,14 @@ function srWeekLines(r, w, everyDay) {
   return lines;
 }
 
+// Approval wording, shared by the screen/print sheets and the PDF.
+// The Program Manager / House Supervisor has already verified and signed the
+// time log sheets before anything is entered here; the Payroll Officer /
+// Supervisor who prints the report approves it for payroll.
+const SR_APPROVER_TITLE = 'Payroll Officer / Supervisor approval';
+const SR_APPROVE_STAFF = 'These times were verified and signed by the Program Manager / House Supervisor on the employee\u2019s time log sheet(s) before they were entered. I have checked them against the schedule and approve them for payroll.';
+const SR_APPROVE_HOUSE = 'These staff, dates and hours were verified and signed by the Program Manager / House Supervisor on the time log sheets before they were entered. I have checked them against the schedule and approve them for payroll.';
+
 // The employee already signs the paper time log sheet these times come
 // from, so by default the report carries only the Program Manager's
 // approval and says where the employee's signature is. An employee
@@ -11062,8 +11091,8 @@ function srSignHtml(r, meta, opts) {
         <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(esc(st.first) + ' ' + esc(st.last))}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
       </div>` : '';
   const mgr = opts.showSign ? `<div class="sr-sign-row">
-        <div><div class="sr-sign-t">Program Manager / Supervisor approval</div><div class="sr-sign-p">I have checked these hours against the schedule and the employee’s signed time log sheets, and I approve them for payroll.</div></div>
-        <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill('')}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
+        <div><div class="sr-sign-t">${SR_APPROVER_TITLE}</div><div class="sr-sign-p">${SR_APPROVE_STAFF}</div></div>
+        <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(esc(meta.generatedBy || ''))}<i></i>Printed name</div><div class="sr-line-d">${fill(esc(meta.printDate || ''))}<i></i>Date</div></div>
       </div>` : '';
   const onFile = opts.showEmpSign ? '' : `<div class="sr-onfile">Employee signature: on file — ${esc(st.first)} ${esc(st.last)} signed the original time log sheet(s) these times were taken from.</div>`;
   return (emp || mgr ? `<div class="sr-sign">${emp}${mgr}</div>` : '') + onFile;
@@ -11159,8 +11188,8 @@ function srHouseSheetHtml(h, opts, meta, n, total) {
     <div class="sr-key">Shaded lines are staff whose home house is a different house. +1 = shift ended the next day. Overtime is worked out on each person’s total hours for the pay period across all houses, then shown against the shift it fell on. Entry: Time log = from the employee’s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee; ADP = added from an ADP punch.</div>
     <div class="sr-end">
     ${opts.showSign ? `<div class="sr-sign"><div class="sr-sign-row">
-        <div><div class="sr-sign-t">Program Manager approval — ${esc(h.house)}</div><div class="sr-sign-p">I have checked the staff, dates and hours listed for this house against the schedule and the signed time log sheets, and I approve them for payroll.</div></div>
-        <div class="sr-line"><div><b class="sr-fill"></b><i></i>Signature</div><div><b class="sr-fill"></b><i></i>Printed name</div><div class="sr-line-d"><b class="sr-fill"></b><i></i>Date</div></div>
+        <div><div class="sr-sign-t">${SR_APPROVER_TITLE} — ${esc(h.house)}</div><div class="sr-sign-p">${SR_APPROVE_HOUSE}</div></div>
+        <div class="sr-line"><div><b class="sr-fill"></b><i></i>Signature</div><div><b class="sr-fill">${esc(meta.generatedBy || '')}</b><i></i>Printed name</div><div class="sr-line-d"><b class="sr-fill">${esc(meta.printDate || '')}</b><i></i>Date</div></div>
       </div></div>` : ''}
     <div class="sr-foot"><span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span><span>Confidential personnel and payroll record · house ${n} of ${total}</span></div>
     </div>
@@ -11786,8 +11815,8 @@ function srDownloadPDF() {
     {
       const SH = 50;
       const boxes = [];
-      if (opts.showEmpSign) boxes.push(['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name]);
-      if (opts.showSign) boxes.push(['PROGRAM MANAGER / SUPERVISOR APPROVAL', 'I have checked these hours against the schedule and the employee\'s signed time log sheets, and I approve them for payroll.', '']);
+      if (opts.showEmpSign) boxes.push(['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name, '']);
+      if (opts.showSign) boxes.push([SR_APPROVER_TITLE.toUpperCase(), tx(SR_APPROVE_STAFF), tx(meta.generatedBy || ''), meta.printDate || '']);
       ensure(SH * boxes.length + (opts.showEmpSign ? 8 : 20));
       y += 4;
       if (boxes.length) {
@@ -11800,6 +11829,7 @@ function srDownloadPDF() {
           doc.setDrawColor(...navy); doc.setLineWidth(0.6);
           doc.line(lx, by + 35, lx + 118, by + 35); doc.line(lx + 130, by + 35, lx + 222, by + 35); doc.line(lx + 234, by + 35, R - 10, by + 35);
           if (b[2]) { font('bold', 8.5, navy); doc.text(fit(b[2], 92), lx + 130, by + 31); }
+          if (b[3]) { font('bold', 8.5, navy); doc.text(b[3], lx + 234, by + 31); }
           font('normal', 6.5, gray); doc.text('Signature', lx, by + 44); doc.text('Printed name', lx + 130, by + 44); doc.text('Date', lx + 234, by + 44);
         });
         y += SH * boxes.length + 8;
@@ -11854,10 +11884,13 @@ function srDownloadPDF() {
       ensure(62); y += 8;
       doc.setDrawColor(...rule); doc.setLineWidth(0.8); doc.roundedRect(M, y, UW, 50, 3, 3, 'S');
       const lx = M + 232;
-      font('bold', 7.5, blue); doc.text(tx(`PROGRAM MANAGER APPROVAL - ${h.house.toUpperCase()}`), M + 10, y + 13);
-      font('normal', 6.5, gray); doc.splitTextToSize('I have checked the staff, dates and hours listed for this house against the schedule and the signed time log sheets, and I approve them for payroll.', 205).forEach((l, k) => doc.text(l, M + 10, y + 23 + k * 7.5));
+      font('bold', 7.5, blue); doc.text(tx(`${SR_APPROVER_TITLE.toUpperCase()} - ${h.house.toUpperCase()}`), M + 10, y + 13);
+      font('normal', 6.5, gray); doc.splitTextToSize(tx(SR_APPROVE_HOUSE), 205).forEach((l, k) => doc.text(l, M + 10, y + 23 + k * 7.5));
       doc.setDrawColor(...navy); doc.setLineWidth(0.6);
       doc.line(lx, y + 35, lx + 118, y + 35); doc.line(lx + 130, y + 35, lx + 222, y + 35); doc.line(lx + 234, y + 35, R - 10, y + 35);
+      font('bold', 8.5, navy);
+      if (meta.generatedBy) doc.text(fit(tx(meta.generatedBy), 92), lx + 130, y + 31);
+      if (meta.printDate) doc.text(meta.printDate, lx + 234, y + 31);
       font('normal', 6.5, gray); doc.text('Signature', lx, y + 44); doc.text('Printed name', lx + 130, y + 44); doc.text('Date', lx + 234, y + 44);
       y += 58;
     }
@@ -13314,6 +13347,7 @@ const AT_ICONS = {
   EDIT_LOCATION:    '✏️',
   DELETE_LOCATION:  '🗑️',
   ADD_USER:         '🔐',
+  RENAME_USER:      '✏️',
   DELETE_USER:      '🗑️',
   CHANGE_PASSWORD:  '🔑',
   PAY_CONFIG:       '⚙️',
@@ -13332,7 +13366,7 @@ const AT_COLORS = {
   ADD_STAFF:'var(--success)',    EDIT_STAFF:'var(--accent2)',  DEACTIVATE_STAFF:'var(--danger)',
   ACTIVATE_STAFF:'var(--success)',
   ADD_LOCATION:'var(--success)', EDIT_LOCATION:'var(--accent2)', DELETE_LOCATION:'var(--danger)',
-  ADD_USER:'var(--success)',     DELETE_USER:'var(--danger)',  CHANGE_PASSWORD:'var(--gold)',
+  ADD_USER:'var(--success)',     DELETE_USER:'var(--danger)',  CHANGE_PASSWORD:'var(--gold)', RENAME_USER:'var(--accent2)',
   PAY_CONFIG:'var(--gold)',      DATA_IMPORT:'var(--accent2)',
   PAYROLL_CONFIRM:'var(--accent)', PAYROLL_FINALIZE:'var(--success)', PAYROLL_UNLOCK:'var(--warn)',
   LEAVE_REQUESTED:'var(--warn)', LEAVE_LOGGED:'var(--success2)', LEAVE_APPROVED:'var(--success)', LEAVE_DENIED:'var(--danger)',
@@ -13450,7 +13484,7 @@ function renderAuditTrail() {
         ADD_STAFF:'badge-success',EDIT_STAFF:'badge-info',DEACTIVATE_STAFF:'badge-danger',
         ACTIVATE_STAFF:'badge-success',
         ADD_LOCATION:'badge-success',EDIT_LOCATION:'badge-info',DELETE_LOCATION:'badge-danger',
-        ADD_USER:'badge-success',DELETE_USER:'badge-danger',CHANGE_PASSWORD:'badge-muted',
+        ADD_USER:'badge-success',RENAME_USER:'badge-muted',DELETE_USER:'badge-danger',CHANGE_PASSWORD:'badge-muted',
         PAY_CONFIG:'badge-muted',DATA_IMPORT:'badge-info',
       };
       const badgeCls = badgeMap[e.type] || 'badge-muted';
