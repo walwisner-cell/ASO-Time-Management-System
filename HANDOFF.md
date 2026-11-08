@@ -23,11 +23,13 @@ A prior session's handoff described a large amount of finished work (tax bracket
 5. Real browser verification is possible in this sandbox: a cached Chromium binary lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, and `playwright-core` (install as a dev-only, un-saved dependency — `npm install playwright-core --no-save`) can drive it directly. Boot the server and run the script in the *same* shell invocation. Login selectors: `#login-user` / `#login-pass` / `.login-btn`. **Prefer extracting real DOM text (`page.locator(...).innerText()`) over judging a screenshot by eye** — it's unambiguous where a screenshot leaves room for misreading. Always cross-check whatever the browser shows against the actual SQLite file's contents directly (read it with `sql.js`) — this session's own test setup initially forgot that an "open" (not yet clocked out) entry is correctly excluded from the admin review table by design, which looked like a bug in a screenshot until checked against ground truth.
 6. Remove `playwright-core` from `node_modules` (and confirm it was never saved to `package.json`/`package-lock.json`) before packaging anything for the user — it's a dev-only verification tool, not a runtime dependency.
 
-## LATEST — v115 to v117
+## LATEST — v115 to v118
 
 - **v115** — staff whose Primary Location contains "Office" (`srIsOffice`) sign their own timesheet: an "Employee — Office" box with their name and the print date, plus a blank "Payroll approval" box. House staff keep the v114 Payroll Officer / Supervisor box.
 - **v116** — one timesheet per person per pay period. With a house picked, `srGenerate` only builds sheets for staff whose `loc` is that house (full sheet, all houses worked). Staff from other houses who worked there (`visitors`) feed only the crossover list and the By house layout. The "Only hours worked at (house)" option is hidden and forced off.
 - **v117** — Problem Helper. `showToast(msg, 'danger'|'warn')` now calls `showProblem()`, which matches the message against `HELP_RULES` (title, why, fixes) and opens a panel (`#problem-box`) that stays until closed, with Copy details. When the message is vague, the last HTTP status (`_lastHttp`, recorded by a `fetch` wrapper) picks the rule via `HELP_BY_STATUS`. Uncaught script errors and promise rejections open the same panel. Warnings with no matching rule ("Staff removed") stay a plain toast. **When adding a new error message, add or check its rule in `HELP_RULES`; `test-problem-helper.js` lists the expected mapping.**
+
+- **v118** — time off (PTO) is not in use yet, so the Staff Timesheet Report hides it unless the new "Time off (PTO)" option (`#sr-opt-leave`, off by default) is ticked. `srLeaveOn()` gates the leave gathering in `srBuildStaffReport` (no section, tile, overview/cover/CSV column, or pending-request note). It returns true when there is no DOM, so unit tests are unchanged.
 
 ## PREVIOUS — v110: shift types
 

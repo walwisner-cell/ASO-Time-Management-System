@@ -10,10 +10,10 @@ I get to it two ways:
 ## What is on each sheet
 1. **Header** — the pay period, and whether this is a **Draft** (period still open or payroll not confirmed) or **Final** (payroll confirmed, with who and when).
 2. **Employee block** — name, position, employment type, home house, status, pay rate. (Staff ID and hire date are not printed on the report; the CSV still has the staff ID.)
-3. **Summary** — hours worked, regular hours, overtime hours, approved time off, gross pay.
+3. **Summary** — hours worked, regular hours, overtime hours, gross pay (and approved time off when "Time off (PTO)" is ticked).
 4. **Every shift, grouped by workweek** — date, shift type (1st, 2nd, 3rd, Double, Normal or Other), house worked, in, out, recorded meal break, hours, regular, overtime, pay, and how the shift was entered (clocked, typed in, or supervisor override). Each week has its own subtotal, then a period total.
 5. **Hours by house** — so I can see when someone covered another house.
-6. **Time off** — approved and pending requests that touch the period, plus the PTO balance on file.
+6. **Time off** — only when "Time off (PTO)" is ticked: approved and pending requests that touch the period, plus the PTO balance on file. We are not using time off yet, so it is off by default (v118).
 7. **Items to review before signing** — a plain list, sorted into "Settle first", "Check" and "Note".
 8. **Approval line** — Payroll Officer / Supervisor approval. The printed name is filled in with the person signed in who printed the report, and the date is the print date; the signature is left blank to sign by hand. The wording states that the times were verified and signed by the Program Manager / House Supervisor on the time log sheet(s) before they were entered. A one-line note says the employee's signature is on the original time log sheet.
    **Office staff** (home location named "Office") get two boxes instead: "Employee — Office" with their own name and the print date filled in for them to sign, and a separate "Payroll approval" with signature, name and date left blank (v115).
@@ -46,6 +46,7 @@ I get to it two ways:
 - **Payroll Officer / Supervisor approval line** — on by default.
 - **Employee signature line** — off by default, because the employee already signed the time log sheet. If I ever need one, ticking it adds a line with their name printed in.
 - **Items to review**
+- **Time off (PTO)** — off by default. Tick it once time off requests are in use.
 - **List every day (show days off)** — shows every date in the range, with "Off" or "Time off" on days with no shift.
 - **Add a summary page for all staff** — one page that prints first, with a line per person and a total.
 - **Include staff with no hours**

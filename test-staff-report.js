@@ -34,6 +34,7 @@ function extractShiftTypeConsts() {
 eval(extractShiftTypeConsts());
 
 eval(extractFunctions([
+  'srLeaveOn',
   'calendarDayDiff', 'periodIndexForDate', 'periodBoundsByIndex', 'getPeriodForDate', 'fmtPeriod', 'getPeriodLabel',
   'calcClockHours', 'clockEntryMissingMealBreak', 'shiftMissingMealBreak', 'getLocRate', 'getLocOTMult', 'shiftPayRate',
   'otByLocationOn', 'otRuleText', 'computeShiftsWithOT', 'formatDateDisplay', 'formatTimeDisplay', 'srOtherHousesText', 'srHoursTile', 'srMainHouse', 'srRegOtTiles', 'stMin', 'shiftTypeOf', 'shiftTypeMap', 'shiftTypeText',
@@ -302,6 +303,24 @@ check('report rows carry their shift type (Sep 26 7 AM–7 PM, 12 hrs: Other; Oc
 check('report counts shifts by type', typed.shiftTypes.reduce((a, t) => a + t.count, 0) === typed.totals.shifts);
 
 // ───────────────────── Payroll Officer / Supervisor approval ─────────────────────
+console.log('\nTime off (PTO) switched off:\n');
+{
+  const st = { id: 'P1', first: 'Pat', last: 'Off', loc: 'Usene House', rate: 12, status: 'Active', start: '2026-01-01' };
+  const leaveReq = [{ staffId: 'P1', type: 'vacation', startDate: '2026-10-27', endDate: '2026-10-27', hours: 8, status: 'pending' }];
+  const savedLR = global.LEAVE_REQUESTS, savedDoc = global.document;
+  global.LEAVE_REQUESTS = leaveReq;
+  global.document = { getElementById: id => id === 'sr-opt-leave' ? { checked: false } : null };
+  const off = srBuildStaffReport(st, '2026-10-24', '2026-11-06', []);
+  check('with Time off (PTO) unticked, no time off is gathered', off.leave.length === 0 && off.leaveHours === 0);
+  check('and no "time-off request still pending" item to review', !off.notes.some(n => /time-off/i.test(n.text)));
+  global.document = { getElementById: id => id === 'sr-opt-leave' ? { checked: true } : null };
+  const on = srBuildStaffReport(st, '2026-10-24', '2026-11-06', []);
+  check('ticking Time off (PTO) brings it back', on.leave.length === 1 && on.notes.some(n => /time-off/i.test(n.text)));
+  global.LEAVE_REQUESTS = savedLR; global.document = savedDoc;
+  const html = fs.readFileSync(path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html'), 'utf8');
+  check('the Time off (PTO) option is off by default', /<input type="checkbox" id="sr-opt-leave" onchange=/.test(html));
+}
+
 console.log('\nApproval line on the printed report:\n');
 {
   const html = fs.readFileSync(path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html'), 'utf8');

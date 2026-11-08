@@ -2344,6 +2344,7 @@
             <label><input type="checkbox" id="sr-opt-sign" checked onchange="srGenerate()"> Payroll Officer / Supervisor approval line</label>
             <label><input type="checkbox" id="sr-opt-empsign" onchange="srGenerate()"> Employee signature line</label>
             <label><input type="checkbox" id="sr-opt-notes" checked onchange="srGenerate()"> Items to review</label>
+            <label title="Time off (PTO) is not in use yet. Tick this once time off requests are being used."><input type="checkbox" id="sr-opt-leave" onchange="srGenerate()"> Time off (PTO)</label>
             <label><input type="checkbox" id="sr-opt-days" onchange="srGenerate()"> List every day (show days off)</label>
             <label id="sr-opt-cover-wrap"><input type="checkbox" id="sr-opt-cover" onchange="srGenerate()"> Add a summary page for all staff</label>
             <label><input type="checkbox" id="sr-opt-cross" checked onchange="srGenerate()"> List staff who worked at other houses (for Payroll)</label>
@@ -10636,7 +10637,9 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
     .map(h => ({ name: h.name, shifts: h.shifts, days: h.dates.size, hours: h.hours, reg: h.reg, ot: h.ot, pay: h.pay, home: h.home }));
 
   // ── Time off that touches this date range (denied requests left out) ──
-  const leave = (LEAVE_REQUESTS || [])
+  // Time off (PTO) is not in use yet: unless "Time off (PTO)" is ticked, the
+  // report gathers none, so no section, tile, column or pending-request note.
+  const leave = (srLeaveOn() ? (LEAVE_REQUESTS || []) : [])
     .filter(l => l.staffId === st.id && l.status !== 'denied' && l.startDate <= toISO && l.endDate >= fromISO)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .map(l => ({ type: l.type, startDate: l.startDate, endDate: l.endDate, hours: Number(l.hours) || 0, status: l.status, reviewedBy: l.reviewedBy || '' }));
@@ -11046,7 +11049,7 @@ function srOverviewHtml(reports, opts, meta) {
   return `<div class="card" style="margin-bottom:20px">
     <div class="card-title">${reports.length} timesheets · ${esc(meta.range.label)}${meta.house ? ' · ' + esc(meta.house) : ''}</div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Staff</th><th>Home house</th><th>Days</th><th>Hours</th><th>Regular</th><th>Overtime</th><th>Time off</th>${opts.showPay ? '<th>Gross pay</th>' : ''}<th>To review</th><th></th></tr></thead>
+      <thead><tr><th>Staff</th><th>Home house</th><th>Days</th><th>Hours</th><th>Regular</th><th>Overtime</th>${srLeaveOn() ? '<th>Time off</th>' : ''}${opts.showPay ? '<th>Gross pay</th>' : ''}<th>To review</th><th></th></tr></thead>
       <tbody>${reports.map(r => {
         const act = r.notes.filter(n => n.level === 'action').length, chk = r.notes.filter(n => n.level === 'check').length;
         return `<tr>
@@ -11056,7 +11059,7 @@ function srOverviewHtml(reports, opts, meta) {
           <td class="mono" style="color:var(--accent2);font-weight:600">${srHrs(r.totals.hours)}</td>
           <td class="mono">${srHrs(r.totals.reg)}</td>
           <td class="mono" style="color:${r.totals.ot > 0 ? 'var(--warn)' : 'var(--text3)'}">${srHrs(r.totals.ot)}</td>
-          <td class="mono" style="color:${r.leaveHours > 0 ? 'var(--text2)' : 'var(--text3)'}">${srHrs(r.leaveHours)}</td>
+          ${srLeaveOn() ? `<td class="mono" style="color:${r.leaveHours > 0 ? 'var(--text2)' : 'var(--text3)'}">${srHrs(r.leaveHours)}</td>` : ''}
           ${opts.showPay ? `<td class="mono">${r.payType === 'hourly' ? $fmt(r.totals.gross) : '—'}</td>` : ''}
           <td>${act ? `<span class="badge badge-danger" style="font-size:10px">${act} to settle</span> ` : ''}${chk ? `<span class="badge badge-warn" style="font-size:10px">${chk} to check</span>` : ''}${!act && !chk ? '<span style="color:var(--text3);font-size:12px">Nothing flagged</span>' : ''}</td>
           <td><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" data-target="sr-sheet-${esc(r.staff.id)}" onclick="document.getElementById(this.dataset.target).scrollIntoView({behavior:'smooth',block:'start'})">View</button></td>
@@ -11074,6 +11077,11 @@ function srOverviewHtml(reports, opts, meta) {
 // Shifts typed in by the office come from the paper time log sheets staff
 // fill in to register their time, so that is what the report calls them.
 function srSourceLabel(src) { return src === 'clock_in' ? 'Clock' : src === 'clock_in_override' ? 'Override' : src === 'adp' ? 'ADP' : 'Time log'; }
+function srLeaveOn() {
+  if (typeof document === 'undefined') return true;   // unit tests
+  const cb = document.getElementById('sr-opt-leave');
+  return cb ? cb.checked : true;
+}
 function srLeaveLabel(t) { return t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : 'Time off'; }
 function srRateText(r) {
   const st = r.staff;
@@ -11390,7 +11398,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
     <div class="sr-tiles">
       ${(h => tile(h.label, h.value, h.sub))(srHoursTile(r))}
       ${(x => tile('Regular hours', x.reg, x.regSub) + tile('Overtime hours', x.ot, x.otSub))(srRegOtTiles(r))}
-      ${tile('Approved time off', srHrs(r.leaveHours), 'hours')}
+      ${srLeaveOn() ? tile('Approved time off', srHrs(r.leaveHours), 'hours') : ''}
       ${showPay ? tile('Gross pay', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`) : ''}
     </div>
 
@@ -11422,14 +11430,14 @@ function srFullSheetHtml(r, opts, meta, n, total) {
         </table>` : '<div class="sr-dim">No hours worked.</div>'}
         ${otByLocationOn() && r.houses.length ? `<div class="sr-dim" style="margin-top:4px">Overtime: ${PAY_CONFIG.otThreshold} hrs at the assigned house first, then any house.</div>` : ''}
       </div>
-      <div>
+      ${srLeaveOn() ? `<div>
         <div class="sr-h">Time off in these dates</div>
         ${r.leave.length ? `<table class="sr-table sr-mini">
           <thead><tr><th>Type</th><th>Dates</th><th class="sr-num">Hours</th><th>Status</th></tr></thead>
           <tbody>${r.leave.map(l => `<tr><td>${esc(srLeaveLabel(l.type))}</td><td class="sr-nw">${esc(formatDateDisplay(l.startDate))}${l.endDate !== l.startDate ? ' – ' + esc(formatDateDisplay(l.endDate)) : ''}</td><td class="sr-num">${srHrs(l.hours)}</td><td>${l.status === 'approved' ? 'Approved' : 'Pending'}</td></tr>`).join('')}</tbody>
         </table>` : '<div class="sr-dim">None requested.</div>'}
         <div class="sr-dim" style="margin-top:4px">PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs</div>
-      </div>
+      </div>` : ''}
     </div>
 
     ${opts.showNotes ? srNotesHtml(r) : ''}
@@ -11453,17 +11461,17 @@ function srCoverHtml(reports, opts, meta) {
       <div class="sr-head-r"><div class="sr-period">${esc(meta.rangeWord)} ${esc(meta.rangeText)}</div><div class="sr-status ${meta.status.final ? 'sr-final' : 'sr-draft'}">${esc(meta.status.text)}</div></div>
     </div>
     <table class="sr-table">
-      <thead><tr><th>Staff</th><th>Home house</th><th class="sr-num">Days</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th><th class="sr-num">Time off</th>${opts.showPay ? '<th class="sr-num">Gross pay</th>' : ''}<th class="sr-num">To settle</th><th class="sr-num">To check</th></tr></thead>
+      <thead><tr><th>Staff</th><th>Home house</th><th class="sr-num">Days</th><th class="sr-num">Shifts</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${srLeaveOn() ? '<th class="sr-num">Time off</th>' : ''}${opts.showPay ? '<th class="sr-num">Gross pay</th>' : ''}<th class="sr-num">To settle</th><th class="sr-num">To check</th></tr></thead>
       <tbody>${reports.map(r => `<tr>
         <td class="sr-nw"><b>${esc(r.staff.last)}, ${esc(r.staff.first)}</b></td><td class="sr-nw">${esc(r.staff.loc || '—')}</td>
-        <td class="sr-num">${r.totals.days}</td><td class="sr-num">${r.totals.shifts}</td><td class="sr-num"><b>${srHrs(r.totals.hours)}</b></td><td class="sr-num">${srHrs(r.totals.reg)}</td><td class="sr-num">${r.totals.ot > 0 ? '<b>' + srHrs(r.totals.ot) + '</b>' : srHrs(0)}</td><td class="sr-num">${srHrs(r.leaveHours)}</td>
+        <td class="sr-num">${r.totals.days}</td><td class="sr-num">${r.totals.shifts}</td><td class="sr-num"><b>${srHrs(r.totals.hours)}</b></td><td class="sr-num">${srHrs(r.totals.reg)}</td><td class="sr-num">${r.totals.ot > 0 ? '<b>' + srHrs(r.totals.ot) + '</b>' : srHrs(0)}</td>${srLeaveOn() ? `<td class="sr-num">${srHrs(r.leaveHours)}</td>` : ''}
         ${opts.showPay ? `<td class="sr-num">${r.payType === 'hourly' ? $fmt(r.totals.gross) : '—'}</td>` : ''}
         <td class="sr-num">${r.notes.filter(x => x.level === 'action').length || '<span class="sr-dim">0</span>'}</td><td class="sr-num">${r.notes.filter(x => x.level === 'check').length || '<span class="sr-dim">0</span>'}</td>
       </tr>`).join('')}
       <tr class="sr-tot"><td colspan="3">TOTAL</td><td class="sr-num">${t.days}</td><td class="sr-num">${t.shifts}</td><td class="sr-num">${srHrs(t.hours)}</td><td class="sr-num">${srHrs(t.reg)}</td><td class="sr-num">${srHrs(t.ot)}</td><td class="sr-num">${srHrs(t.leave)}</td>${opts.showPay ? `<td class="sr-num">${$fmt(t.gross)}</td>` : ''}<td></td><td></td></tr>
       </tbody>
     </table>
-    <div class="sr-key">To settle = items that should be resolved before a timesheet is signed (unapproved clock entries, pending time off, inactive staff with hours). To check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person’s sheet.</div>
+    <div class="sr-key">To settle = items that should be resolved before a timesheet is signed (unapproved clock entries${srLeaveOn() ? ', pending time off' : ''}, inactive staff with hours). To check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person’s sheet.</div>
     <div class="sr-foot"><span>Generated ${esc(meta.generatedAt)}${meta.generatedBy ? ' by ' + esc(meta.generatedBy) : ''} · ASO Time System</span><span>Confidential personnel and payroll record · summary</span></div>
   </section>`;
 }
@@ -11501,10 +11509,10 @@ function srExportCSV() {
   csv += line(['Overtime rule', `After ${otRuleText()}`]) + '\n';
 
   csv += line(['SUMMARY']);
-  csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'Status', 'Days worked', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs', 'Approved time off hrs'].concat(opts.showPay ? ['Regular pay', 'OT pay', 'Gross pay'] : []).concat(['Items to settle', 'Items to check', 'Hours at other houses']));
+  csv += line(['Staff ID', 'Last name', 'First name', 'Home house', 'Status', 'Days worked', 'Shifts', 'Hours', 'Regular hrs', 'OT hrs'].concat(srLeaveOn() ? ['Approved time off hrs'] : []).concat(opts.showPay ? ['Regular pay', 'OT pay', 'Gross pay'] : []).concat(['Items to settle', 'Items to check', 'Hours at other houses']));
   reports.forEach(r => {
     const pay = opts.showPay && r.payType === 'hourly';
-    csv += line([r.staff.id, r.staff.last, r.staff.first, r.staff.loc || '', r.staff.status, r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
+    csv += line([r.staff.id, r.staff.last, r.staff.first, r.staff.loc || '', r.staff.status, r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot)].concat(srLeaveOn() ? [srHrs(r.leaveHours)] : [])
       .concat(opts.showPay ? (pay ? [r.totals.regPay.toFixed(2), r.totals.otPay.toFixed(2), r.totals.gross.toFixed(2)] : ['', '', '']) : [])
       .concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length, (t => t ? t.items.join('; ') : '')(srOtherHousesText(r))]));
   });
@@ -11607,7 +11615,7 @@ function srDownloadPDF() {
   if (opts.cover && !houseMode) {
     pageOwner.push(-1);
     letterhead(`Timesheet Summary - ${reports.length} staff${meta.house ? ' | ' + meta.house : ''}`, `${rangeWord} ${rangeTxt}`);
-    const cc = [{ h: 'Staff', w: 0 }, { h: 'Home house', w: 92 }, { h: 'Days', w: 30, num: true }, { h: 'Shifts', w: 34, num: true }, { h: 'Hours', w: 42, num: true }, { h: 'Regular', w: 42, num: true }, { h: 'OT', w: 36, num: true }, { h: 'Time off', w: 40, num: true }]
+    const cc = [{ h: 'Staff', w: 0 }, { h: 'Home house', w: 92 }, { h: 'Days', w: 30, num: true }, { h: 'Shifts', w: 34, num: true }, { h: 'Hours', w: 42, num: true }, { h: 'Regular', w: 42, num: true }, { h: 'OT', w: 36, num: true }].concat(srLeaveOn() ? [{ h: 'Time off', w: 40, num: true }] : [])
       .concat(opts.showPay ? [{ h: 'Gross pay', w: 58, num: true }] : []).concat([{ h: 'Settle', w: 32, num: true }, { h: 'Check', w: 32, num: true }]);
     cc[0].w = UW - cc.reduce((a, c) => a + c.w, 0);
     let cx = M; cc.forEach(c => { c.x = cx; cx += c.w; });
@@ -11617,7 +11625,7 @@ function srDownloadPDF() {
     reports.forEach(r => {
       if (y + 14 > BOTTOM) { doc.addPage(); pageOwner.push(-1); y = 44; head(); }
       font('normal', 8, navy);
-      const v = [`${r.staff.last}, ${r.staff.first}`, r.staff.loc || '-', r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot), srHrs(r.leaveHours)]
+      const v = [`${r.staff.last}, ${r.staff.first}`, r.staff.loc || '-', r.totals.days, r.totals.shifts, srHrs(r.totals.hours), srHrs(r.totals.reg), srHrs(r.totals.ot)].concat(srLeaveOn() ? [srHrs(r.leaveHours)] : [])
         .concat(opts.showPay ? [r.payType === 'hourly' ? $fmt(r.totals.gross) : '-'] : []).concat([r.notes.filter(x => x.level === 'action').length, r.notes.filter(x => x.level === 'check').length]);
       cc.forEach((c, i) => put(c, String(v[i]), y + 10));
       doc.setDrawColor(...rule); doc.setLineWidth(0.3); doc.line(M, y + 14, R, y + 14); y += 14;
@@ -11627,7 +11635,7 @@ function srDownloadPDF() {
     const tv = ['TOTAL', '', '', t.days, t.shifts, srHrs(t.hours), srHrs(t.reg), srHrs(t.ot), srHrs(t.leave)].concat(opts.showPay ? [$fmt(t.gross)] : []).concat(['', '']);
     cc.forEach((c, i) => put(c, String(tv[i]), y + 12));
     y += 26; font('normal', 6.5, gray);
-    doc.splitTextToSize('Settle = items that should be resolved before a timesheet is signed (unapproved clock entries, pending time off, inactive staff with hours). Check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person\'s sheet.', UW).forEach(l => { doc.text(l, M, y); y += 8; });
+    doc.splitTextToSize('Settle = items that should be resolved before a timesheet is signed (unapproved clock entries' + (srLeaveOn() ? ', pending time off' : '') + ', inactive staff with hours). Check = items worth a look (missed meal breaks, overrides, rejected or very long shifts, overtime cross-check). Details are on each person\'s sheet.', UW).forEach(l => { doc.text(l, M, y); y += 8; });
   }
 
   // ── Staff who worked at more than one house (for Payroll) ──
@@ -11729,7 +11737,7 @@ function srDownloadPDF() {
       });
       y += 34;
       // ── Summary tiles ──
-      const tiles = [(h => [h.label.toUpperCase(), h.value, h.sub])(srHoursTile(r)), ...(x => [['REGULAR HOURS', x.reg, x.regSub], ['OVERTIME HOURS', x.ot, x.otSub]])(srRegOtTiles(r)), ['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']];
+      const tiles = [(h => [h.label.toUpperCase(), h.value, h.sub])(srHoursTile(r)), ...(x => [['REGULAR HOURS', x.reg, x.regSub], ['OVERTIME HOURS', x.ot, x.otSub]])(srRegOtTiles(r))].concat(srLeaveOn() ? [['APPROVED TIME OFF', srHrs(r.leaveHours), 'hours']] : []);
       if (showPay) tiles.push(['GROSS PAY', $fmt(T.gross), `${$fmt(T.regPay)} reg + ${$fmt(T.otPay)} OT`]);
       const gap = 8, tw = (UW - gap * (tiles.length - 1)) / tiles.length;
       tiles.forEach((t, i) => {
@@ -11828,7 +11836,8 @@ function srDownloadPDF() {
         });
         y += 6;
       }
-      // ── Time off ──
+      // ── Time off (only when "Time off (PTO)" is ticked) ──
+      if (srLeaveOn()) {
       heading('Time off in these dates');
       if (!r.leave.length) { font('normal', 8, gray); doc.text('None requested.', M, y); y += 12; }
       r.leave.forEach(l => {
@@ -11840,6 +11849,7 @@ function srDownloadPDF() {
         y += 12;
       });
       ensure(12); font('normal', 7, gray); doc.text(`PTO balance on file today: ${srHrs(st.ptoBalance || 0)} hrs`, M, y); y += 14;
+      }
     }
 
     // ── Items to review ──
