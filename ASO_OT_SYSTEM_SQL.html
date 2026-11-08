@@ -10932,7 +10932,11 @@ function srGenerate() {
   }
   const house = document.getElementById('sr-house').value;
   const includeEmpty = document.getElementById('sr-opt-empty').checked;
-  document.getElementById('sr-opt-houseonly-wrap').style.display = house ? '' : 'none';
+  // One timesheet per person per pay period, printed under the house they are
+  // assigned to, with every house they worked. The old "only this house's
+  // hours" partial sheet is no longer offered.
+  document.getElementById('sr-opt-houseonly-wrap').style.display = 'none';
+  document.getElementById('sr-opt-houseonly').checked = false;
   document.getElementById('sr-opt-houseonly-label').textContent = house ? `Only hours worked at ${house}` : 'Only this house\u2019s hours';
   const opts = {
     layout: ['sign', 'house'].includes(document.getElementById('sr-layout').value) ? document.getElementById('sr-layout').value : 'full',
@@ -10943,22 +10947,27 @@ function srGenerate() {
     everyDay: document.getElementById('sr-opt-days').checked && calendarDayDiff(range.from, range.to) <= 62,
     cover: document.getElementById('sr-opt-cover').checked,
     cross: document.getElementById('sr-opt-cross').checked,
-    houseOnly: !!house && document.getElementById('sr-opt-houseonly').checked
+    houseOnly: false
   };
   const all = computeShiftsWithOT();
   const inRange = all.filter(s => s.date >= range.from && s.date <= range.to);
 
-  // Who can be picked: with a house chosen, anyone assigned there OR who worked there in this range.
+  // Timesheets: with a house chosen, only the staff ASSIGNED to that house.
+  // Someone assigned elsewhere who picked up shifts here gets their one
+  // timesheet under their own house (with these hours on it), and is listed
+  // here only in "Staff who worked at other houses" and the By house layout.
   let pool = STAFF.slice();
+  let visitors = [];
   if (house) {
     const workedThere = new Set(inRange.filter(s => s.location === house).map(s => s.staff));
-    pool = pool.filter(s => s.loc === house || workedThere.has(s.id));
+    visitors = pool.filter(s => s.loc !== house && workedThere.has(s.id));
+    pool = pool.filter(s => s.loc === house);
   }
   pool.sort((a, b) => (a.last + a.first).localeCompare(b.last + b.first));
   const staffSel = document.getElementById('sr-staff');
   const want = staffSel.hasAttribute('data-want') ? staffSel.getAttribute('data-want') : staffSel.value;
   staffSel.removeAttribute('data-want');
-  staffSel.innerHTML = `<option value="">All staff${house ? ' for this house' : ''} with hours</option>` +
+  staffSel.innerHTML = `<option value="">All staff${house ? ' assigned to this house' : ''} with hours</option>` +
     pool.map(s => `<option value="${esc(s.id)}">${esc(s.last)}, ${esc(s.first)} (${esc(s.id)})${s.status !== 'Active' ? ' — Inactive' : ''}</option>`).join('');
   staffSel.value = pool.some(s => s.id === want) ? want : '';
   const one = staffSel.value;
@@ -10973,11 +10982,13 @@ function srGenerate() {
   // Full reports (every house) are always built: the crossover list needs them
   // even when the sheets themselves are limited to one house.
   const full = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all));
-  let reports = full;
-  if (opts.houseOnly) reports = chosen.map(st => srBuildStaffReport(st, range.from, range.to, all, house)).filter(r => r.rows.length || one);
-  const houseDays = opts.layout === 'house' ? srBuildHouseDays(full, house) : [];
+  const reports = full;
+  // Staff from other houses who worked here: no timesheet here, but they
+  // still count in the By house layout and the "worked at other houses" list.
+  const withVisitors = one ? full : full.concat(visitors.map(st => srBuildStaffReport(st, range.from, range.to, all)));
+  const houseDays = opts.layout === 'house' ? srBuildHouseDays(withVisitors, house) : [];
   if (opts.layout === 'house' ? houseDays.length < 2 : reports.length < 2) opts.cover = false;
-  const cross = opts.cross ? srHouseCrossover(full) : [];
+  const cross = opts.cross ? srHouseCrossover(withVisitors) : [];
   const meta = {
     range, house, status: srRangeStatus(range.from, range.to),
     generatedBy: _currentUser ? (_currentUser.name || _currentUser.username || '') : '',
@@ -10992,9 +11003,9 @@ function srGenerate() {
   meta.onlyHouse = opts.houseOnly ? house : '';
   _srLast = { reports, opts, meta, cross, houseDays };
 
-  if (!reports.length) {
+  if (!reports.length && opts.layout !== 'house') {
     overview.innerHTML = '';
-    out.innerHTML = `<div class="sr-empty">No hours recorded for ${esc(range.label)}${house ? ' at ' + esc(house) : ''}.<br><span style="font-size:12px">Pick different dates, or tick “Include staff with no hours”.</span></div>`;
+    out.innerHTML = `<div class="sr-empty">No hours recorded for ${esc(range.label)}${house ? ' for staff assigned to ' + esc(house) : ''}.<br><span style="font-size:12px">Pick different dates, or tick “Include staff with no hours”.</span></div>`;
     return;
   }
   const crossHtml = opts.cross && (cross.length || reports.length > 1) ? srCrossoverHtml(cross, opts, meta) : '';
@@ -11443,7 +11454,7 @@ function srCoverHtml(reports, opts, meta) {
 // paper always matches the preview. While printing, everything except the
 // report sheets is hidden (see the body.sr-printing rules in the stylesheet).
 function srPrint() {
-  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to print yet — pick a pay period that has hours', 'warn'); return; }
+  if (!_srLast || (!_srLast.reports.length && !(_srLast.houseDays || []).length)) { showToast('Nothing to print yet — pick a pay period that has hours', 'warn'); return; }
   window.print();
 }
 window.addEventListener('beforeprint', () => {
@@ -11522,7 +11533,7 @@ function srExportCSV() {
 // page, continuing onto extra pages when a timesheet is long. It follows the
 // same layout and tick boxes as the screen.
 function srDownloadPDF() {
-  if (!_srLast || !_srLast.reports.length) { showToast('Nothing to export yet — pick dates that have hours', 'warn'); return; }
+  if (!_srLast || (!_srLast.reports.length && !(_srLast.houseDays || []).length)) { showToast('Nothing to export yet — pick dates that have hours', 'warn'); return; }
   if (!window.jspdf) { showToast('The PDF tool did not load — use Print and choose “Save as PDF” instead', 'danger'); return; }
   const { reports, opts, meta } = _srLast;
   const sign = opts.layout === 'sign';

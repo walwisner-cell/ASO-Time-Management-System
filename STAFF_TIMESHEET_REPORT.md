@@ -51,7 +51,7 @@ I get to it two ways:
 - **Include staff with no hours**
 
 ## Doing it per house, and who worked at other houses
-- **House** dropdown — picks the house. I get everyone assigned to that house, plus anyone from another house who worked there.
+- **House** dropdown — picks the house. I get one timesheet for each person **assigned** to that house, and it shows every house they worked in the pay period. Someone from another house who picked up shifts here does not get a second timesheet here; their one timesheet prints under their own house, and they are still listed in "Staff who worked at other houses" and in the By house layout (v116).
 - **Only hours worked at [house]** — appears once a house is picked. With it ticked, each sheet shows only the shifts worked at that house, and says so at the top. With it off, each sheet is the person's full timesheet across all houses.
 - **List staff who worked at other houses (for Payroll)** — on by default. It adds a page called "Staff Who Worked at More Than One House". For each person who worked somewhere other than their home house, it lists every house they worked at with shifts, hours, regular, overtime and pay, the other houses highlighted, and a total. It prints with the report, is in the PDF, and is in the CSV.
 
