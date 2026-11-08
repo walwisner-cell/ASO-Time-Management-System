@@ -16,6 +16,7 @@ I get to it two ways:
 6. **Time off** — approved and pending requests that touch the period, plus the PTO balance on file.
 7. **Items to review before signing** — a plain list, sorted into "Settle first", "Check" and "Note".
 8. **Approval line** — Payroll Officer / Supervisor approval. The printed name is filled in with the person signed in who printed the report, and the date is the print date; the signature is left blank to sign by hand. The wording states that the times were verified and signed by the Program Manager / House Supervisor on the time log sheet(s) before they were entered. A one-line note says the employee's signature is on the original time log sheet.
+   **Office staff** (home location named "Office") get two boxes instead: "Employee — Office" with their own name and the print date filled in for them to sign, and a separate "Payroll approval" with signature, name and date left blank (v115).
 
 ## What gets flagged
 - Clock in/out entries still waiting for approval (those hours are *not* on the sheet yet)

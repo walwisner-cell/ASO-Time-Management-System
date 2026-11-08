@@ -11079,6 +11079,16 @@ const SR_APPROVER_TITLE = 'Payroll Officer / Supervisor approval';
 const SR_APPROVE_STAFF = 'These times were verified and signed by the Program Manager / House Supervisor on the employee\u2019s time log sheet(s) before they were entered. I have checked them against the schedule and approve them for payroll.';
 const SR_APPROVE_HOUSE = 'These staff, dates and hours were verified and signed by the Program Manager / House Supervisor on the time log sheets before they were entered. I have checked them against the schedule and approve them for payroll.';
 
+// Staff assigned to the Office (home location named "Office") sign their
+// own timesheet: their name and the print date are filled in and they sign.
+// A separate Payroll approval is signed below it. Everyone else keeps the
+// single Payroll Officer / Supervisor approval above.
+const SR_OFFICE_EMP_TITLE = 'Employee \u2014 Office';
+const SR_OFFICE_EMP_TEXT = 'I work at the Office. The times on this timesheet are a true and complete record of the time I worked.';
+const SR_PAYROLL_TITLE = 'Payroll approval';
+const SR_PAYROLL_TEXT = 'I have checked these hours and approve them for payroll.';
+function srIsOffice(st) { return /\boffice\b/i.test(String((st && st.loc) || '')); }
+
 // The employee already signs the paper time log sheet these times come
 // from, so by default the report carries only the Program Manager's
 // approval and says where the employee's signature is. An employee
@@ -11086,6 +11096,13 @@ const SR_APPROVE_HOUSE = 'These staff, dates and hours were verified and signed 
 function srSignHtml(r, meta, opts) {
   const st = r.staff;
   const fill = t => `<b class="sr-fill">${t}</b>`;
+  if (opts.showSign && srIsOffice(st)) {
+    const row = (t, p, nm, dt) => `<div class="sr-sign-row">
+        <div><div class="sr-sign-t">${t}</div><div class="sr-sign-p">${p}</div></div>
+        <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(nm)}<i></i>Printed name</div><div class="sr-line-d">${fill(dt)}<i></i>Date</div></div>
+      </div>`;
+    return `<div class="sr-sign">${row(SR_OFFICE_EMP_TITLE, `${SR_OFFICE_EMP_TEXT} ${esc(meta.rangeWord)}: <b>${esc(meta.rangeText)}</b>.`, esc(st.first) + ' ' + esc(st.last), esc(meta.printDate || ''))}${row(SR_PAYROLL_TITLE, SR_PAYROLL_TEXT, '', '')}</div>`;
+  }
   const emp = opts.showEmpSign ? `<div class="sr-sign-row">
         <div><div class="sr-sign-t">Employee</div><div class="sr-sign-p">The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${esc(meta.rangeWord)}: <b>${esc(meta.rangeText)}</b>.</div></div>
         <div class="sr-line"><div>${fill('')}<i></i>Signature</div><div>${fill(esc(st.first) + ' ' + esc(st.last))}<i></i>Printed name</div><div class="sr-line-d">${fill('')}<i></i>Date</div></div>
@@ -11815,8 +11832,14 @@ function srDownloadPDF() {
     {
       const SH = 50;
       const boxes = [];
+      const office = opts.showSign && srIsOffice(r.staff);
+      if (office) {
+        boxes.push([tx(SR_OFFICE_EMP_TITLE).toUpperCase(), tx(`${SR_OFFICE_EMP_TEXT} ${rangeWord}: ${rangeTxt}.`), name, meta.printDate || '']);
+        boxes.push([SR_PAYROLL_TITLE.toUpperCase(), tx(SR_PAYROLL_TEXT), '', '']);
+      } else {
       if (opts.showEmpSign) boxes.push(['EMPLOYEE', `The times on this sheet come from the time log sheets I filled in. I have reviewed them and they are a true and complete record of the time I worked. ${rangeWord}: ${rangeTxt}.`, name, '']);
       if (opts.showSign) boxes.push([SR_APPROVER_TITLE.toUpperCase(), tx(SR_APPROVE_STAFF), tx(meta.generatedBy || ''), meta.printDate || '']);
+      }
       ensure(SH * boxes.length + (opts.showEmpSign ? 8 : 20));
       y += 4;
       if (boxes.length) {
@@ -11834,7 +11857,7 @@ function srDownloadPDF() {
         });
         y += SH * boxes.length + 8;
       }
-      if (!opts.showEmpSign) { font('normal', 7.5, gray); doc.text(fit(`Employee signature: on file - ${name} signed the original time log sheet(s) these times were taken from.`, UW), M, y + 4); y += 14; }
+      if (!opts.showEmpSign && !office) { font('normal', 7.5, gray); doc.text(fit(`Employee signature: on file - ${name} signed the original time log sheet(s) these times were taken from.`, UW), M, y + 4); y += 14; }
     }
   });
 

@@ -305,9 +305,9 @@ check('report counts shifts by type', typed.shiftTypes.reduce((a, t) => a + t.co
 console.log('\nApproval line on the printed report:\n');
 {
   const html = fs.readFileSync(path.join(__dirname, 'ASO_OT_SYSTEM_SQL.html'), 'utf8');
-  const consts = html.split('\n').filter(l => /^const SR_(APPROVER_TITLE|APPROVE_STAFF|APPROVE_HOUSE) = /.test(l)).map(l => l.replace(/^const /, 'global.')).join('\n');
+  const consts = html.split('\n').filter(l => /^const SR_(APPROVER_TITLE|APPROVE_STAFF|APPROVE_HOUSE|OFFICE_EMP_TITLE|OFFICE_EMP_TEXT|PAYROLL_TITLE|PAYROLL_TEXT) = /.test(l)).map(l => l.replace(/^const /, 'global.')).join('\n');
   eval(consts);
-  eval(extractFunctions(['esc', 'srSignHtml']));
+  eval(extractFunctions(['esc', 'srIsOffice', 'srSignHtml']));
   const r = { staff: { first: 'Samuel', last: 'Baz' } };
   const meta = { rangeWord: 'Pay period', rangeText: '10/24/2026 – 11/06/2026', generatedBy: 'Walter Cecil Wisner', printDate: '11/04/2026' };
   const out = srSignHtml(r, meta, { showSign: true, showEmpSign: false });
@@ -318,6 +318,19 @@ console.log('\nApproval line on the printed report:\n');
   check('signature line is left blank to sign by hand', out.includes('<b class="sr-fill"></b><i></i>Signature'));
   check('employee signature still shown as on file', out.includes('Employee signature: on file — Samuel Baz'));
   check('house approval wording also names the Program Manager / House Supervisor', /verified and signed by the Program Manager \/ House Supervisor/.test(SR_APPROVE_HOUSE));
+
+  // Office staff
+  const off = { staff: { first: 'Grace', last: 'Office', loc: 'Office' } };
+  const o = srSignHtml(off, meta, { showSign: true, showEmpSign: false });
+  const orows = o.split('class="sr-sign-row"').slice(1);
+  check('Office staff: two boxes, employee then Payroll approval', orows.length === 2 && orows[0].includes('Employee — Office') && orows[1].includes('Payroll approval'));
+  check('Office staff: their own name is filled in', orows[0].includes('<b class="sr-fill">Grace Office</b><i></i>Printed name'));
+  check('Office staff: date is the print date', orows[0].includes('<b class="sr-fill">11/04/2026</b><i></i>Date'));
+  check('Office staff: they sign (signature blank)', orows[0].includes('<b class="sr-fill"></b><i></i>Signature'));
+  check('Office staff: Payroll signature, name and date blank', orows[1].includes('<b class="sr-fill"></b><i></i>Signature') && orows[1].includes('<b class="sr-fill"></b><i></i>Printed name') && orows[1].includes('<b class="sr-fill"></b><i></i>Date'));
+  check('Office staff: no "signature on file" line, since they sign here', !o.includes('Employee signature: on file'));
+  check('house staff are unchanged (Payroll Officer / Supervisor box)', !srIsOffice(r.staff) && out.includes('Payroll Officer / Supervisor approval') && !out.includes('Employee — Office'));
+  check('office is matched by the home location name, not by other houses', srIsOffice({ loc: 'office' }) && srIsOffice({ loc: 'Main Office' }) && !srIsOffice({ loc: 'Usene House' }) && !srIsOffice({ loc: '' }));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
