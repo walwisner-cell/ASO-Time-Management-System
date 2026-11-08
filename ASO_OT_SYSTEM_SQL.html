@@ -804,6 +804,25 @@
     border:1px solid rgba(255,255,255,0.18);
   }
   #toast.show { opacity:1; transform:translateY(0); }
+  /* Problem helper panel: what happened, why, how to fix */
+  #problem-box { position:fixed; right:24px; bottom:24px; width:min(440px, calc(100vw - 32px)); max-height:calc(100vh - 48px); overflow:auto;
+    background:var(--surface); color:var(--text); border:1px solid var(--border2); border-left:5px solid var(--danger); border-radius:10px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45); padding:14px 16px 12px; z-index:10000; font-size:13px; line-height:1.45;
+    opacity:0; transform:translateY(16px); pointer-events:none; transition:opacity .2s, transform .2s; }
+  #problem-box.show { opacity:1; transform:translateY(0); pointer-events:auto; }
+  #problem-box.pb-warn { border-left-color:var(--warn); }
+  #problem-box .pb-head { display:flex; align-items:center; gap:8px; font-size:15px; }
+  #problem-box .pb-head b { flex:1; }
+  #problem-box .pb-x { background:none; border:0; color:var(--text3); font-size:15px; cursor:pointer; padding:2px 4px; }
+  #problem-box .pb-msg { margin:8px 0 4px; padding:8px 10px; background:var(--surface2); border-radius:6px; color:var(--text); }
+  #problem-box .pb-sec { margin-top:10px; font-size:10.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--accent2); }
+  #problem-box .pb-why { color:var(--text2); margin-top:2px; }
+  #problem-box .pb-fix { margin:4px 0 0 18px; padding:0; color:var(--text); }
+  #problem-box .pb-fix li { margin:3px 0; }
+  #problem-box .pb-tech { margin-top:8px; color:var(--text3); font-size:11.5px; }
+  #problem-box .pb-tech code { display:block; white-space:pre-wrap; word-break:break-word; margin-top:4px; }
+  #problem-box .pb-btns { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  @media print { #problem-box { display:none !important; } }
 
   /* ─────────────────────────────────────────────────────
      OT ALERT BANNER
@@ -13592,8 +13611,327 @@ function rbFilterStaffByHouse() {
 // ──────────────────────────────────────────────────────────
 // TOAST
 // ──────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────
+// PROBLEM HELPER
+// Every error or warning goes through showToast(msg, 'danger' | 'warn').
+// Instead of a 3-second toast, a problem now opens a panel that stays on
+// screen and explains: what happened, why it usually happens, and the steps
+// that fix it. The explanation is matched from the message text (and, when
+// the message is vague, from the last server response code). Plain notices
+// such as "Staff removed" still show as a short toast.
+// ──────────────────────────────────────────────────────────
+const HELP_RULES = [
+  { test: /could not reach the server|check your connection|failed to fetch|network ?error|load failed|offline/i,
+    title: 'Can’t reach the server',
+    why: 'Your computer lost its connection to the ASO Time System, or the server is restarting. The server restarts for about 1–2 minutes every time an update is pushed to Render.',
+    fixes: ['Keep this page open. What you typed is still on the screen.',
+            'Check your internet connection by opening any other website.',
+            'Wait 1–2 minutes, then try the same step again.',
+            'If it still fails, go to Data Manager and export a backup so nothing is lost, then refresh the page (F5) and sign in.',
+            'If it keeps happening, open the Render dashboard and check that the service shows "Live".'] },
+  { test: /session (has )?expired|session timed out|not authenticated|log in again|account no longer exists/i,
+    title: 'You have been signed out',
+    why: 'For security, the system signs you out after a period with no activity, or when the server restarts after an update. While you are signed out, nothing new is saved.',
+    fixes: ['If you entered anything in the last few minutes, go to Data Manager and export a backup first.',
+            'Refresh the page (F5) and sign in again.',
+            'Repeat the last step you did. It was not saved.'] },
+  { test: /not authorized|access restricted|do not have permission|requires an admin|cannot grant a permission|employee accounts cannot modify/i,
+    title: 'Your account doesn’t have permission for this',
+    why: 'Each login has a role (admin, supervisor, viewer, employee or a custom role). This step needs a permission your role does not include.',
+    fixes: ['Sign in with an admin or supervisor account to do this step.',
+            'Or ask an admin to add the permission to your role in Roles & Permissions.',
+            'If you think your role should already allow this, sign out and back in so the latest permissions load.'] },
+  { test: /too many (login attempts|requests)/i,
+    title: 'Too many tries in a short time',
+    why: 'To block password guessing, the server pauses sign-ins and requests from this network after many quick attempts.',
+    fixes: ['Wait 10–15 minutes, then try again.',
+            'Check that Caps Lock is off and the username is spelled correctly.',
+            'If the password is forgotten, ask an admin to set a new one in Passwords.'] },
+  { test: /invalid username or password|login failed|username and password required/i,
+    title: 'Sign-in didn’t work',
+    why: 'The username or password does not match an account.',
+    fixes: ['Check that Caps Lock is off. Passwords are case-sensitive.',
+            'Usernames are lower-case, for example "admin".',
+            'If the password is forgotten, ask an admin to set a new one in Passwords.'] },
+  { test: /\blocked\b|confirmed for payroll/i,
+    title: 'This pay period is locked',
+    why: 'Once a pay period is confirmed for payroll it is locked, so the hours sent to ADP can’t change without anyone noticing.',
+    fixes: ['If the change is really needed: an admin opens Payroll & Taxes, picks this period and clicks Unlock.',
+            'Make the change and enter a reason. The change is written to the Audit Trail.',
+            'Confirm the period again.',
+            'If payroll has already been run in ADP, make the same correction in ADP. ADP is the final payroll record.'] },
+  { test: /outside (the )?(selected period|this shift'?s pay period)/i,
+    title: 'That date is in a different pay period',
+    why: 'The date you entered falls outside the pay period you are working in. This is usually a typing slip in the month, day or year.',
+    fixes: ['Check the month, day and year you typed, especially the year.',
+            'Check that the pay period selected at the top of the page is the right one.',
+            'If the shift really belongs to another pay period, delete it here (with a reason) and add it in the correct period.'] },
+  { test: /overlap/i,
+    title: 'This would overlap a shift already entered',
+    why: 'This person already has a shift at the same time. Usually it is the same time log sheet entered twice, or AM and PM mixed up.',
+    fixes: ['Open the Timesheet Log and filter by this staff member and date.',
+            'If the existing shift is a duplicate, delete it (with a reason) and then save this one.',
+            'Check AM and PM on both shifts. 2:00 PM to 10:00 PM is 2nd shift.',
+            'For an overnight shift (10 PM to 6 AM), enter the end time as is. The system knows it ends the next morning.'] },
+  { test: /staffing limit/i,
+    title: 'This location is at its staffing limit',
+    why: 'This location has a "Max Staff / Shift" number set in Locations, and that many people are already on this shift.',
+    fixes: ['Check whether one of the shifts already entered is a duplicate.',
+            'If the extra person really worked, a supervisor can override.',
+            'If the limit is too low, change Max Staff / Shift for this location in Locations (0 = no limit).'] },
+  { test: /clock-out time must be after|end time must be after|valid start and end time|select a valid time|invalid time/i,
+    title: 'The times don’t make sense',
+    why: 'A time is missing, or the end time comes before the start time.',
+    fixes: ['Check AM and PM. 1st shift is 6 AM–2 PM, 2nd is 2 PM–10 PM, 3rd is 10 PM–6 AM.',
+            'For an overnight shift, enter the end time as written (for example 6:00 AM). It is counted as the next morning.',
+            'If someone clocked in by mistake, use "Cancel Clock-In" instead of clocking out.'] },
+  { test: /end date must be on or after|start and end dates are required|invalid date|dates must be valid|select a date|retroactive date|corrected date|date and staff are required/i,
+    title: 'A date is missing or out of order',
+    why: 'A date is blank, or the end date comes before the start date.',
+    fixes: ['Fill in every date box using the calendar picker.',
+            'Make sure the "To" date is the same day as or after the "From" date.',
+            'Check the year. A date in the wrong year is the most common slip.'] },
+  { test: /reason/i,
+    title: 'A reason is needed',
+    why: 'Every change to time records is written to the Audit Trail with a reason, so it can be explained to payroll or an auditor later.',
+    fixes: ['Type a short reason of at least 3 characters, for example: "Entered twice from the same time log sheet" or "Corrected to match signed time log sheet".',
+            'Then click the button again.'] },
+  { test: /password must be at least 8|passwords do not match|password change failed/i,
+    title: 'Password not accepted',
+    why: 'Passwords must be at least 8 characters, and both boxes must match exactly.',
+    fixes: ['Use at least 8 characters.',
+            'Type the same password in both boxes. Watch for Caps Lock.',
+            'If it still fails, sign out and back in, then try again.'] },
+  { test: /username already exists|already has a login account|select which staff member this login belongs to|name and username required|can't delete your own account/i,
+    title: 'That account can’t be set up this way',
+    why: 'Each username must be unique, each staff member can have only one login, and you cannot delete the account you are signed in with.',
+    fixes: ['Pick a different username, for example first initial and last name.',
+            'For an employee login, choose the staff member it belongs to.',
+            'To remove your own account, sign in with a different admin account first.',
+            'To change the name printed on reports, use Edit name next to the user.'] },
+  { test: /already clocked in|not currently clocked in|break in progress|no staff record linked|clock in failed|clock out failed|could not (start|end) break/i,
+    title: 'Clock-in / clock-out problem',
+    why: 'The time clock found the person already clocked in, not clocked in, or not linked to a staff record.',
+    fixes: ['Refresh the page (F5) to see the current clock status.',
+            'If the person is stuck clocked in, a supervisor can clock them out from the clock entries list (with a reason).',
+            'For an employee login, check in Users that it is linked to the right staff member.',
+            'Time from signed time log sheets can always be entered with Add Shift instead.'] },
+  { test: /gps|location services|geolocation|location (access|permission)|your location/i,
+    title: 'Location could not be read',
+    why: 'Clock-in needs the device’s location, and the browser did not share it.',
+    fixes: ['Click the padlock icon next to the web address and set Location to Allow.',
+            'Turn on Location in the phone or computer settings.',
+            'Refresh the page (F5) and try again.'] },
+  { test: /backup|parse|import failed|could not read this file|invalid .*file/i,
+    title: 'The file could not be used',
+    why: 'The file is not the type this screen expects, or it was changed after it was exported.',
+    fixes: ['For a backup, use the .json file exported from Data Manager. Do not open and re-save it in Excel or Word.',
+            'For ADP, use the ADP Timecard Report as downloaded from ADP (Excel or CSV).',
+            'Export or download the file again and retry.'] },
+  { test: /pdf tool did not load|allow pop-ups|excel file/i,
+    title: 'The browser blocked this',
+    why: 'The browser blocked a pop-up window, or a download tool did not finish loading.',
+    fixes: ['Click the blocked pop-up icon at the right end of the address bar and choose "Always allow pop-ups" for this site.',
+            'Refresh the page (F5) to reload the tools, then try again.',
+            'To make a PDF another way, click Print and choose "Save as PDF".'] },
+  { test: /nothing to (export|print)|no .*(to export|data|selected|available)|generate a report first|no shifts recorded|choose an adp|no employees in this payroll|no finalized payroll/i,
+    title: 'Nothing to work with yet',
+    why: 'There is no data for what is currently selected, so there is nothing to print or export.',
+    fixes: ['Check the pay period or dates at the top of the page.',
+            'Check the House and Staff Member choices. A filter may be hiding everyone.',
+            'Make sure the shifts for these dates have been entered from the time log sheets.',
+            'Where there is a Generate button, click it first, then print or export.'] },
+  { test: /pay rate must|salary amount|amounts? (cannot|must)|valid amount|valid rate|hours must|non-zero number of hours|number of hours requested|max staff|meal break threshold|percentage deductions|adjustment must/i,
+    title: 'A number is outside the allowed range',
+    why: 'A number is blank, negative, or too large for this box. The limits stop typing slips from reaching payroll.',
+    fixes: ['Check the number for an extra or missing digit.',
+            'Use numbers only, without $ or commas, for example 14.50.',
+            'The allowed range is given in the message. Enter a number inside it.'] },
+  { test: /inactive staff member.*unreviewed pay/i,
+    title: 'Inactive staff still have pay to review',
+    why: 'Someone marked Inactive has hours in this pay period. Payroll must decide whether to pay them before the period is confirmed.',
+    fixes: ['Open Payroll & Taxes and find the flagged Inactive staff.',
+            'Review each one: pay the hours worked, or flag them with a reason.',
+            'Then confirm the period again.'] },
+  { test: /external staff member.*missing/i,
+    title: 'External staff amounts are missing',
+    why: 'Staff paid from another program need their amount entered for each pay period.',
+    fixes: ['Open Payroll & Taxes and enter the amount for each External staff member listed.',
+            'Then confirm the period again.'] },
+  { test: /item.*still open/i,
+    title: 'Some ADP differences are not settled',
+    why: 'The ADP reconciliation still has differences between ADP and the timesheet that have not been corrected or marked reviewed.',
+    fixes: ['Go through the open items in the reconciliation list.',
+            'Correct each one to the actual time from the signed time log sheet, or mark it reviewed with a note.',
+            'Then sign off again.'] },
+  { test: /cannot approve/i,
+    title: 'This shift can’t be approved as it is',
+    why: 'The shift failed a check (for example missing times, an unknown staff member or an unknown location).',
+    fixes: ['Read the reason after "Cannot approve" in the message above.',
+            'Open the shift, correct that detail, and approve again.'] },
+  { test: /already been reviewed/i,
+    title: 'Someone already handled this',
+    why: 'Another user approved or rejected this item first, or it was handled in another browser tab.',
+    fixes: ['Refresh the page (F5) to see the current status.'] },
+  { test: /role name|built-in role|role with this name|(create|delete) role|role not found|permissions must be|manage roles/i,
+    title: 'Role could not be changed',
+    why: 'Role names must be 2–40 characters and unique, built-in names can’t be reused, and a role still assigned to users can’t be deleted.',
+    fixes: ['Pick a different role name.',
+            'Before deleting a role, move its users to another role in Users.'] },
+  { test: /not found|no longer exists|unknown (staff|location)/i,
+    title: 'That record isn’t there any more',
+    why: 'It was deleted or changed, possibly in another browser tab or by another user, after this page was loaded.',
+    fixes: ['Refresh the page (F5) to load the latest records.',
+            'Check Data Manager → Deletion Log to see whether it was deleted, by whom and why.',
+            'For an ADP upload, upload the file again.'] },
+  { test: /something went wrong on the server|server error/i,
+    title: 'The server ran into an error',
+    why: 'The server could not finish this step. Your earlier saved work is not affected.',
+    fixes: ['Try the same step once more.',
+            'If it fails again, click "Copy details", note what you were doing, and check the Render logs at that time.',
+            'Export a backup from Data Manager before trying anything else.'] },
+  { test: /change the default admin password/i,
+    title: 'The default admin password is still in use',
+    why: 'The system still has the starter password, which anyone who knows the system could guess.',
+    fixes: ['Open Passwords, choose the admin account and set a strong new password of at least 8 characters.'] },
+  { test: /cannot determine this period|could not build this pay stub/i,
+    title: 'This pay period could not be worked out',
+    why: 'The pay period settings or the record for this period are incomplete.',
+    fixes: ['Refresh the page (F5) and pick the pay period again.',
+            'Check the pay period start date and length in Payroll settings.'] },
+  { test: /required|please fill|please enter|please select|enter a|select at least|needs a name|is required/i,
+    title: 'Something is missing on the form',
+    why: 'One or more boxes that must be filled in are empty.',
+    fixes: ['Fill in the box named in the message above.',
+            'Then click Save (or the same button) again.'] }
+];
+
+// Last server response, so a vague message ("Request failed") can still be
+// explained by what the server actually answered.
+let _lastHttp = null;
+(function () {
+  if (!window.fetch || window.fetch._asoWrapped) return;
+  const orig = window.fetch.bind(window);
+  const wrapped = function (url, opts) {
+    return orig(url, opts).then(res => {
+      _lastHttp = { url: String(url), status: res.status, at: Date.now() };
+      return res;
+    }, err => {
+      _lastHttp = { url: String(url), status: 0, at: Date.now() };
+      throw err;
+    });
+  };
+  wrapped._asoWrapped = true;
+  window.fetch = wrapped;
+})();
+
+const HELP_BY_STATUS = {
+  0: 'could not reach the server', 401: 'session expired', 403: 'not authorized',
+  404: 'not found', 429: 'too many requests', 500: 'something went wrong on the server',
+  502: 'could not reach the server', 503: 'could not reach the server', 504: 'could not reach the server'
+};
+
+function explainProblem(msg, type) {
+  const text = String(msg || '');
+  let rule = HELP_RULES.find(r => r.test.test(text));
+  if (!rule && _lastHttp && Date.now() - _lastHttp.at < 5000 && (_lastHttp.status === 0 || _lastHttp.status >= 400)) {
+    const key = HELP_BY_STATUS[_lastHttp.status] || (_lastHttp.status >= 500 ? 'something went wrong on the server' : '');
+    if (key) rule = HELP_RULES.find(r => r.test.test(key));
+  }
+  if (rule) return rule;
+  if (type !== 'danger') return null;   // plain notices ("Staff removed") stay a toast
+  return {
+    title: 'That didn’t work',
+    why: 'The system could not finish this step. The message above says what it stopped on.',
+    fixes: ['Read the message above and correct what it names.',
+            'Try the step again.',
+            'If it keeps happening, refresh the page (F5).',
+            'Still stuck? Click "Copy details" and send it to the system admin.']
+  };
+}
+
+function problemPageName() {
+  const p = document.querySelector('.page.active');
+  const h = p && p.querySelector('.page-title, h1, h2');
+  return (h && h.textContent.trim()) || (p ? p.id.replace(/^page-/, '') : '');
+}
+
+let _problemDetails = '';
+function showProblem(msg, type, technical) {
+  const help = explainProblem(msg, type);
+  if (!help) return false;
+  let box = document.getElementById('problem-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'problem-box';
+    box.setAttribute('role', 'alertdialog');
+    document.body.appendChild(box);
+  }
+  const who = _currentUser ? (_currentUser.name || _currentUser.username || '') : '';
+  _problemDetails = [
+    'ASO Time System problem report',
+    'When: ' + new Date().toLocaleString('en-US'),
+    'User: ' + (who || 'not signed in'),
+    'Screen: ' + problemPageName(),
+    'Message: ' + String(msg || ''),
+    'Explained as: ' + help.title,
+    _lastHttp && Date.now() - _lastHttp.at < 10000 ? `Last server reply: ${_lastHttp.status || 'no connection'} from ${_lastHttp.url}` : '',
+    technical ? 'Technical detail: ' + technical : ''
+  ].filter(Boolean).join('\n');
+  box.className = type === 'danger' ? 'pb-danger' : 'pb-warn';
+  box.innerHTML = `
+    <div class="pb-head"><span class="pb-icon">${type === 'danger' ? '⛔' : '⚠️'}</span><b>${esc(help.title)}</b><button class="pb-x" onclick="closeProblem()" title="Close">✕</button></div>
+    <div class="pb-msg">${esc(String(msg || '').replace(/^[⚠️⛔🚫🔒\s]+/u, ''))}</div>
+    <div class="pb-sec">Why this happens</div>
+    <div class="pb-why">${esc(help.why)}</div>
+    <div class="pb-sec">How to fix it</div>
+    <ol class="pb-fix">${help.fixes.map(f => `<li>${esc(f)}</li>`).join('')}</ol>
+    ${technical ? `<details class="pb-tech"><summary>Technical detail</summary><code>${esc(technical)}</code></details>` : ''}
+    <div class="pb-btns"><button class="btn btn-ghost" onclick="copyProblem()">Copy details</button><button class="btn btn-primary" onclick="closeProblem()">Got it</button></div>`;
+  box.classList.add('show');
+  return true;
+}
+function closeProblem() { const b = document.getElementById('problem-box'); if (b) b.classList.remove('show'); }
+function copyProblem() {
+  const done = () => showToast('Details copied — paste them in an email or message to the admin');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(_problemDetails).then(done, () => window.prompt('Copy these details:', _problemDetails));
+  else window.prompt('Copy these details:', _problemDetails);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProblem(); });
+
+// Unexpected script errors: explain them instead of failing silently.
+let _lastScriptErrorAt = 0;
+function reportScriptError(detail) {
+  if (!detail || /ResizeObserver|^Script error\.?$/i.test(detail)) return;
+  if (Date.now() - _lastScriptErrorAt < 4000) return;   // one panel per burst
+  _lastScriptErrorAt = Date.now();
+  showProblemWith(HELP_SCRIPT_RULE, 'Something on this screen stopped working.', detail);
+}
+const HELP_SCRIPT_RULE = {
+  title: 'This screen hit an unexpected error',
+  why: 'Part of this page stopped working. This is usually caused by a record with missing or unusual data, or by the page being open across an update.',
+  fixes: ['Refresh the page (F5). After an update the page has to be reloaded once.',
+          'Try the same step again. If it works, nothing more is needed.',
+          'If it fails again on the same record, open that record and check for blank dates, times or staff.',
+          'Click "Copy details" and send it to the system admin with what you were doing.']
+};
+function showProblemWith(rule, msg, technical) {
+  const keep = HELP_RULES.slice();
+  HELP_RULES.unshift(Object.assign({ test: /[\s\S]*/ }, rule));
+  try { showProblem(msg, 'danger', technical); } finally { HELP_RULES.length = 0; keep.forEach(r => HELP_RULES.push(r)); }
+}
+window.addEventListener('error', e => reportScriptError(e && e.error && e.error.stack ? e.error.stack.split('\n').slice(0, 3).join(' | ') : (e && e.message) || ''));
+window.addEventListener('unhandledrejection', e => {
+  const r = e && e.reason;
+  const detail = r && r.stack ? r.stack.split('\n').slice(0, 3).join(' | ') : String(r || '');
+  if (/failed to fetch|network ?error|load failed/i.test(detail)) { showProblem('Could not reach the server', 'danger', detail); return; }
+  reportScriptError(detail);
+});
+
 let toastTimer;
 function showToast(msg, type) {
+  // Problems open the explain-and-fix panel; it stays until it is closed.
+  if ((type === 'danger' || type === 'warn') && showProblem(msg, type)) return;
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.background = type==='danger'?'var(--danger)':type==='warn'?'var(--warn)':'var(--success)';
