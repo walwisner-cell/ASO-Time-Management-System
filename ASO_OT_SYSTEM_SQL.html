@@ -2366,7 +2366,7 @@
             <div class="page-sub" id="ts-ot-threshold-label"></div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="print-btn" onclick="srOpenFromTimesheet()" title="Open a complete, signable timesheet for each staff member, using the pay period, house and staff filters chosen below">🧑‍💼 Staff Report</button>
+            <button class="print-btn" id="ts-staffreport-btn" onclick="srOpenFromTimesheet()" title="Open a complete, signable timesheet for each staff member, using the pay period, house and staff filters chosen below">🧑‍💼 Staff Report</button>
             <button class="print-btn" onclick="printCurrentPage()">🖨️ Print Timesheet</button>
           </div>
         </div>
@@ -3774,7 +3774,7 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="cancel24hrModal()">Cancel — Don't Add</button>
       <button class="btn btn-warn" onclick="submitPendingApproval()">Submit for Approval</button>
-      <button class="btn btn-success" onclick="approveAndAdd()">Approve &amp; Add Now</button>
+      <button class="btn btn-success" id="btn-approve-add-now" onclick="approveAndAdd()">Approve &amp; Add Now</button>
     </div>
   </div>
 </div>
@@ -4235,12 +4235,13 @@ function updateSaveIndicator() {
 // ROLE-BASED ACCESS CONTROL
 // ──────────────────────────────────────────────────────────
 let _myPermissions = [];
+let _entryScope = null; // set only for "timesheet entry only" accounts: { locations, staffIds, selfId }
 const BUILTIN_ROLE_NAMES = ['admin','supervisor','viewer','employee'];
 
 async function loadMyPermissions() {
   try {
     const res = await fetch('/api/my-permissions');
-    if (res.ok) { const body = await res.json(); _myPermissions = body.permissions || []; }
+    if (res.ok) { const body = await res.json(); _myPermissions = body.permissions || []; _entryScope = body.entryScope || null; }
   } catch(e) { _myPermissions = []; }
 }
 
@@ -4256,7 +4257,55 @@ const PAGE_REQUIRED_PERMISSION = {
   usermanual: 'dashboard_view', roles: 'roles_manage', clocklocations: 'clock_locations_view',
 };
 
+
+// ── Timesheet-entry-only accounts ─────────────────────────
+// A custom role with the "timesheet_scoped" permission sees ONLY the Timesheet
+// Log, and only the staff / houses an admin assigned to that user. The server
+// enforces this (it never sends them other data and rejects other changes);
+// everything below just keeps the screen tidy.
+function isEntryScoped() {
+  return !!(_currentUser && !BUILTIN_ROLE_NAMES.includes(_currentUser.role) && _myPermissions.includes('timesheet_scoped'));
+}
+function entryAccessFor(st) {
+  if (!st || !_entryScope) return null;
+  if (_entryScope.selfId && st.id === _entryScope.selfId) return 'self';
+  if ((_entryScope.staffIds || []).includes(st.id)) return 'granted';
+  if (st.loc && (_entryScope.locations || []).includes(st.loc)) return 'location';
+  return null;
+}
+// Can this scoped user change this shift? (always true for everyone else)
+function entryRowOk(shift) {
+  if (!isEntryScoped()) return true;
+  const acc = entryAccessFor(STAFF.find(x => x.id === shift.staff));
+  if (acc === 'self' || acc === 'granted') return true;
+  return acc === 'location' && (_entryScope.locations || []).includes(shift.location);
+}
+// Houses offered in the shift form for a given staff member.
+function entryLocList(staffId, keepName) {
+  if (!isEntryScoped()) return LOCATIONS;
+  const acc = entryAccessFor(STAFF.find(x => x.id === staffId));
+  let list = (acc === 'location') ? LOCATIONS.filter(l => (_entryScope.locations || []).includes(l.name)) : LOCATIONS;
+  if (keepName && !list.some(l => l.name === keepName)) { const k = LOCATIONS.find(l => l.name === keepName); if (k) list = list.concat([k]); }
+  return list;
+}
+// Scoped users never see pay: drop those columns from the Timesheet Log table.
+function entryTrimTimesheetTable() {
+  if (!isEntryScoped()) return;
+  const table = document.querySelector('#timesheet-table table'); if (!table) return;
+  const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+  const drop = heads.map((h, i) => ['Rate','Reg Pay','OT Pay','Shift Pay'].includes(h) ? i : -1).filter(i => i >= 0);
+  table.querySelectorAll('tr').forEach(tr => {
+    const cells = [...tr.children];
+    if (cells.length === heads.length) { drop.slice().reverse().forEach(i => cells[i].remove()); }
+    else if (cells[0] && /^FILTERED TOTALS/.test(cells[0].textContent.trim())) {
+      const hrs = cells[1] ? cells[1].textContent : '', oth = cells[4] ? cells[4].textContent : '';
+      tr.innerHTML = `<td colspan="5" style="color:var(--text);font-family:var(--mono);font-size:12px">${cells[0].textContent}</td><td class="mono" style="color:var(--accent2)">${hrs}</td><td class="mono" style="color:var(--warn)">${oth}</td><td colspan="3"></td>`;
+    } else if (cells.length === 1 && cells[0].colSpan > 1) { cells[0].colSpan = heads.length - drop.length; }
+  });
+}
+
 function canAccessPage(page) {
+  if (isEntryScoped()) return page === 'timesheet';
   const role = _currentUser ? _currentUser.role : 'viewer';
   if (BUILTIN_ROLE_NAMES.includes(role)) return (PAGE_ROLES[page] || ['admin']).includes(role);
   const requiredPerm = PAGE_REQUIRED_PERMISSION[page];
@@ -4288,6 +4337,11 @@ const PAGE_ROLES = {
 };
 
 function userCan(action) {
+  if (isEntryScoped()) {
+    if (action === 'addShift' || action === 'editShift') return true;
+    if (action === 'deleteShift') return _myPermissions.includes('shifts_delete');
+    return false;
+  }
   const role = _currentUser ? _currentUser.role : 'viewer';
   const map = {
     addShift:      ['admin','supervisor'],
@@ -4317,7 +4371,7 @@ function updateNavForRole() {
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     const page = item.getAttribute('data-page');
     const canAccess = canAccessPage(page);
-    if (role === 'employee') {
+    if (role === 'employee' || isEntryScoped()) {
       // Employees get a purpose-built portal — hide everything that isn't theirs
       item.style.display = canAccess ? '' : 'none';
     } else if (!canAccess) {
@@ -4333,7 +4387,7 @@ function updateNavForRole() {
     }
   });
   document.querySelectorAll('.nav-section').forEach(sec => {
-    if (role !== 'employee') { sec.style.display = ''; return; }
+    if (role !== 'employee' && !isEntryScoped()) { sec.style.display = ''; return; }
     // Hide section headers that have no visible items under them
     let node = sec.nextElementSibling, hasVisible = false;
     while (node && !node.classList.contains('nav-section')) {
@@ -5015,6 +5069,15 @@ function nav(page, el) {
 // INIT
 // ──────────────────────────────────────────────────────────
 function initApp() {
+  if (isEntryScoped()) {
+    ['new-period-topbar-btn','save-indicator','db-indicator','ts-staffreport-btn','btn-approve-add-now'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-timesheet').classList.add('active');
+    const navTs = document.querySelector('.nav-item[data-page="timesheet"]'); if (navTs) navTs.classList.add('active');
+    updateTopbarPeriod(); updatePrintDates();
+    renderTimesheet();
+    return;
+  }
   if (_currentUser && _currentUser.role === 'employee') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-myportal').classList.add('active');
@@ -5061,6 +5124,7 @@ function getCurrentPeriodShiftCount() {
 }
 
 function checkNewPeriod() {
+  if (isEntryScoped()) return;
   const cp = getCurrentPeriodDates();
   const shiftCount = getCurrentPeriodShiftCount();
   const alreadyDismissed = _dismissedPeriods.includes(cp.label);
@@ -5277,6 +5341,7 @@ function printCurrentPage() {
 // APPROVALS BADGE
 // ──────────────────────────────────────────────────────────
 function updateApprovalsBadge() {
+  if (isEntryScoped()) return;
   const badge = document.getElementById('approvals-badge');
   const pendingLeave = (LEAVE_REQUESTS || []).filter(r => r.status === 'pending').length;
   const pendingClock = (CLOCK_ENTRIES || []).filter(c => c.status === 'pending').length;
@@ -7075,7 +7140,7 @@ function renderTimesheet() {
   const staffSel = document.getElementById('sf-staff');
   staffSel.innerHTML = STAFF.filter(s=>s.status==='Active').map(s=>`<option value="${s.id}">${s.last}, ${s.first} (${s.id})</option>`).join('');
   const locSel = document.getElementById('sf-location');
-  locSel.innerHTML = LOCATIONS.map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
+  locSel.innerHTML = entryLocList(staffSel.value).map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
   setTimeParts('sf-start', '06:00');   // 1st shift by default
   setTimeParts('sf-end', '14:00');
   syncShiftTypeSelect('sf');
@@ -7164,6 +7229,7 @@ function onStaffSelect() {
 
   // Auto-set location to staff's assigned location
   const locSel = document.getElementById('sf-location');
+  if (isEntryScoped()) locSel.innerHTML = entryLocList(staffId).map(l=>`<option value="${l.name}">${l.name}</option>`).join('');
   const matchOpt = [...locSel.options].find(o => o.value === st.loc);
   if (matchOpt) { locSel.value = st.loc; }
   locWarn.style.display = 'none';
@@ -7305,7 +7371,7 @@ function renderTimesheetTable() {
       <td class="mono" style="font-weight:600;color:var(--accent2)">${$fmt(s.shiftPay)}</td>
       <td class="mono" style="color:var(--text3)">${numFmt(s.runningHrs)}</td>
       <td style="white-space:nowrap">${sourceBadge(s.source)}<div style="margin-top:3px">${isRejected ? `<span class="badge badge-danger" style="font-size:10px" title="${esc(s.rejectedReason)}">✕ Rejected</span>` : (isApproved ? '<span class="badge badge-info" style="font-size:10px" title="Approved >24hr exception">✅ Approved</span>' : (s._corrected ? '<span class="badge badge-warn" style="font-size:10px">✏️ Corrected</span>' : ''))}${shiftMissingMealBreak(s) ? `<div style="font-size:10px;color:var(--danger2);margin-top:2px" title="Shift is at or above the ${(PAY_CONFIG.mealBreakThresholdHours||5)}h threshold with no meal break recorded">⚠️ No meal break</div>` : ''}</div></td>
-      <td style="white-space:nowrap">${userCan('editShift') && !isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('approveShifts') ? (isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="restoreShift('${s.id}')" title="Undo the rejection">↩️ Restore</button>` : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(194,74,70,0.35);color:var(--danger2);margin-right:4px" onclick="rejectShift('${s.id}')" title="Reject this shift — excludes it from payroll, employee still sees it and why">✕ Reject</button>`) : ''}${userCan('deleteShift') ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift entirely">🗑️</button>` : ''}</td>
+      <td style="white-space:nowrap">${userCan('editShift') && entryRowOk(s) && !isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(46,138,232,0.35);color:var(--accent2);margin-right:4px" onclick="editShift('${s.id}')" title="Correct this shift">✏️ Edit</button>` : ''}${userCan('approveShifts') ? (isRejected ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="restoreShift('${s.id}')" title="Undo the rejection">↩️ Restore</button>` : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;border-color:rgba(194,74,70,0.35);color:var(--danger2);margin-right:4px" onclick="rejectShift('${s.id}')" title="Reject this shift — excludes it from payroll, employee still sees it and why">✕ Reject</button>`) : ''}${userCan('deleteShift') && entryRowOk(s) ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteShift('${s.id}')" title="Delete this shift entirely">🗑️</button>` : ''}</td>
     </tr>`;
   });
 
@@ -7331,6 +7397,7 @@ function renderTimesheetTable() {
 
   html += '</tbody></table>';
   document.getElementById('timesheet-table').innerHTML = html;
+  entryTrimTimesheetTable();
   // Clear the _new flag after rendering so the flash animation only plays once
   SHIFTS.forEach(s => { delete s._new; });
 }
@@ -7584,7 +7651,7 @@ function editShift(id) {
 
   // Populate location dropdown
   const locSel = document.getElementById('edit-sf-location');
-  locSel.innerHTML = LOCATIONS.map(l =>
+  locSel.innerHTML = entryLocList(raw.staff, raw.location).map(l =>
     `<option value="${l.name}"${l.name === raw.location ? ' selected' : ''}>${l.name}</option>`
   ).join('');
 
@@ -9516,6 +9583,7 @@ function saveEditLocation() {
 // Friendly grouping/labels for the permission checkbox matrix — purely
 // presentational, doesn't affect what's actually enforced server-side.
 const PERMISSION_GROUPS = [
+  { title: 'Timesheet entry only', perms: { timesheet_scoped: 'Timesheet Log only — each user can enter time just for the houses / staff you assign to them (turns off everything else)' } },
   { title: 'General', perms: { dashboard_view: 'View Dashboard' } },
   { title: 'Timesheet / Shifts', perms: { shifts_view: 'View shifts', shifts_add: 'Add shifts', shifts_edit: 'Edit shifts', shifts_delete: 'Delete shifts', shifts_date_correction: 'Use the date-correction tool (Pay Period Setup)' } },
   { title: 'Approvals', perms: { approvals_view: 'View Approvals page', approvals_review_shifts: 'Approve/deny 24hr shift exceptions', approvals_review_leave: 'Approve/deny time-off requests', approvals_review_clock: 'Approve/deny clock in/out entries', clock_override: 'Override clock-in/out past capacity' } },
@@ -9545,6 +9613,15 @@ function renderPermissionCheckboxes(containerId, checkedPerms) {
   });
   html += '</div>';
   el.innerHTML = html;
+  const sc = el.querySelector('input[value="timesheet_scoped"]');
+  if (sc) {
+    const sync = () => el.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      if (cb === sc || cb.value === 'shifts_delete') return;   // delete stays optional (only inside their own scope)
+      if (sc.checked) cb.checked = false;
+      cb.disabled = sc.checked;
+    });
+    sc.addEventListener('change', sync); sync();
+  }
 }
 
 function getCheckedPermissions(containerId) {
@@ -9691,6 +9768,8 @@ async function renderPasswordsPage() {
       const roleSel = document.getElementById('pw-role');
       const existingCustomGroup = roleSel.querySelector('optgroup[label="Custom Roles"]');
       if (existingCustomGroup) existingCustomGroup.remove();
+      window._scopedRoleNames = body.roles.filter(r => (r.permissions||[]).includes('timesheet_scoped')).map(r => r.name);
+      renderUserList();
       if (body.roles.length) {
         const group = document.createElement('optgroup');
         group.label = 'Custom Roles';
@@ -9719,18 +9798,106 @@ function renderUserList() {
     const roleColor = u.role==='admin' ? 'var(--accent2)' : u.role==='supervisor' ? 'var(--warn)' : u.role==='employee' ? 'var(--success2)' : 'var(--text3)';
     const roleIcon = u.role==='admin' ? '👑' : u.role==='supervisor' ? '🔍' : u.role==='employee' ? '👤' : '👁️';
     const linkedStaff = u.staffId ? STAFF.find(s => s.id === u.staffId) : null;
-    const linkNote = u.role === 'employee' ? (linkedStaff ? ` &nbsp;·&nbsp; linked to ${esc(linkedStaff.first)} ${esc(linkedStaff.last)}` : ' &nbsp;·&nbsp; <span style="color:var(--danger2)">not linked to a staff record</span>') : '';
+    const scopedNote = (window._scopedRoleNames||[]).includes(u.role)
+      ? ` &nbsp;·&nbsp; <span style="color:var(--accent2)">timesheet entry: ${((u.entryScope||{}).locations||[]).length} house(s), ${((u.entryScope||{}).staff||[]).length} staff${u.staffId ? ' + own' : ''}</span>` : '';
+    const linkNote = scopedNote + (u.role === 'employee' ? (linkedStaff ? ` &nbsp;·&nbsp; linked to ${esc(linkedStaff.first)} ${esc(linkedStaff.last)}` : ' &nbsp;·&nbsp; <span style="color:var(--danger2)">not linked to a staff record</span>') : '');
     html += `<div class="user-row">
       <div class="user-avatar-sm">${u.name[0].toUpperCase()}</div>
       <div class="user-info">
         <div class="user-name">${u.name}</div>
         <div class="user-meta">@${u.username} &nbsp;·&nbsp; <span style="color:${roleColor}">${roleIcon} ${u.role}</span>${linkNote}</div>
       </div>
+      ${(window._scopedRoleNames||[]).includes(u.role) ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px" title="Choose which houses / staff this user can enter time for" onclick="openEntryScope('${u.id}')">Timesheet access</button>` : ''}
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" title="Move this user to a different role (e.g. from admin to a timesheet-entry-only role)" onclick="changeUserRole('${u.id}')">Change role</button>
       <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" title="Change the full name printed on reports" onclick="renameUser('${u.id}')">Edit name</button>
       ${USERS.length > 1 ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteUser('${u.id}')">✕</button>` : ''}
     </div>`;
   });
   el.innerHTML = html;
+}
+
+// Move a user to another role without deleting the account.
+async function changeUserRole(userId) {
+  const u = USERS.find(x => x.id === userId); if (!u) return;
+  if (_currentUser && u.id === _currentUser.id) { showToast("You can't change your own role", 'danger'); return; }
+  let custom = [];
+  try { const r = await fetch('/api/roles'); if (r.ok) custom = (await r.json()).roles.map(x => x.name); } catch (e) {}
+  const old = document.getElementById('role-change-modal'); if (old) old.remove();
+  const opt = n => `<option value="${esc(n)}"${n===u.role?' selected':''}>${esc(n)}</option>`;
+  const ov = document.createElement('div');
+  ov.id = 'role-change-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(5,10,20,.7);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;max-width:460px;width:100%;padding:22px 24px">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">Change role — ${esc(u.name)} <span style="color:var(--text3);font-size:12px">@${esc(u.username)}</span></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6">Currently <b>${esc(u.role)}</b>. The new role applies the next time they load a page. Admin always sees everything, so to limit someone, pick a custom role.</div>
+    <select id="rc-role" style="width:100%">
+      <optgroup label="Built-in">${['admin','supervisor','viewer'].map(opt).join('')}</optgroup>
+      ${custom.length ? `<optgroup label="Custom Roles">${custom.map(opt).join('')}</optgroup>` : ''}
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="btn btn-ghost" onclick="document.getElementById('role-change-modal').remove()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUserRole('${esc(u.id)}')">Save role</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+}
+function saveUserRole(userId) {
+  const u = USERS.find(x => x.id === userId); if (!u) return;
+  const next = document.getElementById('rc-role').value;
+  if (next === u.role) { document.getElementById('role-change-modal').remove(); return; }
+  if (u.role === 'admin' && USERS.filter(x => x.role === 'admin').length <= 1) { showToast('There must always be at least one admin', 'danger'); return; }
+  if (!confirm(`Change ${u.name} from "${u.role}" to "${next}"?`)) return;
+  auditLog('CHANGE_ROLE', `Role changed: ${u.name} (@${u.username}) ${u.role} → ${next}`, '');
+  u.role = next;
+  dbSave();
+  document.getElementById('role-change-modal').remove();
+  showToast(`✅ ${esc(u.name)} is now ${esc(next)}`);
+  renderUserList();
+}
+
+// Choose which houses / staff a "timesheet entry only" user may enter time for.
+function openEntryScope(userId) {
+  const u = USERS.find(x => x.id === userId); if (!u) return;
+  const sc = u.entryScope || { locations: [], staff: [] };
+  const old = document.getElementById('entry-scope-modal'); if (old) old.remove();
+  const active = STAFF.filter(x => x.status === 'Active').sort((a,b) => (a.last+a.first).localeCompare(b.last+b.first));
+  const ov = document.createElement('div');
+  ov.id = 'entry-scope-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(5,10,20,.7);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:22px 24px">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">Timesheet access — ${esc(u.name)} <span style="color:var(--text3);font-size:12px">@${esc(u.username)}</span></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6">This user sees only the Timesheet Log, with no pay rates. They can add and edit time only for the people below. Anyone not covered here is invisible to them.</div>
+    <div class="form-field" style="margin-bottom:14px"><label>Their own staff record (so they can enter their own time)</label>
+      <select id="es-self"><option value="">— none —</option>${active.map(x => `<option value="${esc(x.id)}"${u.staffId===x.id?' selected':''}>${esc(x.last)}, ${esc(x.first)} (${esc(x.id)})</option>`).join('')}</select></div>
+    <div style="font-size:11px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Houses — all staff assigned to the house, for shifts worked at that house</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 14px;margin-bottom:16px">
+      ${LOCATIONS.map(l => `<label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text2)"><input type="checkbox" class="es-loc" value="${esc(l.name)}"${sc.locations.includes(l.name)?' checked':''}> ${esc(l.name)}</label>`).join('') || '<span style="color:var(--text3);font-size:12px">No locations yet</span>'}
+    </div>
+    <div style="font-size:11px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Individual staff — any house</div>
+    <div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 14px">
+      ${active.map(x => `<label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text2)"><input type="checkbox" class="es-staff" value="${esc(x.id)}"${sc.staff.includes(x.id)?' checked':''}> ${esc(x.last)}, ${esc(x.first)}</label>`).join('')}
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="btn btn-ghost" onclick="document.getElementById('entry-scope-modal').remove()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEntryScope('${esc(u.id)}')">💾 Save access</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+}
+async function saveEntryScope(userId) {
+  const u = USERS.find(x => x.id === userId); if (!u) return;
+  const body = {
+    staffId: document.getElementById('es-self').value || null,
+    locations: [...document.querySelectorAll('.es-loc:checked')].map(c => c.value),
+    staff: [...document.querySelectorAll('.es-staff:checked')].map(c => c.value)
+  };
+  try {
+    const res = await fetch(`/api/users/${encodeURIComponent(userId)}/entry-scope`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const out = await res.json();
+    if (!res.ok) { showToast(out.error || 'Could not save access', 'danger'); return; }
+    u.entryScope = out.entryScope; u.staffId = out.staffId;
+    document.getElementById('entry-scope-modal').remove();
+    showToast('✅ Timesheet access saved');
+    renderUserList();
+  } catch (e) { showToast('Could not save — check your connection', 'danger'); }
 }
 
 function renderChangePasswordDropdown() {
