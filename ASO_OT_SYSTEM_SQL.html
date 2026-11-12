@@ -4245,6 +4245,36 @@ async function loadMyPermissions() {
   } catch(e) { _myPermissions = []; }
 }
 
+// v120 — live permission refresh. Permissions used to be read once at login, so
+// when an admin changed a role (or moved a user to another role, or changed a
+// timesheet-access assignment) anyone already signed in kept the OLD access until
+// they logged out and back in. Now the page re-checks every minute, and whenever
+// the tab is shown again; if anything changed it reloads so the screen, menu and
+// data all match the new access. Nothing is lost: shifts are saved as they are entered.
+let _permSig = null;
+let _permRefreshing = false;
+async function refreshPermissions() {
+  if (!_currentUser || _permRefreshing) return;
+  _permRefreshing = true;
+  try {
+    const res = await fetch('/api/my-permissions', { cache: 'no-store' });
+    if (!res.ok) return;                       // 401 etc. is handled by the normal session logic
+    const b = await res.json();
+    const sc = b.entryScope ? { l: (b.entryScope.locations || []).slice().sort(), s: (b.entryScope.staffIds || []).slice().sort(), f: b.entryScope.selfId || null } : null;
+    const sig = JSON.stringify({ r: b.role, p: (b.permissions || []).slice().sort(), sc });
+    if (_permSig === null) { _permSig = sig; return; }          // first call = baseline
+    if (sig !== _permSig) {
+      _permSig = sig;
+      try { showToast('Your access was changed by an admin — refreshing…', 'warn'); } catch (e) {}
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch (e) { /* offline — try again next time */ }
+  finally { _permRefreshing = false; }
+}
+setInterval(refreshPermissions, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPermissions(); });
+window.addEventListener('focus', refreshPermissions);
+
 // Which permission a custom role needs to see a given page. Built-in roles
 // never consult this — they keep using PAGE_ROLES exactly as before, so
 // their existing access is completely unaffected by this system existing.
@@ -5004,6 +5034,7 @@ async function enterApp() {
     roleEl.style.display = 'inline';
   }
   if (!BUILTIN_ROLE_NAMES.includes(user.role)) await loadMyPermissions();
+  _permSig = null; refreshPermissions();   // baseline for the live refresh (v120)
   updateNavForRole();
   initApp();
 }
@@ -9732,7 +9763,7 @@ async function saveRolePermissions(roleId) {
     });
     const body = await res.json();
     if (!res.ok) { showToast(body.error || 'Could not save changes', 'danger'); return; }
-    showToast('✅ Permissions updated');
+    showToast('✅ Permissions updated — people on this role get them within a minute');
   } catch (e) {
     showToast('Could not save — check your connection', 'danger');
   }
