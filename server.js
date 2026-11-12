@@ -233,6 +233,10 @@ const ALL_PERMISSIONS = [
   'users_view', 'users_manage', 'roles_manage',
   'data_export', 'data_backup',
   'reports_view', 'audit_view', 'audit_verify',
+  // RESTRICTING permission (not a power): turns a custom role into a
+  // "timesheet entry only" role. The holder sees and can enter/edit time only
+  // for the houses / staff an admin assigns to their account, and nothing else.
+  'timesheet_scoped',
 ];
 // Importing a whole new database or factory-resetting are deliberately NOT
 // in ALL_PERMISSIONS at all — both endpoints stay hard-coded to requireAdmin
@@ -250,7 +254,7 @@ const ALL_PERMISSIONS = [
 // behavior these roles already had before granular permissions existed —
 // no existing account's access changes because this system was added.
 const BUILTIN_ROLE_PERMISSIONS = {
-  admin: ALL_PERMISSIONS, // everything, always
+  admin: ALL_PERMISSIONS.filter(p => p !== 'timesheet_scoped'), // everything, always (the scoped-entry restriction never applies to admin)
   supervisor: [
     'dashboard_view', 'shifts_view', 'shifts_add', 'shifts_edit',
     'approvals_view', 'approvals_review_shifts', 'approvals_review_leave', 'approvals_review_clock', 'clock_override',
@@ -262,6 +266,14 @@ const BUILTIN_ROLE_PERMISSIONS = {
   ],
   employee: [], // employees use their own scoped self-service endpoints, not this permission system at all
 };
+
+// A "timesheet entry only" role can't be mixed with other powers (the only
+// extra allowed is deleting shifts inside its own scope) — otherwise it would
+// quietly stop being "only".
+function normalizeRolePerms(perms) {
+  if (!perms.includes('timesheet_scoped')) return perms;
+  return perms.includes('shifts_delete') ? ['timesheet_scoped', 'shifts_delete'] : ['timesheet_scoped'];
+}
 
 function roleExists(roleName) {
   if (BUILTIN_ROLE_PERMISSIONS[roleName]) return true;
@@ -350,6 +362,8 @@ function createSchema() {
     staff_id TEXT DEFAULT NULL
   )`);
   try { db.run(`ALTER TABLE users ADD COLUMN staff_id TEXT DEFAULT NULL`); } catch (e) { /* already exists */ }
+  // JSON {locations:[names], staff:[ids]} — which houses / staff a "timesheet entry only" user may enter time for.
+  try { db.run(`ALTER TABLE users ADD COLUMN entry_scope TEXT DEFAULT NULL`); } catch (e) { /* already exists */ }
   // Custom roles: 'admin'/'supervisor'/'viewer'/'employee' are built-in and
   // never stored here — their permissions are fixed in code (see
   // BUILTIN_ROLE_PERMISSIONS below) specifically so they can never be
@@ -532,8 +546,9 @@ function loadDB() {
     : DEFAULT_SEED.PAY_CONFIG;
 
   // Password hashes never leave the server — the client has no legitimate use for them.
-  const USERS     = all('SELECT id,username,name,role,staff_id FROM users').map(r => ({
-    id: r.id, username: r.username, name: r.name, role: r.role, staffId: r.staff_id || null
+  const USERS     = all('SELECT id,username,name,role,staff_id,entry_scope FROM users').map(r => ({
+    id: r.id, username: r.username, name: r.name, role: r.role, staffId: r.staff_id || null,
+    entryScope: parseEntryScope(r.entry_scope)
   }));
   const LOCATIONS = all('SELECT * FROM locations').map(r => ({
     id: r.id, name: r.name, rate: r.rate, mult: r.mult, notes: r.notes,
@@ -614,7 +629,8 @@ function saveDB(data) {
   // hash, no matter what the client sends — this is what keeps password changes safe
   // even though the whole app state round-trips through this one endpoint on every save.
   const existingPasswords = {};
-  all('SELECT id, password FROM users').forEach(r => { existingPasswords[r.id] = r.password; });
+  const existingEntryScopes = {};
+  all('SELECT id, password, entry_scope FROM users').forEach(r => { existingPasswords[r.id] = r.password; existingEntryScopes[r.id] = r.entry_scope; });
   run('DELETE FROM users');
   for (const u of (USERS || [])) {
     let pw = existingPasswords[u.id];
@@ -627,8 +643,9 @@ function saveDB(data) {
       pw = isBcryptHash(u.password) ? u.password
          : u.password ? bcrypt.hashSync(String(u.password), 10) : bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
     }
-    run('INSERT INTO users (id,username,password,name,role,staff_id) VALUES (?,?,?,?,?,?)',
-        [u.id, u.username, pw, u.name, u.role, u.staffId || null]);
+    // entry_scope is only ever changed through PUT /api/users/:id/entry-scope, never by a bulk save.
+    run('INSERT INTO users (id,username,password,name,role,staff_id,entry_scope) VALUES (?,?,?,?,?,?,?)',
+        [u.id, u.username, pw, u.name, u.role, u.staffId || null, existingEntryScopes[u.id] || null]);
   }
 
   // LOCATIONS
@@ -754,6 +771,146 @@ function scopeDataForEmployee(fullData, staffId) {
     LEAVE_REQUESTS: myLeaveRequests,
     CLOCK_ENTRIES: myClockEntries
   };
+}
+
+
+// ── Timesheet-entry-only users ("scoped" accounts) ───────────
+// A custom role holding `timesheet_scoped` can only work with the Timesheet
+// Log, and only for the staff an admin assigns: their own record, individually
+// chosen staff, and/or every staff member whose home house is one of the chosen
+// houses (for house staff, the shift must also be at one of those houses).
+function parseEntryScope(raw) {
+  let o = {};
+  try { o = raw ? JSON.parse(raw) : {}; } catch (e) { o = {}; }
+  const arr = v => Array.isArray(v) ? v.filter(x => typeof x === 'string') : [];
+  return { locations: arr(o.locations), staff: arr(o.staff) };
+}
+function isEntryScoped(user) {
+  return !!user && !BUILTIN_ROLE_PERMISSIONS[user.role] && hasPermission(user, 'timesheet_scoped');
+}
+function getEntryScope(user) {
+  const row = get('SELECT entry_scope, staff_id FROM users WHERE id = ?', [user.id]) || {};
+  const sc = parseEntryScope(row.entry_scope);
+  sc.selfId = row.staff_id || null;
+  return sc;
+}
+// 'self' | 'granted' | 'location' | null
+function entryStaffAccess(st, scope) {
+  if (!st) return null;
+  if (scope.selfId && st.id === scope.selfId) return 'self';
+  if (scope.staff.includes(st.id)) return 'granted';
+  if (st.loc && scope.locations.includes(st.loc)) return 'location';
+  return null;
+}
+function entryShiftAllowed(shift, staffById, scope) {
+  const acc = entryStaffAccess(staffById[shift.staff], scope);
+  if (acc === 'self' || acc === 'granted') return true;
+  if (acc === 'location') return scope.locations.includes(shift.location);
+  return false;
+}
+// What a scoped user is allowed to receive. No pay rates, no payroll, no other staff.
+function scopeDataForEntryUser(full, user) {
+  const scope = getEntryScope(user);
+  const myStaff = full.STAFF.filter(s => entryStaffAccess(s, scope));
+  const ids = new Set(myStaff.map(s => s.id));
+  const shifts = full.SHIFTS.filter(s => ids.has(s.staff));
+  const locNames = new Set([...scope.locations, ...myStaff.map(s => s.loc), ...shifts.map(s => s.location)]);
+  const pc = full.PAY_CONFIG || {};
+  return {
+    PAY_CONFIG: { anchorDate: pc.anchorDate, periodDays: pc.periodDays, otThreshold: pc.otThreshold,
+                  mealBreakThresholdHours: pc.mealBreakThresholdHours, otByLocation: pc.otByLocation, defaultDeductions: [] },
+    USERS: [],
+    LOCATIONS: full.LOCATIONS.filter(l => locNames.has(l.name))
+      .map(l => ({ id: l.id, name: l.name, rate: 0, mult: 1, notes: '', rateHistory: [], maxStaff: 0 })),
+    STAFF: myStaff.map(s => ({ ...s, rate: 0, salaryAmount: 0, ptoBalance: 0 })),
+    SHIFTS: shifts,
+    PENDING_APPROVALS: full.PENDING_APPROVALS.filter(p => ids.has(p.staffId)),
+    APPROVED_EXCEPTIONS: full.APPROVED_EXCEPTIONS.filter(a => ids.has(a.staffId)),
+    DATE_CORRECTION_LOG: [], DELETION_LOG: [], AUDIT_LOG: [],
+    // only what the client needs to know a period is locked — no amounts
+    PAYROLL_RECORDS: (full.PAYROLL_RECORDS || []).filter(r => r.confirmed)
+      .map(r => ({ periodStart: r.periodStart, periodLabel: r.periodLabel, confirmed: true, finalized: !!r.finalized, rows: [], employeeRows: [] })),
+    LEAVE_REQUESTS: [],
+    CLOCK_ENTRIES: full.CLOCK_ENTRIES.filter(c => ids.has(c.staffId)),
+    EXTERNAL_PAYROLL_ENTRIES: [], CLOCK_BREAKS: [],
+    ENTRY_SCOPE: { locations: scope.locations, staffIds: [...scope.staff], selfId: scope.selfId,
+                   canDelete: hasPermission(user, 'shifts_delete') }
+  };
+}
+// A scoped user's save never replaces the database. Only their in-scope shifts
+// (and the log entries those create) are merged into what is already stored.
+function entryScopedSave(existing, incoming, user) {
+  const scope = getEntryScope(user);
+  const staffById = {}; (existing.STAFF || []).forEach(s => { staffById[s.id] = s; });
+  const visible = new Set((existing.STAFF || []).filter(s => entryStaffAccess(s, scope)).map(s => s.id));
+  const canDelete = hasPermission(user, 'shifts_delete');
+  const exById = {}; (existing.SHIFTS || []).forEach(s => { exById[s.id] = s; });
+  const inList = Array.isArray(incoming.SHIFTS) ? incoming.SHIFTS : [];
+  const inById = {}; inList.forEach(s => { inById[s.id] = s; });
+
+  const staffErr = validateShifts(inList.filter(s => visible.has(s.staff)), new Set(visible));
+  if (staffErr) return { error: staffErr };
+
+  const lockedDates = [];
+  const periodDays = (existing.PAY_CONFIG && existing.PAY_CONFIG.periodDays) || 14;
+  (existing.PAYROLL_RECORDS || []).filter(r => r.confirmed && r.periodStart).forEach(r => {
+    const a = new Date(r.periodStart + 'T00:00:00Z');
+    const b = new Date(a.getTime() + (periodDays - 1) * 86400000);
+    lockedDates.push([r.periodStart, b.toISOString().slice(0, 10)]);
+  });
+  const isLocked = d => lockedDates.some(([a, b]) => d >= a && d <= b);
+
+  for (const sh of inList) {
+    const ex = exById[sh.id];
+    if (!visible.has(sh.staff)) return { error: 'You are not assigned to enter time for that staff member' };
+    if (!entryShiftAllowed(sh, staffById, scope)) return { error: `You can only enter time at your assigned house(s) — ${sh.location || 'that location'} is not one of them` };
+    if (!ex) {
+      if (isLocked(sh.date)) return { error: 'That pay period has been confirmed for payroll and is locked' };
+    } else {
+      if (!visible.has(ex.staff) || !entryShiftAllowed(ex, staffById, scope)) return { error: 'You cannot change a shift outside your assigned houses/staff' };
+      const edited = ['staff', 'date', 'start', 'end', 'location', 'hours'].some(k => String(sh[k]) !== String(ex[k]));
+      if (edited && (isLocked(ex.date) || isLocked(sh.date))) return { error: 'That pay period has been confirmed for payroll and is locked' };
+      // approval / rejection / source are not theirs to change (a missing value means the default)
+      const dflt = { shiftStatus: 'active', source: 'manual', rejectedReason: '', rejectedBy: '', rejectedAt: '' };
+      for (const k in dflt)
+        if (String(sh[k] === undefined ? dflt[k] : sh[k]) !== String(ex[k] === undefined || ex[k] === null ? dflt[k] : ex[k])) return { error: 'You cannot change approval or rejection status' };
+      if (sh.approved !== undefined && !!sh.approved !== !!ex.approved) return { error: 'You cannot change approval or rejection status' };
+    }
+  }
+  const removed = [];
+  for (const id in exById) {
+    const ex = exById[id];
+    if (!visible.has(ex.staff) || inById[id]) continue;
+    if (!canDelete) return { error: 'Deleting shifts is not allowed for your account' };
+    if (!entryShiftAllowed(ex, staffById, scope)) return { error: 'You cannot delete a shift outside your assigned houses/staff' };
+    if (isLocked(ex.date)) return { error: 'That pay period has been confirmed for payroll and is locked' };
+    removed.push(id);
+  }
+  // Shifts of staff outside scope are untouched; in-scope ones come from the client.
+  const keptOutside = (existing.SHIFTS || []).filter(s => !visible.has(s.staff));
+  const merged = keptOutside.concat(inList);
+
+  // Approvals: they may submit new pending ones for their own staff; approving is not theirs.
+  if (deepChanged(sortedById((incoming.APPROVED_EXCEPTIONS || []).filter(a => visible.has(a.staffId))),
+                  sortedById((existing.APPROVED_EXCEPTIONS || []).filter(a => visible.has(a.staffId))))) {
+    const exAE = (existing.APPROVED_EXCEPTIONS || []).filter(a => visible.has(a.staffId));
+    const onlyRemovedWithShift = (incoming.APPROVED_EXCEPTIONS || []).length === exAE.filter(a => !removed.includes(a.shiftId)).length;
+    if (!onlyRemovedWithShift) return { error: 'Approving a 24-hour exception needs a supervisor or admin' };
+  }
+  const exPend = (existing.PENDING_APPROVALS || []);
+  const inPend = (incoming.PENDING_APPROVALS || []).filter(p => visible.has(p.staffId));
+  const pendMerged = exPend.filter(p => !visible.has(p.staffId))
+    .concat(exPend.filter(p => visible.has(p.staffId) && !inPend.find(q => q.id === p.id)))   // they cannot clear a pending approval
+    .concat(inPend);
+  const aeMerged = (existing.APPROVED_EXCEPTIONS || []).filter(a => !(visible.has(a.staffId) && removed.includes(a.shiftId)));
+
+  return { payload: {
+    ...existing,
+    SHIFTS: merged,
+    PENDING_APPROVALS: pendMerged,
+    APPROVED_EXCEPTIONS: aeMerged,
+    AUDIT_LOG: incoming.AUDIT_LOG, DELETION_LOG: incoming.DELETION_LOG
+  } };
 }
 
 // ── Auth middleware ────────────────────────────────────────
@@ -1355,6 +1512,29 @@ async function main() {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+
+  // Who a "timesheet entry only" user may enter time for. Admin-only (users_manage).
+  app.put('/api/users/:id/entry-scope', requireAuth, writeLimiter, (req, res) => {
+    if (!hasPermission(req.user, 'users_manage')) return res.status(403).json({ error: 'Not authorized to manage user accounts' });
+    try {
+      const u = get('SELECT * FROM users WHERE id = ?', [req.params.id]);
+      if (!u) return res.status(404).json({ error: 'User not found' });
+      if (BUILTIN_ROLE_PERMISSIONS[u.role] || !hasPermission({ role: u.role }, 'timesheet_scoped'))
+        return res.status(400).json({ error: 'This user is not on a "timesheet entry only" role' });
+      const { locations, staff, staffId } = req.body || {};
+      const locNames = new Set(all('SELECT name FROM locations').map(r => r.name));
+      const staffIds = new Set(all('SELECT id FROM staff').map(r => r.id));
+      const locs = (Array.isArray(locations) ? locations : []).filter(x => locNames.has(x));
+      const stf = (Array.isArray(staff) ? staff : []).filter(x => staffIds.has(x));
+      const self = staffId ? String(staffId) : null;
+      if (self && !staffIds.has(self)) return res.status(400).json({ error: 'That staff record does not exist' });
+      run('UPDATE users SET entry_scope = ?, staff_id = ? WHERE id = ?', [JSON.stringify({ locations: locs, staff: stf }), self, u.id]);
+      writeAuditLog('ENTRY_SCOPE_SET', `${req.user.name} set timesheet access for @${u.username}: houses [${locs.join(', ') || 'none'}], staff [${stf.join(', ') || 'none'}], own record ${self || 'none'}`, req.user);
+      persistDB();
+      res.json({ ok: true, entryScope: { locations: locs, staff: stf }, staffId: self });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/permissions', requireAuth, (req, res) => {
     // The full taxonomy and what the built-in roles have, so the client can
     // render a real permission matrix instead of a hardcoded guess.
@@ -1365,7 +1545,12 @@ async function main() {
   // and custom roles, so the client never needs to know which kind of role
   // it's looking at, just what it's actually allowed to do.
   app.get('/api/my-permissions', requireAuth, (req, res) => {
-    res.json({ role: req.user.role, permissions: getRolePermissions(req.user.role) });
+    const out = { role: req.user.role, permissions: getRolePermissions(req.user.role) };
+    if (isEntryScoped(req.user)) {
+      const sc = getEntryScope(req.user);
+      out.entryScope = { locations: sc.locations, staffIds: sc.staff, selfId: sc.selfId };
+    }
+    res.json(out);
   });
 
   app.get('/api/roles', requireAuth, (req, res) => {
@@ -1391,7 +1576,7 @@ async function main() {
       // the actual privilege-escalation guard: even if something upstream
       // is compromised or buggy, a role can never be granted a permission
       // that doesn't exist in ALL_PERMISSIONS.
-      const validPerms = permissions.filter(p => ALL_PERMISSIONS.includes(p));
+      const validPerms = normalizeRolePerms(permissions.filter(p => ALL_PERMISSIONS.includes(p)));
       // A custom role can only ever be granted roles_manage by an existing
       // holder of roles_manage (i.e. today, only admin) — otherwise someone
       // with a lesser permission set could create a role that out-ranks
@@ -1416,7 +1601,7 @@ async function main() {
       if (!existing) return res.status(404).json({ error: 'Role not found' });
       const { permissions } = req.body || {};
       if (!Array.isArray(permissions)) return res.status(400).json({ error: 'Permissions must be a list' });
-      const validPerms = permissions.filter(p => ALL_PERMISSIONS.includes(p));
+      const validPerms = normalizeRolePerms(permissions.filter(p => ALL_PERMISSIONS.includes(p)));
       if (validPerms.includes('roles_manage') && !hasPermission(req.user, 'roles_manage')) {
         return res.status(403).json({ error: 'You cannot grant a permission you do not hold yourself' });
       }
@@ -1448,6 +1633,7 @@ async function main() {
       if (req.user.role === 'employee') {
         return res.json(scopeDataForEmployee(data, req.user.staffId));
       }
+      if (isEntryScoped(req.user)) return res.json(scopeDataForEntryUser(data, req.user));
       res.json(data);
     }
     catch(e) { console.error('Load error:', e); res.status(500).json({ error: e.message }); }
@@ -1459,10 +1645,16 @@ async function main() {
         return res.status(403).json({ error: 'Employee accounts cannot modify shared data directly' });
       }
       const existing = loadDB();
-      const denyReason = authorizeSave(existing, req.body, req.user);
-      if (denyReason) return res.status(403).json({ error: denyReason });
-
-      const payload = { ...req.body };
+      let payload;
+      if (isEntryScoped(req.user)) {
+        const r = entryScopedSave(existing, req.body || {}, req.user);
+        if (r.error) return res.status(403).json({ error: r.error });
+        payload = r.payload;
+      } else {
+        const denyReason = authorizeSave(existing, req.body, req.user);
+        if (denyReason) return res.status(403).json({ error: denyReason });
+        payload = { ...req.body };
+      }
       payload.AUDIT_LOG          = mergeAppendOnly(existing.AUDIT_LOG, payload.AUDIT_LOG, 'ts');
       payload.DELETION_LOG       = mergeAppendOnly(existing.DELETION_LOG, payload.DELETION_LOG);
       payload.DATE_CORRECTION_LOG = mergeAppendOnly(existing.DATE_CORRECTION_LOG, payload.DATE_CORRECTION_LOG);
