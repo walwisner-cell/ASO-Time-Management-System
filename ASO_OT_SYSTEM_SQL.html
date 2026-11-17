@@ -4290,7 +4290,7 @@ const PAGE_REQUIRED_PERMISSION = {
 
 // ── Timesheet-entry-only accounts ─────────────────────────
 // A custom role with the "timesheet_scoped" permission sees ONLY the Timesheet
-// Log, and only the staff / houses an admin assigned to that user. The server
+// Log (plus, since v121, the Staff Timesheet Report for the same people), and only the staff / houses an admin assigned to that user. The server
 // enforces this (it never sends them other data and rejects other changes);
 // everything below just keeps the screen tidy.
 function isEntryScoped() {
@@ -4335,7 +4335,10 @@ function entryTrimTimesheetTable() {
 }
 
 function canAccessPage(page) {
-  if (isEntryScoped()) return page === 'timesheet';
+  // v121 — timesheet-entry users may also open the Staff Timesheet Report. The
+  // server only ever sends them their assigned staff (rates zeroed), and the pay
+  // option is hidden for them, so the report shows hours only, for their people.
+  if (isEntryScoped()) return page === 'timesheet' || page === 'staffreport';
   const role = _currentUser ? _currentUser.role : 'viewer';
   if (BUILTIN_ROLE_NAMES.includes(role)) return (PAGE_ROLES[page] || ['admin']).includes(role);
   const requiredPerm = PAGE_REQUIRED_PERMISSION[page];
@@ -5101,7 +5104,9 @@ function nav(page, el) {
 // ──────────────────────────────────────────────────────────
 function initApp() {
   if (isEntryScoped()) {
-    ['new-period-topbar-btn','save-indicator','db-indicator','ts-staffreport-btn','btn-approve-add-now'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+    // v121 — the Staff Report button stays visible: the report is built only from
+    // the staff this user is assigned to, and never shows pay.
+    ['new-period-topbar-btn','save-indicator','db-indicator','btn-approve-add-now'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-timesheet').classList.add('active');
     const navTs = document.querySelector('.nav-item[data-page="timesheet"]'); if (navTs) navTs.classList.add('active');
@@ -9614,7 +9619,7 @@ function saveEditLocation() {
 // Friendly grouping/labels for the permission checkbox matrix — purely
 // presentational, doesn't affect what's actually enforced server-side.
 const PERMISSION_GROUPS = [
-  { title: 'Timesheet entry only', perms: { timesheet_scoped: 'Timesheet Log only — each user can enter time just for the houses / staff you assign to them (turns off everything else)' } },
+  { title: 'Timesheet entry only', perms: { timesheet_scoped: 'Timesheet Log and Staff Report only — each user can enter time and print timesheets (hours, no pay) just for the houses / staff you assign to them (turns off everything else)' } },
   { title: 'General', perms: { dashboard_view: 'View Dashboard' } },
   { title: 'Timesheet / Shifts', perms: { shifts_view: 'View shifts', shifts_add: 'Add shifts', shifts_edit: 'Edit shifts', shifts_delete: 'Delete shifts', shifts_date_correction: 'Use the date-correction tool (Pay Period Setup)' } },
   { title: 'Approvals', perms: { approvals_view: 'View Approvals page', approvals_review_shifts: 'Approve/deny 24hr shift exceptions', approvals_review_leave: 'Approve/deny time-off requests', approvals_review_clock: 'Approve/deny clock in/out entries', clock_override: 'Override clock-in/out past capacity' } },
@@ -9896,7 +9901,7 @@ function openEntryScope(userId) {
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(5,10,20,.7);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:22px 24px">
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">Timesheet access — ${esc(u.name)} <span style="color:var(--text3);font-size:12px">@${esc(u.username)}</span></div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6">This user sees only the Timesheet Log, with no pay rates. They can add and edit time only for the people below. Anyone not covered here is invisible to them.</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6">This user sees only the Timesheet Log and the Staff Timesheet Report, with no pay rates. They can add and edit time, and print timesheets, only for the people below. Anyone not covered here is invisible to them.</div>
     <div class="form-field" style="margin-bottom:14px"><label>Their own staff record (so they can enter their own time)</label>
       <select id="es-self"><option value="">— none —</option>${active.map(x => `<option value="${esc(x.id)}"${u.staffId===x.id?' selected':''}>${esc(x.last)}, ${esc(x.first)} (${esc(x.id)})</option>`).join('')}</select></div>
     <div style="font-size:11px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Houses — all staff assigned to the house, for shifts worked at that house</div>

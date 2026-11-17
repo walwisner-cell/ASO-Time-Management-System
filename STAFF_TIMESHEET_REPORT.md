@@ -80,6 +80,8 @@ Shifts the office types in come from the time log sheets staff fill in to regist
 ## Who can see it
 Admin, Supervisor and Viewer, the same as the other reports. A custom role needs "View reports". Pay amounts only show for a custom role that also has "View pay rates". Employees do not see this page.
 
+Users on a "Timesheet entry only" role (for example Office Staff) also get the **Staff Report** button and the Staff Timesheet Report page (v121). They only see the staff they are assigned to, and never see pay amounts.
+
 ## Three things I fixed along the way
 1. **Pay period dates and the clock change.** Period dates were worked out in milliseconds, and a day is not always 24 hours. With my May anchor date, every period label from Oct 24 onward would have shown one day early (for example "Nov 6 – Nov 19" instead of "Nov 7 – Nov 20"). With a winter anchor date it was worse: the first day of each summer period was counted in the previous period, which moves hours between periods and changes overtime. Periods are now counted in calendar days.
 2. **"Print Timesheet" printed the whole app.** It printed every page (23 pages in my test) instead of just the Timesheet Log. It now prints only the page I am on.
