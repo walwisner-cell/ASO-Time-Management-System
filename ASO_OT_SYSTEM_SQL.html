@@ -4010,33 +4010,132 @@ const DB_DEFAULTS = {
   EXTERNAL_PAYROLL_ENTRIES: [], CLOCK_BREAKS: []
 };
 
+// v122 — a save that fails no longer leaves entries on the screen that are not
+// really saved. Before, a rejected save left the shift showing, every later save
+// was rejected too (it carried the same bad shift), and a refresh then wiped all
+// of them. Now:
+//   - signed out / no connection: the shifts typed since the last good save are
+//     kept in this browser and put back (and saved) after signing in again;
+//   - the server refused the change: the screen is reloaded from the server so
+//     it shows only what is saved, and the panel lists what was not saved.
+// dbSave() returns a promise: true when the server saved it, false when not.
+let _savedShiftIds = null;          // shift ids the server is known to have
+let _saveChain = Promise.resolve();
+function markShiftsSaved(list) { _savedShiftIds = new Set((list || []).map(s => s.id)); }
+function shiftsNotYetSaved() {
+  if (!_savedShiftIds) return [];
+  return (SHIFTS || []).filter(s => s && s.id && !_savedShiftIds.has(s.id));
+}
+function shiftLine(s) {
+  const st = (STAFF || []).find(x => x.id === s.staff);
+  const nm = st ? [st.first, st.last].filter(Boolean).join(' ') : s.staff;
+  return `${nm} · ${s.date} · ${fmtTime(s.start)}–${fmtTime(s.end)} · ${s.location || ''}`;
+}
+const UNSAVED_KEY = () => 'aso_unsaved_shifts_' + (_currentUser ? (_currentUser.username || _currentUser.id) : 'x');
+function keepUnsavedInBrowser(list) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(UNSAVED_KEY()) || '[]');
+    const byId = {}; prev.concat(list).forEach(s => { byId[s.id] = Object.assign({}, s, { _new: undefined }); });
+    localStorage.setItem(UNSAVED_KEY(), JSON.stringify(Object.values(byId)));
+    return true;
+  } catch (e) { return false; }
+}
+
 function dbSave() {
   const data = { PAY_CONFIG, USERS, LOCATIONS, STAFF, SHIFTS,
                  PENDING_APPROVALS, APPROVED_EXCEPTIONS,
                  DATE_CORRECTION_LOG, DELETION_LOG, AUDIT_LOG, PAYROLL_RECORDS, LEAVE_REQUESTS, CLOCK_ENTRIES };
-  fetch('/api/db/save', {
+  const sentIds = (SHIFTS || []).map(s => s.id);
+  _unsavedToFile = false;
+  updateSaveIndicator();
+  const run = () => fetch('/api/db/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(async res => {
-    if (res.ok) return;
-    let msg = '\u26A0\uFE0F Your changes were NOT saved.';
-    if (res.status === 401) {
-      msg = '\u26A0\uFE0F Your session has expired \u2014 nothing new is being saved. Export a backup from Data Manager if you have unsaved work, then log in again.';
-    } else {
-      try { const body = await res.json(); if (body.error) msg = '\u26A0\uFE0F Save failed: ' + body.error; } catch(e) {}
-    }
-    showToast(msg, 'danger');
-    _unsavedToFile = true;
-    updateSaveIndicator();
+    if (res.ok) { markShiftsSaved(sentIds.map(id => ({ id }))); try { localStorage.removeItem(UNSAVED_KEY()); } catch (e) {} return true; }
+    if (res.status === 401) { onSaveSignedOut(); return false; }
+    let reason = '';
+    try { const body = await res.json(); if (body.error) reason = body.error; } catch(e) {}
+    await onSaveRefused(reason);
+    return false;
   }).catch(e => {
     console.warn('[ASO DB] Save failed:', e);
-    showToast('\u26A0\uFE0F Could not reach the server \u2014 your changes were NOT saved. Check your connection.', 'danger');
+    const list = shiftsNotYetSaved();
+    const kept = list.length && keepUnsavedInBrowser(list);
+    showToast('⚠️ Could not reach the server — your changes were NOT saved yet. Check your connection.' +
+      (kept ? ` ${list.length} shift(s) are kept in this browser and will be saved when the connection is back.` : ''), 'danger');
     _unsavedToFile = true;
     updateSaveIndicator();
+    return false;
   });
-  _unsavedToFile = false;
+  // one save at a time, in order, so an older save can never overwrite a newer one
+  const p = _saveChain.then(run, run);
+  _saveChain = p.catch(() => {});
+  return p;
+}
+
+function onSaveSignedOut() {
+  const list = shiftsNotYetSaved();
+  const kept = list.length && keepUnsavedInBrowser(list);
+  showToast('⚠️ Your session has expired — you were signed out, so this was NOT saved. ' +
+    (kept ? `${list.length} shift(s) you typed are kept in this browser. Sign in again and they will be put back and saved.`
+          : 'Sign in again, then repeat the last step.'), 'danger');
+  _unsavedToFile = true;
   updateSaveIndicator();
+}
+
+// The server refused the change. Reload what is really saved so the screen is
+// true, and list the shifts that did not make it so they can be fixed and re-entered.
+async function onSaveRefused(reason) {
+  const notSaved = shiftsNotYetSaved();
+  let reloaded = false;
+  try {
+    const r = await fetch('/api/db/load', { cache: 'no-store' });
+    if (r.ok) {
+      const d = await r.json();
+      ['LOCATIONS','STAFF','SHIFTS','PENDING_APPROVALS','APPROVED_EXCEPTIONS','DATE_CORRECTION_LOG','DELETION_LOG',
+       'AUDIT_LOG','PAYROLL_RECORDS','LEAVE_REQUESTS','CLOCK_ENTRIES','EXTERNAL_PAYROLL_ENTRIES','CLOCK_BREAKS']
+        .forEach(k => { if (Array.isArray(d[k])) window[k] = d[k]; });
+      if (d.PAY_CONFIG) PAY_CONFIG = d.PAY_CONFIG;
+      if (Array.isArray(d.USERS)) USERS = d.USERS;
+      markShiftsSaved(SHIFTS);
+      reloaded = true;
+      try {
+        const pg = document.querySelector('.page.active');
+        const name = pg ? pg.id.replace(/^page-/, '') : 'timesheet';
+        nav(name, document.querySelector(`.nav-item[data-page="${name}"]`));
+      } catch (e) {}
+    }
+  } catch (e) {}
+  const lost = notSaved.filter(s => !(SHIFTS || []).some(x => x.id === s.id));
+  let msg = '⚠️ Save failed: ' + (reason || 'the server did not accept this change.');
+  if (lost.length) msg += ` These shift(s) were NOT saved: ${lost.slice(0, 6).map(shiftLine).join('; ')}${lost.length > 6 ? ` and ${lost.length - 6} more` : ''}.`;
+  if (reloaded) msg += ' The screen now shows only what is saved — fix the problem and enter them again.';
+  showToast(msg, 'danger');
+  _unsavedToFile = !reloaded;
+  updateSaveIndicator();
+}
+
+// After signing in: put back shifts that were typed while signed out or offline.
+async function restoreUnsavedShifts() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(UNSAVED_KEY()) || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list) || !list.length) return;
+  const have = new Set((SHIFTS || []).map(s => s.id));
+  const staffIds = new Set((STAFF || []).map(s => s.id));
+  const back = list.filter(s => s && s.id && !have.has(s.id) && staffIds.has(s.staff));
+  if (!back.length) { try { localStorage.removeItem(UNSAVED_KEY()); } catch (e) {} return; }
+  back.forEach(s => { s._new = true; SHIFTS.unshift(s); });
+  // Clear first: if this save is refused the panel lists them; if signed out or
+  // offline again, dbSave keeps them in the browser again.
+  try { localStorage.removeItem(UNSAVED_KEY()); } catch (e) {}
+  auditLog('ADD_SHIFT', `Put back ${back.length} shift(s) typed before sign-out`, back.map(shiftLine).join(' | '));
+  const ok = await dbSave();
+  if (ok) {
+    try { const pg = document.querySelector('.page.active'); const n = pg ? pg.id.replace(/^page-/, '') : 'timesheet'; nav(n, document.querySelector(`.nav-item[data-page="${n}"]`)); } catch (e) {}
+    showToast(`✅ ${back.length} shift(s) you typed before you were signed out are now saved: ${back.slice(0, 4).map(shiftLine).join('; ')}${back.length > 4 ? ' …' : ''}`);
+  }
 }
 
 function dbSaveToFile() {
@@ -4092,7 +4191,7 @@ function dbImportBackup(input) {
       _currentUser = me.user;
       if (loginScreen) loginScreen.style.display = 'none';
       const ok = await loadAppData();
-      if (ok) enterApp();
+      if (ok) { await enterApp(); setTimeout(restoreUnsavedShifts, 800); }
       return;
     }
   } catch (e) { /* server not reachable yet — fall through to normal login screen */ }
@@ -4164,6 +4263,7 @@ async function loadAppData() {
       l.rateHistory = [{ rate: l.rate, mult: l.mult, effectiveFrom: '2000-01-01' }];
   });
 
+  markShiftsSaved(SHIFTS);   // v122 — what the server has right now
   overlay.remove();
   console.log('[ASO DB] Ready \u2014', STAFF.length, 'staff,', SHIFTS.length, 'shifts');
   return true;
@@ -5006,7 +5106,8 @@ async function doLogin() {
   document.getElementById('login-screen').style.display = 'none';
   const ok = await loadAppData();
   if (!ok) { document.getElementById('login-screen').style.display = 'flex'; return; }
-  enterApp();
+  await enterApp();
+  setTimeout(restoreUnsavedShifts, 800);   // v122
 
   if (u.toLowerCase() === 'admin' && p === 'admin123') {
     setTimeout(() => showToast('⚠️ Security: Change the default admin password in Passwords before going live!', 'warn'), 800);
@@ -7511,7 +7612,7 @@ function addShift() {
   auditLog('ADD_SHIFT', `Shift added: ${stName ? stName.last+', '+stName.first : staff} @ ${location}`,
     `Date: ${date} · ${start}–${end} · ${numFmt(hours)} hrs`);
   dbSave();
-  showToast(`Shift added — ${numFmt(hours)} hrs · Go to Data Manager to Save Data Into File`);
+  showToast(`Shift added — ${numFmt(hours)} hrs`);
   renderTimesheetTable();
   renderTimesheetPeriodContext();
   checkNewPeriod();
@@ -13834,6 +13935,14 @@ function rbFilterStaffByHouse() {
 // such as "Staff removed" still show as a short toast.
 // ──────────────────────────────────────────────────────────
 const HELP_RULES = [
+  // v122 — a timesheet-entry account tried to save time it is not set up for
+  { test: /not assigned to enter time|only enter time at your assigned house|cannot change a shift outside your assigned/i,
+    title: 'This shift is outside your timesheet access',
+    why: 'Your account can only enter time for the staff (and houses) an admin assigned to it. The shift named above is for someone or somewhere that is not on your list, so it was not saved.',
+    fixes: ['Check the staff name and the house on the time log sheet, and pick the right ones.',
+            'If you should enter time for this person or house, ask an admin to add them: Passwords → your name → Timesheet access.',
+            'After the admin saves it, your screen refreshes by itself within a minute. Then enter the shift again.',
+            'Shifts listed above as NOT saved must be entered again. Everything else on the screen is saved.'] },
   { test: /could not reach the server|check your connection|failed to fetch|network ?error|load failed|offline/i,
     title: 'Can’t reach the server',
     why: 'Your computer lost its connection to the ASO Time System, or the server is restarting. The server restarts for about 1–2 minutes every time an update is pushed to Render.',
@@ -13845,9 +13954,11 @@ const HELP_RULES = [
   { test: /session (has )?expired|session timed out|not authenticated|log in again|account no longer exists/i,
     title: 'You have been signed out',
     why: 'For security, the system signs you out after a period with no activity, or when the server restarts after an update. While you are signed out, nothing new is saved.',
-    fixes: ['If you entered anything in the last few minutes, go to Data Manager and export a backup first.',
-            'Refresh the page (F5) and sign in again.',
-            'Repeat the last step you did. It was not saved.'] },
+    fixes: ['Do not close the page yet. New shifts you typed are kept in this browser.',
+            'Refresh the page (F5) and sign in again with the same account, on the same computer and browser.',
+            'After you sign in, the system puts those shifts back and saves them. A green message lists them.',
+            'Changes to shifts that already existed (edits or deletes) are not kept. Check those and do them again.',
+            'If a shift is still missing, enter it again from the time log sheet.'] },
   { test: /not authorized|access restricted|do not have permission|requires an admin|cannot grant a permission|employee accounts cannot modify/i,
     title: 'Your account doesn’t have permission for this',
     why: 'Each login has a role (admin, supervisor, viewer, employee or a custom role). This step needs a permission your role does not include.',
