@@ -2734,6 +2734,11 @@
                   <input type="number" id="cfg-meal-break-threshold" step="0.5" min="0" value="5">
                   <div style="font-size:11px;color:var(--text3);margin-top:4px">Clock-tracked shifts at or above this length with no meal break logged show a warning on the Timesheet and Approvals pages. 5 hours matches California's trigger — adjust for your state.</div>
                 </div>
+                <div class="form-field">
+                  <label>Office Break, Weekdays (minutes)</label>
+                  <input type="number" id="cfg-office-break" step="5" min="0" max="120" value="30">
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px">Unpaid break taken off every shift at the Office on Monday to Friday, when the shift is at least the meal break threshold above. No break on Saturday or Sunday. Set 0 to turn it off. It applies to shifts entered or edited after you save.</div>
+                </div>
               </div>
               <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button class="btn btn-success" onclick="applyPayConfig()">✓ Save &amp; Apply</button>
@@ -4599,6 +4604,93 @@ function calcHours(start, end) {
   return (e - s) / 60;
 }
 
+// v123 — Office break rule. Shifts worked at the Office on a weekday (Mon–Fri)
+// have an unpaid break taken off (30 minutes unless changed in Pay Settings),
+// when the shift is at least the meal break threshold long (5 hrs unless changed).
+// Saturday and Sunday shifts have no break taken off. Only the Office location.
+function officeBreakMinutes() {
+  const v = PAY_CONFIG && PAY_CONFIG.officeBreakMin;
+  return (v === undefined || v === null || v === '') ? 30 : Math.max(0, Number(v) || 0);
+}
+function isOfficeLocation(loc) { return String(loc || '').trim().toLowerCase() === 'office'; }
+function isWeekendDate(iso) {
+  if (!iso) return false;
+  const d = new Date(iso + 'T12:00:00');
+  const w = d.getDay();
+  return w === 0 || w === 6;
+}
+function shiftBreakMin(location, date, rawHours) {
+  const mins = officeBreakMinutes();
+  if (!mins || !isOfficeLocation(location) || isWeekendDate(date)) return 0;
+  const threshold = (PAY_CONFIG && PAY_CONFIG.mealBreakThresholdHours) || 5;
+  if (!(rawHours >= threshold)) return 0;
+  return mins;
+}
+// v124 — Office weekday shifts entered before the break rule (v123) still carry
+// the full time. These are the ones in the current pay period (and later) that
+// can be fixed in one click: entered by hand, not locked, no break yet, and hours
+// still equal to their start/end times (so nothing was adjusted by hand).
+function officeBreakCandidates() {
+  if (!officeBreakMinutes()) return [];
+  let from = '';
+  try { from = getPeriodForDate(todayLocalISO()).key; } catch (e) { return []; }
+  return (SHIFTS || []).filter(sh => {
+    if (!sh || sh.breakMin || sh.date < from || !isOfficeLocation(sh.location)) return false;
+    if (sh.source === 'adp' || sh.shiftStatus === 'rejected') return false;
+    if (!sh.start || !sh.end || isPeriodLockedForDate(sh.date)) return false;
+    if (typeof entryRowOk === 'function' && !entryRowOk(sh)) return false;
+    const raw = calcHours(sh.start, sh.end);
+    if (Math.abs(Number(sh.hours) - raw) > 0.01) return false;
+    return shiftBreakMin(sh.location, sh.date, raw) > 0;
+  });
+}
+function renderOfficeBreakBanner() {
+  const wrap = document.getElementById('timesheet-table');
+  if (!wrap) return;
+  let el = document.getElementById('ts-office-break-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ts-office-break-banner';
+    wrap.parentNode.insertBefore(el, wrap);
+  }
+  const list = (typeof userCan === 'function' && userCan('editShift')) ? officeBreakCandidates() : [];
+  if (!list.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const mins = officeBreakMinutes();
+  const people = new Set(list.map(x => x.staff)).size;
+  el.style.display = 'block';
+  el.innerHTML = `<div style="margin:0 0 14px;padding:12px 16px;border:1px solid rgba(198,138,30,0.45);background:rgba(198,138,30,0.10);border-radius:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px;font-size:13px;color:var(--text)"><b>⏸ ${list.length} Office weekday shift(s)</b> for ${people} staff in this pay period were entered before the ${mins}-minute Office break rule, so the break is still counted as paid time.
+      <div style="font-size:12px;color:var(--text3);margin-top:3px">Click the button to take ${mins} minutes off each one. Weekend shifts, shifts under ${(PAY_CONFIG && PAY_CONFIG.mealBreakThresholdHours) || 5} hrs, locked periods and ADP time are not touched.</div></div>
+    <button class="btn btn-primary" onclick="applyOfficeBreakToOpenPeriod()">Take the break off these shifts</button></div>`;
+}
+function applyOfficeBreakToOpenPeriod() {
+  const list = officeBreakCandidates();
+  if (!list.length) { renderOfficeBreakBanner(); return; }
+  const mins = officeBreakMinutes();
+  const sample = list.slice(0, 8).map(sh => { const st = STAFF.find(x => x.id === sh.staff); return `• ${st ? st.first + ' ' + st.last : sh.staff} — ${formatDateDisplay(sh.date)} ${fmtTime(sh.start)}–${fmtTime(sh.end)}: ${numFmt(sh.hours)} → ${numFmt(Math.round((sh.hours - mins / 60) * 100) / 100)} hrs`; }).join('\n');
+  if (!confirm(`Take the ${mins}-minute Office break off ${list.length} shift(s)?\n\n${sample}${list.length > 8 ? `\n… and ${list.length - 8} more` : ''}`)) return;
+  const ids = new Set(list.map(x => x.id));
+  const lines = [];
+  SHIFTS = SHIFTS.map(sh => {
+    if (!ids.has(sh.id)) return sh;
+    const hours = Math.round((Number(sh.hours) - mins / 60) * 100) / 100;
+    lines.push(`${sh.staff} ${sh.date} ${numFmt(sh.hours)}→${numFmt(hours)}`);
+    return { ...sh, hours, breakMin: mins };
+  });
+  auditLog('EDIT_SHIFT', `Office break taken off ${list.length} shift(s) entered before the break rule`, lines.join(' | '));
+  dbSave();
+  showToast(`✅ ${mins}-minute Office break taken off ${list.length} shift(s).`);
+  renderTimesheetTable();
+  try { renderTimesheetPeriodContext(); } catch (e) {}
+}
+
+// Paid hours for a manually entered shift, after any Office break.
+function paidShiftHours(location, date, start, end) {
+  const raw = calcHours(start, end);
+  const breakMin = shiftBreakMin(location, date, raw);
+  return { raw, breakMin, hours: Math.round((raw - breakMin / 60) * 100) / 100 };
+}
+
 // For clock entries specifically, which may carry second-level precision
 // (needed so clocking in and out within the same minute — easy to do by
 // accident — never computes to a false "0 hours" or, worse, wraps to a
@@ -5503,6 +5595,7 @@ function renderPayConfig() {
   document.getElementById('cfg-ot-threshold').value = PAY_CONFIG.otThreshold;
   document.getElementById('cfg-ot-by-location').value = otByLocationOn() ? '1' : '0';
   document.getElementById('cfg-meal-break-threshold').value = PAY_CONFIG.mealBreakThresholdHours || 5;
+  document.getElementById('cfg-office-break').value = officeBreakMinutes();
   updatePeriodPreview();
   renderPayConfigStatusBanner();
   populateCorrShiftDropdown();
@@ -5584,8 +5677,10 @@ function applyPayConfig() {
   const mealBreakThreshold = parseFloat(document.getElementById('cfg-meal-break-threshold').value);
   if (!anchor || !days || !ot) { showToast('Please fill all fields', 'danger'); return; }
   if (!Number.isFinite(mealBreakThreshold) || mealBreakThreshold < 0) { showToast('Meal break threshold must be 0 or greater', 'danger'); return; }
+  const officeBreak = parseFloat(document.getElementById('cfg-office-break').value);
+  if (!Number.isFinite(officeBreak) || officeBreak < 0 || officeBreak > 120) { showToast('Office break must be from 0 to 120 minutes. Use 30 for a half-hour break, or 0 to turn it off.', 'danger'); return; }
   const otByLocation = document.getElementById('cfg-ot-by-location').value !== '0';
-  PAY_CONFIG = { ...PAY_CONFIG, anchorDate: anchor, periodDays: days, otThreshold: ot, otByLocation, mealBreakThresholdHours: mealBreakThreshold };
+  PAY_CONFIG = { ...PAY_CONFIG, anchorDate: anchor, periodDays: days, otThreshold: ot, otByLocation, mealBreakThresholdHours: mealBreakThreshold, officeBreakMin: officeBreak };
   dbSave();
   updateTopbarPeriod();
   updatePeriodPreview();
@@ -7139,6 +7234,7 @@ function approveShift(pendingId) {
   if (realBlocks.length) { alert('This shift cannot be approved:\n\n• ' + realBlocks.join('\n\n• ')); return; }
   // Add the shift
   const newShift = { id: genId(), date: p.date, staff: p.staffId, location: p.location, start: p.start, end: p.end, hours: p.hours, source: 'manual', _new: true };
+  if (p.breakMin) newShift.breakMin = p.breakMin;   // v123
   SHIFTS.unshift(newShift);
   // Log approval
   APPROVED_EXCEPTIONS.push({
@@ -7351,8 +7447,14 @@ function updateHoursPreview(startPrefix, endPrefix, previewId) {
   const start = getTimeParts(startPrefix);
   const end = getTimeParts(endPrefix);
   if (start && end) {
-    const hrs = calcHours(start, end);
-    document.getElementById(previewId).textContent = `= ${numFmt(hrs)} hrs`;
+    // v123 — show the Office weekday break in the preview
+    const pre = startPrefix.replace(/start$/, '');
+    const locEl = document.getElementById(pre + 'location');
+    const dateEl = document.getElementById(pre + 'date');
+    const r = paidShiftHours(locEl ? locEl.value : '', dateEl ? dateEl.value : '', start, end);
+    document.getElementById(previewId).textContent = r.breakMin
+      ? `= ${numFmt(r.hours)} hrs (${numFmt(r.raw)} hrs − ${r.breakMin} min Office break)`
+      : `= ${numFmt(r.hours)} hrs`;
   }
 }
 function updateShiftPreview() { updateHoursPreview('sf-start', 'sf-end', 'shift-calc-preview'); syncShiftTypeSelect('sf'); }
@@ -7391,6 +7493,7 @@ function onLocationChangeCheck(prefix) {
 function onLocationChange() { onLocationChangeCheck('sf-'); }
 
 function renderTimesheetTable() {
+  try { renderOfficeBreakBanner(); } catch (e) {}   // v124
   const all = computeShiftsWithOT();
   const fp = document.getElementById('ts-filter-period').value;   // period label or ''
   const fs = document.getElementById('ts-filter-staff').value;    // staff ID or ''
@@ -7500,7 +7603,7 @@ function renderTimesheetTable() {
       <td style="color:var(--text);font-weight:500;${isRejected?'text-decoration:line-through':''}">${name}<div style="font-size:10px;color:var(--text3);font-weight:400">${esc(s.staff)}</div></td>
       <td style="color:var(--text2)">${esc(s.location)}</td>
       <td class="mono" style="white-space:nowrap">${esc(fmtTime(s.start))} \u2013 ${esc(fmtTime(s.end))}${shiftTypeBadge(tsTypes.get(s.id))}</td>
-      <td class="mono" style="color:var(--accent2);font-weight:600">${numFmt(s.hours)}</td>
+      <td class="mono" style="color:var(--accent2);font-weight:600">${numFmt(s.hours)}${s.breakMin ? `<div style="font-size:10px;color:var(--text3);font-weight:400" title="${s.breakMin}-minute unpaid Office break taken off">−${s.breakMin}m break</div>` : ''}</td>
       <td class="mono">${$fmt(s.locRate)}</td>
       <td class="mono">${$fmt(s.regPay)}</td>
       <td class="mono" style="color:${hasOT?'var(--warn)':'var(--text3)'}">${hasOT?numFmt(s.otHrs):'—'}</td>
@@ -7556,7 +7659,9 @@ function addShift() {
     showToast(`🔒 ${lockRec.periodLabel} has been confirmed for payroll and is locked. Unlock it from the Payroll & Taxes page to make changes.`, 'danger');
     return;
   }
-  const hours = calcHours(start, end);
+  const paid = paidShiftHours(location, date, start, end);   // v123 — Office weekday break
+  const hours = paid.hours;
+  const breakMin = paid.breakMin;
 
   // Validate date is within selected pay period
   const sel = document.getElementById('sf-pay-period');
@@ -7581,7 +7686,7 @@ function addShift() {
     // Show modal warning
     const st = STAFF.find(x=>x.id===staff);
     const name = st ? `${st.first} ${st.last}` : staff;
-    _pendingShift = { date, staffId: staff, location, start, end, hours, totalDailyHrs: check.total };
+    _pendingShift = { date, staffId: staff, location, start, end, hours, breakMin, totalDailyHrs: check.total };
 
     document.getElementById('modal-24hr-msg').innerHTML =
       `<b>${name}</b> already has <b>${numFmt(check.existing)} hrs</b> recorded on <b>${date}</b>. ` +
@@ -7607,12 +7712,13 @@ function addShift() {
 
   // No violation — add directly
   const newShift = { id: genId(), date, staff, location, start, end, hours, source: 'manual', _new: true };
+  if (breakMin) newShift.breakMin = breakMin;
   SHIFTS.unshift(newShift);
   const stName = STAFF.find(x=>x.id===staff);
   auditLog('ADD_SHIFT', `Shift added: ${stName ? stName.last+', '+stName.first : staff} @ ${location}`,
-    `Date: ${date} · ${start}–${end} · ${numFmt(hours)} hrs`);
+    `Date: ${date} · ${start}–${end} · ${numFmt(hours)} hrs${breakMin ? ` (after ${breakMin} min Office break)` : ''}`);
   dbSave();
-  showToast(`Shift added — ${numFmt(hours)} hrs`);
+  showToast(`Shift added — ${numFmt(hours)} hrs${breakMin ? ` (${breakMin} min Office break taken off)` : ''}`);
   renderTimesheetTable();
   renderTimesheetPeriodContext();
   checkNewPeriod();
@@ -7652,6 +7758,7 @@ function approveAndAdd() {
   if (!reason) { showToast('Please enter an authorization reason', 'danger'); return; }
   if (!_pendingShift) return;
   const newShift = { id: genId(), date: _pendingShift.date, staff: _pendingShift.staffId, location: _pendingShift.location, start: _pendingShift.start, end: _pendingShift.end, hours: _pendingShift.hours, source: 'manual', _new: true };
+  if (_pendingShift.breakMin) newShift.breakMin = _pendingShift.breakMin;   // v123
   SHIFTS.unshift(newShift);
   APPROVED_EXCEPTIONS.push({
     shiftId: newShift.id,
@@ -7814,6 +7921,13 @@ function editShift(id) {
   document.getElementById('modal-edit-shift').classList.remove('hidden');
 }
 function updateEditPreview() { updateHoursPreview('edit-sf-start', 'edit-sf-end', 'edit-shift-preview'); syncShiftTypeSelect('edit-sf'); }
+// v123 — the Office break depends on the house and the day, so refresh the
+// hours preview when either changes (or when picking staff sets the house).
+['change', 'input'].forEach(ev => document.addEventListener(ev, e => {
+  const id = e.target && e.target.id;
+  if (id === 'sf-date' || id === 'sf-location' || id === 'sf-staff') setTimeout(() => { try { updateShiftPreview(); } catch (x) {} }, 0);
+  if (id === 'edit-sf-date' || id === 'edit-sf-location' || id === 'edit-sf-staff') setTimeout(() => { try { updateEditPreview(); } catch (x) {} }, 0);
+}));
 
 function onEditDateChange() {
   const dateEl = document.getElementById('edit-sf-date');
@@ -7866,7 +7980,8 @@ function saveEditShift() {
   if (!date || !staff) { showToast('Date and staff are required', 'danger'); return; }
   if (!location) { showToast('Location is required', 'danger'); return; }
   if (!start || !end) { showToast('Select a valid start and end time', 'danger'); return; }
-  const hours = calcHours(start, end);
+  const paid = paidShiftHours(location, date, start, end);   // v123 — Office weekday break
+  const hours = paid.hours;
 
   // ── Same-pay-period enforcement ──
   const modal = document.getElementById('modal-edit-shift');
@@ -7899,6 +8014,7 @@ function saveEditShift() {
 
   // Patch in place, mark as corrected
   SHIFTS[idx] = { ...SHIFTS[idx], date, staff, location, start, end, hours, _corrected: true };
+  if (paid.breakMin) SHIFTS[idx].breakMin = paid.breakMin; else delete SHIFTS[idx].breakMin;
   auditLog('EDIT_SHIFT', `Shift edited: ${stN ? stN.last+', '+stN.first : staff}`,
     `${oldMeta} → ${newMeta}`);
 
@@ -10857,6 +10973,8 @@ function srBuildStaffReport(st, fromISO, toISO, allComputed, onlyHouse) {
         }
       });
       mealMin = Math.round(mins);
+    } else if (s.breakMin) {
+      mealMin = Number(s.breakMin);   // v123 — Office weekday break taken off at entry
     }
     const missingMeal = !rejected && shiftMissingMealBreak(s);
     const flags = [];
@@ -11723,7 +11841,7 @@ function srFullSheetHtml(r, opts, meta, n, total) {
       <thead><tr><th>Date</th><th>Shift</th><th>House worked</th><th>In</th><th>Out</th><th class="sr-num">Meal</th><th class="sr-num">Hours</th><th class="sr-num">Regular</th><th class="sr-num">OT</th>${showPay ? '<th class="sr-num">Pay</th>' : ''}<th>Entry / notes</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <div class="sr-key">Meal = unpaid meal break on a clocked shift, already taken out of Hours. +1 = shift ended the next day. • = worked away from home house. Entry: Time log = from the employee’s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.</div>
+    <div class="sr-key">Meal = unpaid break already taken out of Hours (a clocked meal break, or the Office weekday break). +1 = shift ended the next day. • = worked away from home house. Entry: Time log = from the employee’s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.</div>
 
     <div class="sr-two">
       <div>
@@ -12121,7 +12239,7 @@ function srDownloadPDF() {
     font('normal', 6.3, gray);
     doc.splitTextToSize(sign
       ? `Times are taken from the time log sheets staff use to register their time${r.rows.some(x => x.source !== 'manual') ? ', and from clock in/out records' : ''}. +1 = shift ended the next day.`
-      : 'Meal = unpaid meal break on a clocked shift, already taken out of Hours. +1 = shift ended the next day. * = worked away from home house. (Hours in brackets) = rejected, not counted. Entry: Time log = from the employee\'s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.', UW)
+      : 'Meal = unpaid break already taken out of Hours (a clocked meal break, or the Office weekday break). +1 = shift ended the next day. * = worked away from home house. (Hours in brackets) = rejected, not counted. Entry: Time log = from the employee\'s time log sheet; Clock = employee clocked in and out; Override = a supervisor clocked in or out for the employee.', UW)
       .forEach(l => { ensure(8); doc.text(l, M, y); y += 7.5; });
     y += 8;
 
